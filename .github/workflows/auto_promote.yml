@@ -1,0 +1,69 @@
+name: Auto-Promote Tools to Remote Gateway
+
+# Triggered when a PR from an employee branch is merged into main.
+# Promotes new tool functions into mcp_server.py and copies field
+# definitions into the remote gateway — replacing the manual admin step.
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  promote:
+    if: >
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'employee/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install anthropic pyyaml
+
+      - name: Get changed files from merged PR
+        id: changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          FILES=$(gh pr view "$PR_NUMBER" --json files --jq '[.files[].path] | join(" ")')
+          echo "files=$FILES" >> $GITHUB_OUTPUT
+          echo "Changed files: $FILES"
+
+      - name: Run promotion script
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python .github/scripts/promote_tools.py \
+            --changed-files "${{ steps.changed.outputs.files }}"
+
+      - name: Commit promoted files
+        run: |
+          git config user.name  "agent-gateway[bot]"
+          git config user.email "agent-gateway[bot]@users.noreply.github.com"
+          git add remote-gateway/core/mcp_server.py
+          git add remote-gateway/context/fields/
+          git diff --cached --quiet || git commit -m \
+            "chore(promote): auto-promote tools from ${{ github.event.pull_request.head.ref }}
+
+            PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}
+            Promoted by auto_promote workflow."
+
+      - name: Push changes to main
+        run: git push origin main

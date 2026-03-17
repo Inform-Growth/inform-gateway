@@ -1,0 +1,20 @@
+# Field Definition Template
+#
+# Copy this file to <integration>.yaml (e.g., stripe.yaml, hubspot.yaml)
+# and populate it via the discover_fields MCP tool.
+#
+# DO NOT edit manually — use discover_fields() to generate initial content
+# and check_field_drift() to detect and review changes.
+
+integration: "<integration_name>"          # e.g., "stripe", "hubspot", "snowflake"
+source_url: "<api_or_mcp_docs_url>"        # reference for field definitions
+discovered_at: "YYYY-MM-DD"
+last_drift_check: "YYYY-MM-DD"
+
+fields:
+  example_field_name:
+    display_name: "Human Readable Name"
+    description: "What this field means in a business context."
+    type: "string | number | currency_usd | percentage | boolean | timestamp | id"
+    notes: "Any caveats, known quirks, or calculation methodology."
+    nullable: false

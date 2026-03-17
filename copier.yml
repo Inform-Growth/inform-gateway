@@ -1,0 +1,41 @@
+# copier.yml — Template configuration for agent-gateway
+#
+# USAGE
+#   First-time setup:
+#     pip install copier
+#     copier copy gh:your-org/agent-gateway ./my-agent-gateway
+#
+#   Pull in upstream template improvements later:
+#     cd my-agent-gateway && copier update
+#
+# NOTE: Template files use [[ ]] delimiters (not {{ }}) to avoid
+# conflicts with GitHub Actions ${{ }} syntax.
+
+_jinja_env:
+  block_start_string: "[%"
+  block_end_string: "%]"
+  variable_start_string: "[["
+  variable_end_string: "]]"
+  comment_start_string: "[#"
+  comment_end_string: "#]"
+
+questions:
+  project_name:
+    type: str
+    help: "Human-readable name for your gateway (e.g. 'Acme Agent Gateway')"
+    default: My Agent Gateway
+
+  project_slug:
+    type: str
+    help: "URL/package-safe identifier (e.g. 'acme-agent-gateway')"
+    default: "{{ project_name | lower | replace(' ', '-') }}"
+
+  gateway_url:
+    type: str
+    help: "URL where your remote gateway will be deployed (e.g. 'https://gateway.acme.com')"
+    default: https://your-gateway.example.com
+
+  github_org:
+    type: str
+    help: "Your GitHub organization or username"
+    default: your-org

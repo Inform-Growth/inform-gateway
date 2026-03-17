@@ -1,3 +1,7 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "[[ project_slug ]]": {
+      "url": "[[ gateway_url ]]/sse"
+    }
+  }
 }

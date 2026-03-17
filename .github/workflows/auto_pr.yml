@@ -1,0 +1,84 @@
+name: Auto-Create PR from Employee Branch
+
+# Watches employee/* branches. When new tool, skill, or field definition files
+# are pushed, automatically opens a pull request to main so the QA agent can
+# review and the promotion pipeline can run on merge.
+
+on:
+  push:
+    branches:
+      - "employee/**"
+    paths:
+      - "local-workspace/tools/**"
+      - "local-workspace/skills/**"
+      - "local-workspace/context/fields/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  create-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for existing PR
+        id: check_pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          EXISTING=$(gh pr list --head "$BRANCH" --base main --json number --jq '.[0].number // empty')
+          echo "existing=$EXISTING" >> $GITHUB_OUTPUT
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Get changed files summary
+        id: summary
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          EMPLOYEE=$(echo "$BRANCH" | sed 's|employee/||')
+          TOOLS=$(git diff --name-only origin/main...HEAD -- 'local-workspace/tools/*.py' | xargs -I{} basename {} .py | tr '\n' ', ' | sed 's/,$//')
+          echo "employee=$EMPLOYEE" >> $GITHUB_OUTPUT
+          echo "tools=$TOOLS" >> $GITHUB_OUTPUT
+
+      - name: Create pull request
+        if: steps.check_pr.outputs.existing == ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          EMPLOYEE="${{ steps.summary.outputs.employee }}"
+          TOOLS="${{ steps.summary.outputs.tools }}"
+          BRANCH="${{ steps.check_pr.outputs.branch }}"
+
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "feat($EMPLOYEE): promote tool(s) — $TOOLS" \
+            --body "$(cat <<'EOF'
+## Automated PR from Employee Workspace
+
+**Employee:** $EMPLOYEE
+**New tools:** $TOOLS
+
+This PR was created automatically by the agent gateway pipeline.
+The QA Agent will review this PR for safety, security, and quality.
+
+### What happens on merge
+- Field definitions → `remote-gateway/context/fields/`
+- Tool functions → promoted into `remote-gateway/core/mcp_server.py` via Claude
+- Skills → available to all agents on `git pull`
+
+> Do not merge manually. Wait for the QA Agent review below.
+EOF
+)"
+
+      - name: Update existing PR description
+        if: steps.check_pr.outputs.existing != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "PR #${{ steps.check_pr.outputs.existing }} already exists for this branch — QA will re-run on the new commit."
