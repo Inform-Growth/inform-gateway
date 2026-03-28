@@ -1,213 +1,367 @@
 # Agent Gateway
 
-> An agentic GitOps monorepo template — bridge decentralized employee experimentation with centralized, governed AI infrastructure.
+> An agentic GitOps monorepo — local AI exploration, centralized governance.
+
+Employees work in a personal sandbox with direct access to their data tools (Stripe, HubSpot, Snowflake, etc.). When a workflow proves valuable, the local agent codifies it and opens a pull request. A CI agent reviews it. On merge, the tool is automatically promoted into a shared **Remote Gateway** — a governed MCP server that every team member's AI agent connects to.
+
+The gateway grows over time into the organization's source of truth: what tools exist, what each field means, and how the business uses each integration.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Local AI agents connect to raw data sources (Stripe, Snowflake, CRM, etc.) for rapid R&D. When a workflow proves valuable, the agent automatically codifies it into a **Python Tool** and a **Markdown Skill**, then opens a pull request. A CI QA agent reviews the diff. Admins promote approved tools to a centralized **Remote Gateway** — a governed MCP server that every team member's AI agent connects to.
-
 ---
 
-## How It Works
+## Two Perspectives
+
+### What an employee experiences
 
 ```
-Employee asks a question
-         │
-         ▼
-Local agent uses raw MCP tools (Stripe, Snowflake, CRM...)
-         │
-         ▼ (if multi-step or complex)
-Codify → tools/<script>.py  +  skills/<name>.md
-         │
-         ▼
-Auto-push to employee/<username> branch
-         │
-         ▼
-CI QA Agent reviews PR (safety · security · type hints · docstrings)
-         │
-         ▼
-Admin promotes: copy function → remote-gateway/core/mcp_server.py + @mcp.tool()
-         │
-         ▼
-git pull → entire team's agents learn the new centralized tool
+You ask your AI agent a question about revenue
+        │
+        ▼
+Agent calls Stripe MCP locally → fetches data → answers you
+        │
+        ▼  (if the query was complex or multi-step)
+Agent creates a skill in .claude/skills/stripe-revenue/
+  └── SKILL.md         ← when/why to use this, becomes /stripe-revenue slash-command
+  └── scripts/get.py   ← the Python logic that will run on the gateway
+        │
+        ▼
+Agent tells you: "Codified and pushed for review."
+        │
+        ▼  (background — you don't do anything)
+PR opens → QA agent reviews → you see a comment on the PR
+        │
+        ▼  (human: admin reviews QA comment and merges)
+        │
+        ▼  (background — you don't do anything)
+Tool promoted to shared gateway → all agents learn it
+        │
+        ▼
+You git pull → /stripe-revenue is now a shared slash-command for everyone
 ```
 
----
+### What happens automatically (no human needed)
 
-## Getting Started
+| Event | Automation |
+|---|---|
+| Agent writes a file | Hook checks that a session note exists for today |
+| Agent finishes a response | Hook commits and pushes `local-workspace/` to `employee/<username>` branch |
+| Push to `employee/*` with new skills | `auto_pr.yml` opens a PR to main |
+| PR opened or updated | `qa_agent_review.yml` runs QA agent, posts review comment on the PR |
+| PR merged to main from `employee/*` | `auto_promote.yml` injects tool into `remote-gateway/core/mcp_server.py` with `@mcp.tool()` and field validation wrapper; copies field definitions; commits back to main |
 
-### Option 1 — GitHub Template (quickest)
+### What requires human input
 
-Click **"Use this template"** at the top of this page. You get a clean copy with no git history.
-
-After cloning your new repo:
-
-1. Replace `[[ gateway_url ]]` in `local-workspace/.claude/.mcp.json` with your deployed gateway URL.
-2. Copy `local-workspace/.env.example` → `local-workspace/.env` and fill in your API keys.
-3. Add `OPENROUTER_API_KEY` to your repo's GitHub Secrets (used by the CI QA and auto-promote agents).
-4. Deploy the remote gateway (see below).
-
-### Option 2 — copier (variable substitution + future sync)
-
-Best for agencies or teams managing multiple independent deployments.
-
-```bash
-pip install copier
-copier copy gh:your-org/agent-gateway ./my-agent-gateway
-```
-
-Copier will prompt you for:
-
-| Variable | Description | Example |
+| Step | Who | What |
 |---|---|---|
-| `project_name` | Human-readable name | `Acme Agent Gateway` |
-| `project_slug` | Package/URL identifier | `acme-agent-gateway` |
-| `gateway_url` | Where your remote gateway lives | `https://gateway.acme.com` |
-| `github_org` | Your GitHub org or username | `acme-corp` |
-
-To pull in upstream template improvements later:
-
-```bash
-cd my-agent-gateway
-copier update
-```
+| Initial repo setup | Admin | Deploy gateway, add `OPENROUTER_API_KEY` to GitHub Secrets |
+| Employee onboarding | Employee | Sparse checkout, add credential to `.env`, add MCP to `.mcp.json` |
+| Connecting a new local MCP | Employee | Add entry to `.mcp.json` with local API key |
+| Merging a PR | Admin | Read QA comment, decide to approve and merge |
+| Provisioning env vars after promotion | Admin | Set new env vars on the gateway server, redeploy |
+| (Optional) Centralizing an integration | Admin | Add to `mcp_connections.json`, set server env vars, redeploy |
 
 ---
 
 ## Repository Structure
 
 ```
-├── .github/
-│   └── workflows/
-│       └── qa_agent_review.yml     # CI: AI reviews every tool PR
+agent-gateway/
 │
-├── local-workspace/                # Employees sparse-checkout only this folder
-│   ├── .mcp.json                   # MCP server config (gateway URL + local MCPs)
-│   ├── .claude/
-│   │   ├── settings.json           # Claude Code permissions and hooks
-│   │   ├── skills/                 # Skills = slash commands + bundled scripts
-│   │   │   └── <name>/
-│   │   │       ├── SKILL.md        # Frontmatter + instructions (/name slash-command)
-│   │   │       └── scripts/        # Python tools (promoted to gateway on merge)
-│   │   └── agents/                 # Optional subagent definitions
-│   ├── context/                    # Brand guidelines, integration docs, field schemas
-│   └── sessions/                   # Per-session notes (committed for analysis)
+├── local-workspace/              ← employees sparse-checkout only this
+│   ├── .mcp.json                 ← gateway URL + personal local MCPs
+│   ├── .env.example              ← credential catalog (copy to .env, never commit .env)
+│   └── .claude/
+│       ├── CLAUDE.md             ← workspace instructions (loaded every session)
+│       ├── AGENTS.md             ← agent directives: incubation loop, git protocol
+│       ├── settings.json         ← permissions + hooks (session note check, auto-push)
+│       └── skills/
+│           ├── integration-onboarding/   ← /integration-onboarding slash-command
+│           ├── skill-creator/            ← /skill-creator slash-command
+│           └── <name>/                   ← skills created during R&D
+│               ├── SKILL.md              ← frontmatter + instructions
+│               └── scripts/
+│                   └── <name>.py         ← Python tool (promoted to gateway on merge)
 │
-├── remote-gateway/                 # Admin-managed centralized gateway
+├── remote-gateway/               ← admin-managed, never pulled by employees
 │   ├── core/
-│   │   └── mcp_server.py           # FastMCP server — promoted tools live here
-│   ├── prompts/
-│   │   └── qa_agent_instructions.md
-│   └── skills/                     # Admin-facing skills for gateway management
+│   │   ├── mcp_server.py         ← FastMCP gateway server
+│   │   ├── field_registry.py     ← field definition loader and drift detector
+│   │   └── mcp_proxy.py          ← optional: proxies upstream MCPs server-side
+│   ├── context/
+│   │   └── fields/               ← per-integration field definition YAMLs
+│   ├── mcp_connections.json      ← optional: upstream MCPs to proxy through gateway
+│   └── prompts/
+│       └── qa_agent_instructions.md
 │
-├── copier.yml                      # Template config (for copier users)
-└── pyproject.toml                  # Python package config
+├── .github/
+│   ├── workflows/
+│   │   ├── auto_pr.yml           ← opens PRs when employee/* branch gets new skills
+│   │   ├── qa_agent_review.yml   ← QA agent reviews every tool PR
+│   │   └── auto_promote.yml      ← promotes merged tools into the gateway
+│   └── scripts/
+│       └── promote_tools.py      ← AI-powered tool injection script
+│
+├── copier.yml                    ← template config (for copier users)
+└── pyproject.toml
 ```
 
 ---
 
-## Employee Onboarding (Sparse-Checkout)
+## Setup (Admin, One-Time)
 
-Employees only pull `local-workspace/` — they never see gateway code or credentials:
+### 1. Create your repo
 
+**Option A — GitHub Template (quickest)**
+Click **"Use this template"** at the top of this page.
+
+**Option B — copier (best for agencies managing multiple clients)**
 ```bash
-# 1. Clone without checking out files
-git clone --no-checkout https://github.com/YOUR_ORG/YOUR_REPO.git
-cd YOUR_REPO
-
-# 2. Enable sparse-checkout
-git sparse-checkout init --cone
-git sparse-checkout set local-workspace
-
-# 3. Pull the workspace
-git checkout main
+pip install copier
+copier copy gh:your-org/agent-gateway ./my-gateway
 ```
 
-Claude Code automatically reads `local-workspace/.claude/.mcp.json` — no additional config needed. For other AI clients, point them at `local-workspace/.claude/.mcp.json` as the MCP config file.
+Copier prompts for: `project_name`, `project_slug`, `gateway_url`, `github_org`.
 
----
-
-## Deploying the Remote Gateway
+### 2. Deploy the remote gateway
 
 ```bash
-# Install dependencies
 pip install -e .
 
-# Configure environment
-cp remote-gateway/.env.example remote-gateway/.env
-# Edit .env — add your API keys
+# Set required env var
+export MCP_SERVER_NAME=my-org-gateway
 
-# Run locally (stdio transport)
+# Run locally for testing (stdio)
 python remote-gateway/core/mcp_server.py
 
-# Run for remote access (SSE transport)
+# Run for remote access (SSE — what employees connect to)
 MCP_TRANSPORT=sse python remote-gateway/core/mcp_server.py
 ```
 
-The SSE endpoint is `https://your-domain.com/sse` — put that URL in `local-workspace/.mcp.json`.
+Deploy target: any Python host — Railway, Fly.io, VPS, Docker. The SSE endpoint is `https://your-domain.com/sse`.
 
-**Deploy target:** Any Python host works — Railway, Fly.io, a VPS, Docker. The server is a standard ASGI app via FastAPI + uvicorn.
+### 3. Configure GitHub Secrets
+
+In your repo settings → Secrets and variables → Actions, add:
+
+| Secret | Used by |
+|---|---|
+| `OPENROUTER_API_KEY` | QA agent review + auto-promotion |
+
+### 4. Set the gateway URL in the repo
+
+Edit `local-workspace/.mcp.json` and replace `[[ gateway_url ]]` with your SSE endpoint.
 
 ---
 
-## Adding Local MCP Servers (R&D)
+## Employee Onboarding (Per Person)
 
-Employees can add personal MCP connections in `local-workspace/.mcp.json` for experimentation:
+Employees only pull `local-workspace/` — they never see gateway code or admin credentials.
+
+### Sparse checkout
+
+```bash
+git clone --no-checkout https://github.com/YOUR_ORG/YOUR_REPO.git
+cd YOUR_REPO
+git sparse-checkout init --cone
+git sparse-checkout set local-workspace
+git checkout main
+```
+
+### Add credentials for local R&D
+
+```bash
+cp local-workspace/.env.example local-workspace/.env
+# Edit .env — add your API keys for the integrations you'll explore
+```
+
+### Connect local MCP servers
+
+Edit `local-workspace/.mcp.json` to add the integrations you need locally:
 
 ```json
 {
   "mcpServers": {
     "my-gateway": { "url": "https://gateway.example.com/sse" },
-    "stripe": { "command": "npx", "args": ["-y", "@stripe/mcp", "--tools=all"] },
-    "postgres": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://..."] }
+    "stripe": {
+      "command": "npx",
+      "args": ["-y", "@stripe/mcp", "--tools=all"],
+      "env": { "STRIPE_API_KEY": "${STRIPE_API_KEY}" }
+    }
   }
 }
 ```
 
-These are personal and never committed (`.mcp.local.json` is gitignored for local overrides).
+The `${STRIPE_API_KEY}` reference reads from your `.env` file. The gateway entry gives you access to all previously promoted tools.
+
+### Open Claude Code
+
+Open the `local-workspace/` directory in Claude Code. The skills, hooks, and MCP config load automatically.
 
 ---
 
-## The Tool → Gateway Lifecycle
+## Day-to-Day Usage
 
-### 1. Experiment
-Local agent uses raw MCP connections to answer a business question.
+### Asking questions
 
-### 2. Codify (Incubation Loop)
-If the answer required multiple tool calls or data cleaning, the agent creates a skill directory:
-- `local-workspace/.claude/skills/<name>/SKILL.md` — frontmatter + instructions; becomes a `/name` slash-command
-- `local-workspace/.claude/skills/<name>/scripts/<script>.py` — executable Python with type hints + docstring; promoted to gateway on merge
+Just ask. The agent calls whatever MCP tools are available — local or gateway — and answers. If the question is simple, that's the end of it.
 
-### 3. Auto-Push
-Agent commits the tool+skill pair to `employee/<username>` and pushes to GitHub.
-The branch prefix `employee/` is what triggers the CI pipeline — any other prefix is ignored.
+### When the agent codifies something
 
-### 4. CI QA Review
-`.github/workflows/qa_agent_review.yml` triggers on the auto-created PR and checks:
-- **Safety** — no mutating operations (POST, DELETE, INSERT, DROP)
-- **Security** — no hardcoded secrets
-- **Quality** — type hint coverage, docstring completeness
-- **Skill pairing** — every tool has a matching skill
+If a question required multiple steps, the agent creates a skill directory and tells you:
 
-### 5. Auto-Promotion
-On merge, `.github/workflows/auto_promote.yml` runs automatically:
-- Calls Claude API to inject the tool function into `remote-gateway/core/mcp_server.py` with `@mcp.tool()` and field validation wrapper
-- Copies field definition YAMLs to `remote-gateway/context/fields/`
-- Commits back to main
+> "Codified into `/stripe-revenue` and pushed for review."
 
-The only remaining manual step: **admin provisions env vars and redeploys the gateway.**
+A PR will appear in the repo within seconds. You don't need to do anything.
 
-### 6. Fleet Sync
-Employees `git pull`. Their agents read the new skill and start routing requests to the centralized gateway tool instead of raw local MCPs.
+### Connecting a new integration
+
+Use `/integration-onboarding`. It walks through finding the MCP package, adding credentials to `.env`, adding the entry to `.mcp.json`, capturing a sample response, and creating the field definitions.
+
+### Checking what's available
+
+- **Local MCPs:** `list_tools` from your MCP client shows everything connected.
+- **Gateway tools:** Call `health_check()` and `list_field_integrations()` on the gateway.
+- **Your skills:** Type `/` in Claude Code to see all available slash-commands.
+
+### After a PR is merged
+
+```bash
+git pull
+```
+
+New skills are immediately available as slash-commands. New promoted tools are available through the gateway.
+
+---
+
+## The Full Lifecycle
+
+### Stage 1 — Local exploration
+
+Employee works in `local-workspace/`. Agent uses local MCPs (direct API connections). Session notes capture discoveries. Nothing is shared yet — this is pure R&D.
+
+**Human action:** Configure `.mcp.json`, add credentials to `.env`.
+
+### Stage 2 — Codification
+
+When a workflow proves valuable and repeatable, the agent creates a skill directory in `.claude/skills/<name>/`:
+- `SKILL.md` — when/why to use this, how to interpret output. Becomes a `/name` slash-command.
+- `scripts/<name>.py` — the Python logic. Type hints and docstring are required (the docstring becomes the MCP tool description after promotion).
+
+The agent also updates `context/integrations/<name>/schema.md` with any field definitions discovered.
+
+**Human action:** None. The agent does this.
+
+### Stage 3 — Auto-push
+
+The Stop hook in `settings.json` automatically commits `local-workspace/` and pushes to the employee's `employee/<username>` branch after each response. A milestone push with a meaningful commit message happens when the skill is complete.
+
+**Human action:** None. The hook runs automatically.
+
+### Stage 4 — Auto-PR
+
+When the push lands on an `employee/*` branch with new skill files, `auto_pr.yml` opens a pull request to `main` within seconds. The PR description lists the new tools and explains what will happen on merge.
+
+**Human action:** None. GitHub Actions creates the PR.
+
+### Stage 5 — QA review
+
+`qa_agent_review.yml` runs a Claude agent (via OpenRouter) that reviews the PR diff for:
+- **Safety** — no mutating operations (POST, DELETE, INSERT, DROP, PUT, PATCH)
+- **Security** — no hardcoded API keys or credentials
+- **Quality** — type hints present, docstring complete and clear
+- **Pairing** — every script has a `SKILL.md` in the same directory
+
+The agent posts a structured comment: either `🛑 QA FAILED` with the exact violation, or `✅ Passed Automated QA` with a migration summary for the admin.
+
+**Human action:** None. The review is automatic.
+
+### Stage 6 — Human merge decision
+
+An admin reads the QA comment and decides whether to merge. This is the only mandatory human gate in the pipeline. The QA comment gives everything needed to make the decision.
+
+**Human action:** Admin reviews and merges (or requests changes).
+
+### Stage 7 — Auto-promotion
+
+On merge from an `employee/*` branch, `auto_promote.yml`:
+1. Calls Claude (via OpenRouter) to inject the Python function into `remote-gateway/core/mcp_server.py` with `@mcp.tool()` decorator and field validation wrapper.
+2. Copies `context/fields/*.yaml` files to `remote-gateway/context/fields/`.
+3. Commits and pushes the updated gateway back to `main`.
+4. Prints a list of env vars the new tool requires (for admin to provision).
+
+**Human action:** None during promotion. After it completes, admin must provision the listed env vars on the gateway server and redeploy.
+
+### Stage 8 — Gateway active
+
+After the admin redeploys the gateway, the new tool is live. Every employee's agent can now call it.
+
+**Human action:** Admin provisions env vars + redeploys.
+
+### Stage 9 — Fleet sync
+
+Employees run `git pull`. The new `SKILL.md` is pulled into their workspace — the `/tool-name` slash-command is immediately available. Their agent can now route queries to the centralized gateway tool instead of their local MCP.
+
+**Human action:** Employee runs `git pull`.
+
+### Stage 10 — Optional: Retire local connection
+
+Once the gateway carries a promoted tool for an integration, the local MCP connection is redundant. The employee can remove that entry from `.mcp.json` to keep their workspace clean. The gateway version uses server-side credentials — the employee no longer needs a local API key for that integration.
+
+**Human action:** Employee optionally cleans up `.mcp.json`.
+
+---
+
+## How the Gateway Grows: Field Registry and Data Definitions
+
+Beyond tools, the gateway accumulates **field definitions** — the organization's source of truth for what each integration's data actually means.
+
+When a new integration is onboarded:
+1. The agent captures a sample API response.
+2. It creates `context/fields/<integration>.yaml` with inferred types and placeholder descriptions.
+3. On PR merge, these are copied to the gateway.
+4. The gateway's `discover_fields()` and `check_field_drift()` tools keep definitions current as APIs evolve.
+5. Every promoted tool wraps its response with `validated("integration", result)` — unknown or changed fields are flagged automatically without blocking the call.
+
+Over time, these field definitions become the business's shared vocabulary: what `amount` means in Stripe, what `stage` means in HubSpot, what `arr` means in your data warehouse.
+
+---
+
+## Optional: Centralizing an Integration on the Gateway
+
+Once an integration is mature and used org-wide, an admin can move its credentials server-side so employees no longer need local API keys for it.
+
+Edit `remote-gateway/mcp_connections.json`:
+
+```json
+{
+  "connections": {
+    "stripe": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@stripe/mcp", "--tools=all"],
+      "env": { "STRIPE_API_KEY": "${STRIPE_API_KEY}" }
+    }
+  }
+}
+```
+
+Set `STRIPE_API_KEY` on the gateway server, redeploy. The gateway now proxies all of Stripe's tools as `stripe__<tool_name>`. Employees remove their local Stripe MCP entry — the gateway handles it.
+
+---
+
+## Optional: Access Policy
+
+For organizations that need governance over which MCP servers employees can configure, Claude Code supports a policy-based allowlist/denylist via [`managed-mcp.json`](https://code.claude.com/docs/en/mcp#managed-mcp-configuration) deployed at the OS level. This is an IT decision and is not required for the gateway to function.
 
 ---
 
 ## Coding Standards
 
-- **Python 3.14+.** Type hints and docstrings required on every tool function.
-- **Docstrings = MCP descriptions.** Write them to be clear and actionable.
-- **No hardcoded credentials.** Use `os.environ` for all API keys.
-- **Read-only by default.** Mutating operations require explicit admin approval.
+- **Python 3.14+.** Type hints on every function parameter and return value.
+- **Docstrings are MCP descriptions.** Write them to be clear to non-technical users — they appear as tool descriptions in every AI agent connected to the gateway.
+- **No hardcoded credentials.** `os.environ` only.
+- **Read-only by default.** Mutating operations (POST, DELETE, INSERT, DROP) require explicit admin approval in the QA review.
 - **Linting:** `ruff` with line length 100.
 
 ```bash
@@ -220,29 +374,15 @@ pytest
 
 ## For Agencies: Managing Multiple Client Deployments
 
-If you're using this as a template for multiple clients:
-
 ```bash
-# Generate a new client deployment
+# New client
 copier copy gh:your-org/agent-gateway ./client-acme
 
-# Later — pull template improvements into an existing client repo
-cd client-acme
-copier update
+# Pull upstream improvements into an existing client repo
+cd client-acme && copier update
 ```
 
-Each client repo is independent. Improvements you make to the master template can be selectively merged into each client with `copier update`.
-
-To backport a client discovery into the master template, open a PR against this repo.
-
----
-
-## Contributing
-
-Improvements welcome. Please:
-1. Fork the repo and create a feature branch.
-2. Follow the coding standards above (type hints, docstrings, `ruff` clean).
-3. Open a PR — the CI QA agent will review it automatically.
+Each client repo is independent. Improvements to the master template can be selectively pulled into each client with `copier update`.
 
 ---
 

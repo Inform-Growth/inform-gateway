@@ -1,12 +1,12 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working in this repository.
 
-# RevOps Agent Gateway — Monorepo
+# Agent Gateway — Monorepo
 
-Agentic GitOps monorepo with two isolated zones:
+Two isolated zones:
 
-- **`local-workspace/`** — Employee R&D sandbox. Employees sparse-checkout only this folder. Local AI agents create Python tools and Markdown skills here.
+- **`local-workspace/`** — Employee R&D sandbox. Employees sparse-checkout only this folder. Local AI agents connect to raw data sources, explore workflows, and codify them as skills.
 - **`remote-gateway/`** — Centralized MCP gateway. Admin-managed. Hosts promoted, QA-approved tools as official MCP endpoints. Never pulled by employees.
 
 ## Commands
@@ -22,51 +22,47 @@ ruff check .
 # Test
 pytest
 
-# Run the remote gateway (stdio transport, default)
+# Run the remote gateway (stdio — local dev)
 python remote-gateway/core/mcp_server.py
 
-# Run as SSE server (for remote deployment)
+# Run as SSE server (production — employees connect to this)
 MCP_TRANSPORT=sse python remote-gateway/core/mcp_server.py
-
-# Run via mcp CLI
-mcp run remote-gateway/core/mcp_server.py
 ```
-
-## Coding Standards
-
-- Python 3.14+. All functions must have type hints and comprehensive docstrings.
-- Docstrings serve double duty: they become MCP tool descriptions when migrated to the gateway.
-- All credentials via `os.environ` — never hardcoded.
-- All data-fetching tools default to **read-only** unless explicit write-permission is granted by an admin.
-- `ruff` for linting, line length 100.
 
 ## Architecture
 
 ### Lifecycle: Local → Gateway
 
-1. **Local agent fetches data** using raw MCP connections (Stripe, Snowflake, CRM, etc.) configured in `local-workspace/.mcp.json`.
-2. **Incubation Loop** — if the answer required multi-step logic, the agent codifies it as a Claude Code skill directory at `local-workspace/.claude/skills/<name>/` containing a `SKILL.md` (frontmatter + instructions, becomes a `/slash-command`) and a `scripts/<name>.py` (the Python tool promoted to the gateway).
-3. **Auto-push** — agent commits the skill directory to an `employee/<username>` branch and pushes.
-4. **CI QA review** — `.github/workflows/qa_agent_review.yml` triggers on PRs touching `local-workspace/.claude/skills/**`. A Claude agent (via OpenRouter, using `remote-gateway/prompts/qa_agent_instructions.md`) reviews for safety, security, type hint coverage, and docstring quality, then posts a structured comment.
-5. **Auto-promotion** — on merge, `.github/workflows/auto_promote.yml` injects the script into `remote-gateway/core/mcp_server.py` with `@mcp.tool()`. The docstring becomes the MCP tool description automatically.
-6. **Fleet update** — merged skills propagate via `git pull`, teaching all local agents to use the new centralized tool via `/skill-name`.
+1. **Explore** — employee asks a question; agent uses local MCP connections (Stripe, HubSpot, Snowflake, etc.) to fetch data and answer.
+2. **Codify** — if the workflow is worth repeating, the agent creates `.claude/skills/<name>/SKILL.md` (instructions, becomes a `/slash-command`) and `.claude/skills/<name>/scripts/<name>.py` (the Python logic).
+3. **Auto-push** — Stop hook commits and pushes to `employee/<username>` branch automatically.
+4. **Auto-PR** — `auto_pr.yml` opens a pull request to main.
+5. **QA review** — `qa_agent_review.yml` runs a Claude agent (via OpenRouter) that reviews for safety, security, type hints, and docstring quality. Posts result as PR comment.
+6. **Human merge** — admin reads QA comment, merges if approved. Only mandatory human gate.
+7. **Auto-promote** — `auto_promote.yml` injects the script into `remote-gateway/core/mcp_server.py` with `@mcp.tool()`, copies field definitions, commits back to main.
+8. **Admin redeploys** — provisions any new env vars on the gateway server, restarts.
+9. **Fleet sync** — employees `git pull`; new skill is available as slash-command, new tool available on gateway.
 
 ### Skill/Script Pairing Rule
 
-Every Python script in `local-workspace/.claude/skills/<name>/scripts/` must have a `SKILL.md` sibling in the same skill directory. The skill explains *when* and *why* to invoke the tool; the script is the executable code. This is enforced by the QA agent.
+Every Python script in `.claude/skills/<name>/scripts/` must have a `SKILL.md` in the same skill directory. Enforced by the QA agent.
 
 ### MCP Server Transports
 
-`remote-gateway/core/mcp_server.py` uses FastMCP and supports two transports:
+`remote-gateway/core/mcp_server.py` uses FastMCP and supports:
 - **stdio** (default) — local dev and `mcp run`
-- **SSE** — remote deployment via `MCP_TRANSPORT=sse`; local agents connect via `<GATEWAY_URL>/sse` in `local-workspace/.mcp.json`
-
-### Session Notes
-
-Local agents maintain per-session notes in `local-workspace/sessions/` using the naming convention `YYYY-MM-DD-<short-topic>.md`. See `local-workspace/CLAUDE.md` for the required structure.
+- **SSE** — production; set `MCP_TRANSPORT=sse`
 
 ### Zone-Specific Instructions
 
-- `local-workspace/CLAUDE.md` — tool file standards, skill file standards, MCP config details
-- `local-workspace/AGENTS.md` — agent identity, tool resolution order, incubation loop, auto-push git protocol, guardrails
-- `remote-gateway/CLAUDE.md` — migration workflow, server configuration, admin guardrails
+- `local-workspace/.claude/CLAUDE.md` — skill structure, MCP config, background automation
+- `local-workspace/.claude/AGENTS.md` — agent identity, incubation loop, git protocol, guardrails
+- `remote-gateway/CLAUDE.md` — migration workflow, gateway management, field registry, admin guardrails
+
+## Coding Standards
+
+- Python 3.14+. Type hints and docstrings required on every function.
+- Docstrings are MCP tool descriptions — write them for non-technical users.
+- All credentials via `os.environ` — never hardcoded.
+- Read-only by default. Mutating operations require explicit admin approval.
+- `ruff` for linting, line length 100.
