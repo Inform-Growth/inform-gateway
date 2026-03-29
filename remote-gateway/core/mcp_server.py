@@ -17,7 +17,9 @@ Run with:
 from __future__ import annotations
 
 import asyncio
+import functools
 import os
+import time as _time
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -25,6 +27,7 @@ from mcp.server.fastmcp import FastMCP
 
 from field_registry import registry
 from mcp_proxy import mount_all_proxies
+from telemetry import telemetry as _telemetry
 
 
 @asynccontextmanager
@@ -42,6 +45,41 @@ mcp = FastMCP(
     os.environ.get("MCP_SERVER_NAME", "[[ project_slug ]]"),
     lifespan=lifespan,
 )
+
+
+# ---------------------------------------------------------------------------
+# Telemetry — patches mcp.tool() so every registered tool is tracked.
+# Applies automatically to built-in and promoted tools; no per-tool changes
+# needed. Uses functools.wraps so FastMCP sees the original function signature.
+# ---------------------------------------------------------------------------
+
+_orig_mcp_tool = mcp.tool
+
+
+def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
+    """Replacement for mcp.tool() that injects timing and error recording."""
+    fastmcp_decorator = _orig_mcp_tool(*args, **kwargs)
+
+    def wrapper(fn: Any) -> Any:
+        @functools.wraps(fn)
+        def tracked(*fn_args: Any, **fn_kwargs: Any) -> Any:
+            t0 = _time.monotonic()
+            try:
+                result = fn(*fn_args, **fn_kwargs)
+                _telemetry.record(fn.__name__, int((_time.monotonic() - t0) * 1000), True)
+                return result
+            except Exception as exc:
+                _telemetry.record(
+                    fn.__name__, int((_time.monotonic() - t0) * 1000), False, type(exc).__name__
+                )
+                raise
+
+        return fastmcp_decorator(tracked)
+
+    return wrapper
+
+
+mcp.tool = _tracked_mcp_tool
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +123,30 @@ def health_check() -> dict:
         "status": "ok",
         "server": mcp.name,
     }
+
+
+@mcp.tool()
+def get_tool_stats(tool_name: str = "") -> dict:
+    """Return call statistics for all gateway tools.
+
+    Use this to monitor tool health: identify tools with high error rates
+    (possible API degradation), tools that have never been called (stale
+    candidates for deprecation), and overall call volume.
+
+    Stats reset if the gateway is redeployed without a persistent volume.
+    For persistent history on Railway or Render, set TELEMETRY_DB_PATH to a
+    path on a mounted volume (e.g., /data/telemetry.db).
+
+    Args:
+        tool_name: Filter to a specific tool by name, or leave empty for all.
+
+    Returns:
+        Dict with 'tools' list and 'summary'. Each tool entry includes
+        call_count, error_count, error_rate, last_called, avg_duration_ms,
+        and max_duration_ms. summary.high_error_rate lists tools with
+        ≥5% error rate over ≥10 calls.
+    """
+    return _telemetry.stats(tool_name or None)
 
 
 # ---------------------------------------------------------------------------

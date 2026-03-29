@@ -47,9 +47,39 @@ Environment variables:
 | `MCP_TRANSPORT` | No | `sse` for remote deployment, omit for stdio |
 | `MCP_SERVER_HOST` | No | SSE bind address (default: `0.0.0.0`) |
 | `MCP_SERVER_PORT` | No | SSE port (default: `8000`) |
+| `TELEMETRY_DB_PATH` | No | Path to SQLite telemetry file (default: `data/telemetry.db`) |
 | *(tool-specific vars)* | Yes | Set after each promotion — printed by `auto_promote.yml` |
 
 Deploy target: any Python host — Railway, Fly.io, VPS, Docker. The server is a standard ASGI app.
+
+---
+
+## Tool Telemetry
+
+Every tool call is recorded automatically — no per-tool changes needed. The telemetry
+patch in `core/mcp_server.py` wraps the `@mcp.tool()` decorator at startup, so
+all built-in and promoted tools are tracked from the moment they register.
+
+**Querying stats** — call `get_tool_stats()` from any connected agent:
+```
+get_tool_stats()           # all tools
+get_tool_stats("stripe_revenue")   # one tool
+```
+
+Returns per-tool: call count, error count, error rate, last called timestamp,
+avg and max duration. The `summary.high_error_rate` list flags tools with ≥5%
+error rate across ≥10 calls — the primary signal for API degradation.
+
+**Storage** — SQLite at `TELEMETRY_DB_PATH` (default: `remote-gateway/data/telemetry.db`).
+The `data/` directory is gitignored. Zero external dependencies.
+
+**Persistent storage on Railway / Render:**
+1. Add a persistent volume to the service (Railway: Settings → Volumes; Render: Settings → Disks)
+2. Mount it at `/data`
+3. Set env var: `TELEMETRY_DB_PATH=/data/telemetry.db`
+
+Without a persistent volume, stats reset on each redeploy. The gateway continues
+to function normally — telemetry is never load-bearing.
 
 ---
 
