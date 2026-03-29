@@ -41,7 +41,17 @@ Trigger this skill when:
 
 ### Path A — MCP Server
 
-**Step A1 — Confirm credentials**
+**Step A0 — Check if already installed at user scope**
+
+Many operators have MCP servers installed at user scope (via `claude mcp add --scope user`
+or through the Claude desktop app). Before adding a project-scope entry, ask the operator:
+
+> "Do you already have [integration] set up in your Claude desktop or user settings?"
+
+If yes: **skip A1 and A2 entirely** — just verify the connection in A3, then jump to
+Step 2. Record it as `scope: user` in the registry (Step A4).
+
+**Step A1 — Confirm credentials (project-scope only)**
 
 Identify the required API key or token. Ask the user if they have it.
 If not, direct them to the integration's developer portal to generate one.
@@ -54,7 +64,9 @@ Once they have it:
 2. Add the variable name (no value) to `local-workspace/.env.example` under
    the integration's heading so the catalog stays accurate.
 
-**Step A2 — Add to `.mcp.json`**
+**Step A2 — Add to `.mcp.json` (project-scope only)**
+
+Copy `.mcp.json.example` to `.mcp.json` if it doesn't exist yet, then add the entry:
 
 ```json
 {
@@ -69,12 +81,38 @@ Once they have it:
 }
 ```
 
-The `${VAR_NAME}` syntax pulls from the operator's local `.env`. Never paste
-a credential value directly into `.mcp.json`.
+**Critical**: Use `${VAR_NAME}` syntax — never paste a credential value directly.
+Some MCP server setup guides (Perplexity, Linear, others) show the key inline.
+Do not follow that pattern. If the user pastes a config with an inline key, flag it
+per the "No Credentials in Config" guardrail and fix it before proceeding.
 
 Restart the MCP client so the new server is discovered.
 
 > `--tools=all` is appropriate for initial exploration — you don't yet know which tools you'll need. As workflows are codified into gateway tools, the local MCP connection becomes redundant and should be retired (see "After Promotion" below).
+
+**Step A4 — Register in mcp-registry.md**
+
+Add or update an entry in `local-workspace/context/mcp-registry.md`. This is what
+admins read to know what the gateway needs to support — it must be kept current.
+
+```markdown
+### <server-name>
+
+- **Package**: `@vendor/mcp-package`
+- **Scope**: user | project
+- **Install (project scope)**:
+  ```json
+  "<server-name>": {
+    "command": "npx",
+    "args": ["-y", "@vendor/mcp-package", "--tools=all"],
+    "env": { "VAR_NAME": "${VAR_NAME}" }
+  }
+  ```
+- **Env vars**: `VAR_NAME` — what this key grants access to
+- **Skills that use it**: _(fill in after Step 4)_
+```
+
+Also add a row to the summary table at the top of the file.
 
 **Step A3 — Verify connection**
 
@@ -124,6 +162,9 @@ If you prefer to write definitions manually, use the template at `remote-gateway
 ---
 
 ### Step 4 — Create the skill directory
+
+Once the skill directory name is known, go back to `mcp-registry.md` and fill in the
+`Skills that use it` field for the integration you just registered.
 
 Create `.claude/skills/<integration>-<what>/` with two files:
 
@@ -213,20 +254,31 @@ After writing the field YAML, verify:
 Once the tool has been promoted to the remote gateway (PR merged, gateway redeployed),
 the local connection is no longer needed. Retire it:
 
-1. **Remove the MCP entry from `.mcp.json`** (if Path A was used). The gateway now
-   handles the integration — keeping the local entry would cause duplicate tool names.
+1. **Project-scope** (entry in `.mcp.json`): remove the entry. The gateway now handles
+   the integration — keeping the local entry would cause duplicate tool names.
 
-2. **Inform the user:**
-   > "[Integration] is now available through the shared gateway. I've removed the
-   > local connection — you no longer need to manage credentials for it locally."
+2. **User-scope** (installed via `claude mcp add --scope user` or desktop app): ask
+   the operator to remove the server from their user settings. They can run:
+   ```bash
+   claude mcp remove <server-name> --scope user
+   ```
 
-3. **The local `.env` entry can stay** — it does no harm and may be useful if the
-   operator ever needs to test the integration directly. Do not delete it.
+3. **Update `mcp-registry.md`**: add a note to the entry indicating it has been
+   promoted and the local connection retired:
+   ```
+   - **Status**: promoted — use gateway tool `<tool_name>` instead
+   ```
 
-4. **Commit the updated `.mcp.json`** to the operator branch so the change is tracked.
+4. **Inform the user:**
+   > "[Integration] is now available through the shared gateway. Remove the local
+   > connection so you don't get duplicate tool names."
+
+5. **The local `.env` entry can stay** — it does no harm and may be useful for
+   direct testing. Do not delete it.
 
 The agent checks for retirement candidates automatically at session start by calling
-`list_field_integrations()` on the gateway and comparing against local `.mcp.json` entries.
+`list_field_integrations()` on the gateway and comparing against local `.mcp.json`
+entries and `mcp-registry.md`.
 
 ---
 

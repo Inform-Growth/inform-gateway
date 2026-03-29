@@ -110,6 +110,8 @@ agent-gateway/
 │       ├── AGENTS.md             ← agent directives: incubation loop, git protocol
 │       ├── settings.json         ← permissions + hooks (session note check, auto-push)
 │       └── skills/
+│           ├── workspace-onboarding/     ← /workspace-onboarding slash-command
+│           ├── process-capture/          ← /process-capture slash-command
 │           ├── integration-onboarding/   ← /integration-onboarding slash-command
 │           ├── skill-creator/            ← /skill-creator slash-command
 │           └── <name>/                   ← skills created during R&D
@@ -234,6 +236,16 @@ The `${STRIPE_API_KEY}` reference reads from your `.env` file. The gateway entry
 
 Open the `local-workspace/` directory in Claude Code. The skills, hooks, and MCP config load automatically.
 
+### Run workspace onboarding
+
+Type `/workspace-onboarding` in the chat. The skill will:
+- Ask for your name and create your `operator/<name>` branch
+- Inventory your connected integrations
+- Ask about your role and goals
+- Save everything to `context/operator-profile.md` so future sessions start with context loaded
+
+This step is optional but recommended — it saves setup time every time you open the workspace.
+
 ---
 
 ## Day-to-Day Usage
@@ -253,6 +265,16 @@ A PR will appear in the repo within seconds. You don't need to do anything.
 ### Connecting a new integration
 
 Use `/integration-onboarding`. It walks through finding the MCP package, adding credentials to `.env`, adding the entry to `.mcp.json`, capturing a sample response, and creating the field definitions.
+
+### Automating a multi-step business process
+
+Use `/process-capture` when you have a full workflow to build out — not just a single question, but a sequence of steps across multiple systems. Describe your process in conversation or paste a runbook/SOP. The skill will:
+- Map every step and clarify ambiguities with you
+- Identify all the integrations involved and set up any that aren't connected
+- Decompose the process into discrete, promotable skills
+- Hand each one off to `/skill-creator` to build and test
+
+Example: *"I want to pull leads from Apollo, push them to HubSpot, enrich them, look up their phone numbers, and generate a custom one-pager for each."* `/process-capture` turns that into a prioritized build queue.
 
 ### Checking what's available
 
