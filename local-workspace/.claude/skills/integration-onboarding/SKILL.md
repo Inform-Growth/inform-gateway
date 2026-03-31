@@ -86,7 +86,10 @@ Some MCP server setup guides (Perplexity, Linear, others) show the key inline.
 Do not follow that pattern. If the user pastes a config with an inline key, flag it
 per the "No Credentials in Config" guardrail and fix it before proceeding.
 
-Restart the MCP client so the new server is discovered.
+Restart Claude Code so the new server is discovered. On first launch after adding
+a project-scoped server, Claude Code will show a **trust prompt** — you must approve
+it or the server will silently not connect. See the Troubleshooting section below if
+the server doesn't appear after restart.
 
 > `--tools=all` is appropriate for initial exploration — you don't yet know which tools you'll need. As workflows are codified into gateway tools, the local MCP connection becomes redundant and should be retired (see "After Promotion" below).
 
@@ -279,6 +282,39 @@ the local connection is no longer needed. Retire it:
 The agent checks for retirement candidates automatically at session start by calling
 `list_field_integrations()` on the gateway and comparing against local `.mcp.json`
 entries and `mcp-registry.md`.
+
+---
+
+## Troubleshooting — MCP Server Not Appearing After Restart
+
+**Symptom**: You've added a server to `.mcp.json`, restarted Claude Code, but the
+server's tools are not available and `/mcp` doesn't show it.
+
+**Root cause**: Claude Code requires explicit trust approval for project-scoped MCP
+servers from `.mcp.json`. If the trust prompt was dismissed (or never shown), the
+server silently skips loading.
+
+**Fix 1 — Re-trigger the trust prompt** (preferred):
+```bash
+claude mcp reset-project-choices
+```
+Then quit and reopen Claude Code in the workspace directory. It will re-prompt you
+to approve each server in `.mcp.json`.
+
+**Fix 2 — Add at user scope instead**:
+```bash
+# For SSE/HTTP servers (like the remote gateway):
+claude mcp add <name> --transport sse <url> --scope user
+
+# For stdio servers (like exa, stripe, etc.):
+claude mcp add <name> --scope user -- npx -y <package-name>
+```
+User-scope servers load without a trust prompt. The credential must be in your
+shell environment (not just `.env`) when using this path.
+
+**Diagnosis**: `claude mcp list` only shows user-scope servers. If your project-scope
+servers are absent from that list, it means they haven't been approved. If you added
+them at user scope, they should appear there.
 
 ---
 
