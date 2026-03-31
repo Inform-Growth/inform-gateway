@@ -13,6 +13,16 @@
     ]
   },
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TODAY=$(date +%Y-%m-%d); REPO=$(git -C \"$(pwd)\" rev-parse --show-toplevel 2>/dev/null || echo .); DIR=\"$REPO/local-workspace/sessions\"; ls ${DIR}/${TODAY}-*.md 2>/dev/null | grep -q . || echo \"ACTION REQUIRED: No session note exists for today. Before responding, create local-workspace/sessions/${TODAY}-HHmm-slug.md using @session-scribe.\""
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Write",
