@@ -29,14 +29,14 @@ env/
 .DS_Store
 Thumbs.db
 
+
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
 
-# MCP — operator personal config (may contain inline credentials, never commit)
-local-workspace/.mcp.json
-local-workspace/.mcp.local.json
+
 
 # Telemetry — runtime SQLite database, never committed
 remote-gateway/data/
+data/
