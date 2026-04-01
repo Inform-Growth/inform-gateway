@@ -41,15 +41,29 @@ Trigger this skill when:
 
 ### Path A — MCP Server
 
-**Step A0 — Check if already installed at user scope**
+**Step A0 — Choose installation scope**
 
-Many operators have MCP servers installed at user scope (via `claude mcp add --scope user`
-or through the Claude desktop app). Before adding a project-scope entry, ask the operator:
+Ask the operator which scope they want:
+
+> "Where do you want to install this MCP server?
+> - **Project** — adds it to `.mcp.json`. Visible to the team, tracked in git. Requires a one-time trust approval in Claude Code. Best when the whole team needs the same integration.
+> - **User** — installs via `claude mcp add --scope user`. Personal to your machine, portable across projects, no trust prompt. Best for personal API keys or tools only you use."
+
+Or check if it's already installed:
 
 > "Do you already have [integration] set up in your Claude desktop or user settings?"
 
-If yes: **skip A1 and A2 entirely** — just verify the connection in A3, then jump to
-Step 2. Record it as `scope: user` in the registry (Step A4).
+| | Project scope | User scope |
+|---|---|---|
+| Config location | `.mcp.json` (committed) | `~/.claude/` (personal) |
+| Visible to team | Yes | No |
+| Trust prompt required | Yes (one-time) | No |
+| Credential location | `.env` + `${VAR}` in JSON | Shell environment |
+| Call logging | `sessions/tool-calls.log` | `sessions/tool-calls.log` |
+
+> **Note**: Both scopes are logged. `sessions/tool-calls.log` records every tool call automatically via the PostToolUse hook in `settings.json`. This file is auto-saved with your session work.
+
+If already installed at user scope: **skip A1 and A2** — verify in A3 and jump to Step 2. Record as `scope: user` in the registry (Step A4).
 
 **Step A1 — Confirm credentials (project-scope only)**
 
@@ -64,9 +78,9 @@ Once they have it:
 2. Add the variable name (no value) to `local-workspace/.env.example` under
    the integration's heading so the catalog stays accurate.
 
-**Step A2 — Add to `.mcp.json` (project-scope only)**
+**Step A2 — Install the server**
 
-Copy `.mcp.json.example` to `.mcp.json` if it doesn't exist yet, then add the entry:
+**Project-scope**: Add to `.mcp.json` (copy `.mcp.json.example` if it doesn't exist yet):
 
 ```json
 {
@@ -86,10 +100,26 @@ Some MCP server setup guides (Perplexity, Linear, others) show the key inline.
 Do not follow that pattern. If the user pastes a config with an inline key, flag it
 per the "No Credentials in Config" guardrail and fix it before proceeding.
 
-Restart Claude Code so the new server is discovered. On first launch after adding
-a project-scoped server, Claude Code will show a **trust prompt** — you must approve
-it or the server will silently not connect. See the Troubleshooting section below if
-the server doesn't appear after restart.
+Restart Claude Code. On first launch with a new project-scoped server, Claude Code
+shows a **trust prompt** — approve it or the server silently won't load. If it doesn't
+appear after restart, see the Troubleshooting section.
+
+**User-scope**: Run in terminal (credential must already be exported in your shell):
+
+```bash
+# For SSE/HTTP servers:
+claude mcp add <name> --transport sse <url> --scope user
+
+# For stdio/npx servers:
+claude mcp add <name> --scope user -- npx -y @<vendor>/mcp --tools=all
+```
+
+Then set the credential in your shell profile (e.g. `~/.zshrc`) so it's available at
+launch — `.env` files are not read for user-scope servers:
+
+```bash
+export <API_KEY_VAR>=your-key-here
+```
 
 > `--tools=all` is appropriate for initial exploration — you don't yet know which tools you'll need. As workflows are codified into gateway tools, the local MCP connection becomes redundant and should be retired (see "After Promotion" below).
 
