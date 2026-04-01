@@ -356,5 +356,7 @@ if __name__ == "__main__":
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
     if transport == "sse":
         mcp.run(transport="sse")
+    elif transport == "streamable-http":
+        mcp.run(transport="streamable-http")
     else:
         mcp.run(transport="stdio")
