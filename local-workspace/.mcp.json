@@ -1,9 +1,11 @@
 {
   "mcpServers": {
     "remote-gateway": {
-      "url": "http://localhost:8000/sse"
+      "type": "http",
+      "url": "http://localhost:8000/mcp"
     },
     "exa": {
+      "type": "http",
       "url": "https://mcp.exa.ai/mcp",
       "headers": { "x-api-key": "${EXA_API_KEY}" }
     }
