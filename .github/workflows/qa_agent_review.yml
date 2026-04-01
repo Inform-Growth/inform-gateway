@@ -34,6 +34,41 @@ jobs:
           gh pr diff ${{ github.event.pull_request.number }} \
             --repo ${{ github.repository }} > /tmp/pr_diff.txt
 
+      - name: Fetch operator session context
+        id: context
+        run: |
+          # Promotion branches are named promote/<operator-branch>
+          # Strip the prefix to find the operator's personal branch
+          PROMOTE_BRANCH="${{ github.head_ref }}"
+          OPERATOR_BRANCH="${PROMOTE_BRANCH#promote/}"
+
+          git fetch origin "$OPERATOR_BRANCH" 2>/dev/null || true
+
+          if git rev-parse "origin/$OPERATOR_BRANCH" >/dev/null 2>&1; then
+            {
+              echo "## Operator Session Notes"
+              echo ""
+              # Include the 3 most recent session notes
+              git ls-tree "origin/$OPERATOR_BRANCH" --name-only local-workspace/sessions/ 2>/dev/null \
+                | grep '\.md$' | sort | tail -3 \
+                | while read -r SESSION; do
+                    echo "### $SESSION"
+                    git show "origin/$OPERATOR_BRANCH:local-workspace/sessions/$SESSION" 2>/dev/null || true
+                    echo ""
+                  done
+
+              echo "## Tool Calls Log (last 100 entries)"
+              echo '```'
+              git show "origin/$OPERATOR_BRANCH:local-workspace/sessions/tool-calls.log" 2>/dev/null \
+                | tail -100 || echo "(no log found)"
+              echo '```'
+            } > /tmp/operator_context.txt
+            echo "has_context=true" >> $GITHUB_OUTPUT
+          else
+            echo "(operator branch not found — no session context available)" > /tmp/operator_context.txt
+            echo "has_context=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Run QA Agent review
         id: qa
         env:
@@ -52,12 +87,20 @@ jobs:
 
           system_prompt = Path("remote-gateway/prompts/qa_agent_instructions.md").read_text()
           diff = Path("/tmp/pr_diff.txt").read_text()
+          operator_context = Path("/tmp/operator_context.txt").read_text()
+
+          user_message = (
+              f"## PR Diff\n\n```diff\n{diff}\n```\n\n"
+              f"## Operator Context (session notes + tool log from the author's branch — "
+              f"not included in this PR, provided for review context only)\n\n"
+              f"{operator_context}"
+          )
 
           response = client.chat.completions.create(
               model="anthropic/claude-opus-4-6",
               messages=[
                   {"role": "system", "content": system_prompt},
-                  {"role": "user", "content": f"Review the following PR diff:\n\n```diff\n{diff}\n```"},
+                  {"role": "user", "content": user_message},
               ],
           )
 
