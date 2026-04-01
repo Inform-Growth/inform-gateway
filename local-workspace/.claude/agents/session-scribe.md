@@ -14,8 +14,8 @@ You maintain the session notes in `sessions/` — the institutional memory of R&
 
 When invoked without arguments (or with "start session" intent):
 
-1. Check `sessions/` for a note from today matching `YYYY-MM-DD-*.md`.
-2. If none exists, ask the user: "What's the goal of this session?" (one sentence). Use their answer as the slug and goal line.
+1. Always create a new session note — do not reuse an existing note from today. Each Claude Code session gets its own file. Use the current time for `HHmm` (e.g. `2026-04-01-1432-slug.md`).
+2. Ask the user: "What's the goal of this session?" (one sentence). Use their answer as the slug and goal line.
 3. Create the file using the format from `sessions/README.md`.
 4. Check your memory for any open questions from previous sessions involving the same integration(s). If found, surface them: "Last time you had open questions about X — still relevant?"
 
