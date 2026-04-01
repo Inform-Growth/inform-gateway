@@ -53,27 +53,14 @@ jobs:
           TOOLS="${{ steps.summary.outputs.tools }}"
           BRANCH="${{ steps.check_pr.outputs.branch }}"
 
+          printf '## Automated PR from Employee Workspace\n\n**Employee:** %s\n**New tools:** %s\n\nThis PR was created automatically by the agent gateway pipeline.\nThe QA Agent will review this PR for safety, security, and quality.\n\n### What happens on merge\n- Field definitions → `remote-gateway/context/fields/`\n- Tool functions → promoted into `remote-gateway/core/mcp_server.py` via Claude\n- Skills → available to all agents on `git pull`\n\n> Do not merge manually. Wait for the QA Agent review below.\n' \
+            "$EMPLOYEE" "$TOOLS" > /tmp/pr-body.md
+
           gh pr create \
             --base main \
             --head "$BRANCH" \
             --title "feat($EMPLOYEE): promote tool(s) — $TOOLS" \
-            --body "$(cat <<EOF
-## Automated PR from Employee Workspace
-
-**Employee:** $EMPLOYEE
-**New tools:** $TOOLS
-
-This PR was created automatically by the agent gateway pipeline.
-The QA Agent will review this PR for safety, security, and quality.
-
-### What happens on merge
-- Field definitions → \`remote-gateway/context/fields/\`
-- Tool functions → promoted into \`remote-gateway/core/mcp_server.py\` via Claude
-- Skills → available to all agents on \`git pull\`
-
-> Do not merge manually. Wait for the QA Agent review below.
-EOF
-)"
+            --body-file /tmp/pr-body.md
 
       - name: Update existing PR description
         if: steps.check_pr.outputs.existing != ''
