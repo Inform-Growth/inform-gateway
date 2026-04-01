@@ -42,8 +42,10 @@ async def lifespan(server: FastMCP):
 
 
 mcp = FastMCP(
-    os.environ.get("MCP_SERVER_NAME", "[[ project_slug ]]"),
+    os.environ.get("MCP_SERVER_NAME", "inform-gateway"),
     lifespan=lifespan,
+    host=os.environ.get("MCP_SERVER_HOST", "0.0.0.0"),
+    port=int(os.environ.get("MCP_SERVER_PORT", "8000")),
 )
 
 
@@ -353,10 +355,8 @@ def _infer_type(key: str, value: Any) -> str:
 if __name__ == "__main__":
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
     if transport == "sse":
-        mcp.run(
-            transport="sse",
-            host=os.environ.get("MCP_SERVER_HOST", "0.0.0.0"),
-            port=int(os.environ.get("MCP_SERVER_PORT", "8000")),
-        )
+        mcp.run(transport="sse")
+    elif transport == "streamable-http":
+        mcp.run(transport="streamable-http")
     else:
         mcp.run(transport="stdio")

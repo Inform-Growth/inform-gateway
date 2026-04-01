@@ -13,13 +13,32 @@
     ]
   },
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TODAY=$(date +%Y-%m-%d); REPO=$(git -C \"$(pwd)\" rev-parse --show-toplevel 2>/dev/null || echo .); DIR=\"$REPO/local-workspace/sessions\"; find \"$DIR\" -name \"${TODAY}-*.md\" -mmin -30 2>/dev/null | grep -q . || echo \"ACTION REQUIRED: No active session note found (none created or updated in the last 30 minutes). Start a new one at local-workspace/sessions/${TODAY}-HHmm-slug.md using @session-scribe.\""
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Write",
         "hooks": [
           {
             "type": "command",
-            "command": "TODAY=$(date +%Y-%m-%d); REPO=$(git -C \"$(pwd)\" rev-parse --show-toplevel 2>/dev/null || echo .); DIR=\"$REPO/local-workspace/sessions\"; ls ${DIR}/${TODAY}-*.md 2>/dev/null | grep -q . || echo \"ACTION REQUIRED: No session note exists for today. Create local-workspace/sessions/${TODAY}-HHmm-slug.md now, before writing more files.\""
+            "command": "TODAY=$(date +%Y-%m-%d); REPO=$(git -C \"$(pwd)\" rev-parse --show-toplevel 2>/dev/null || echo .); DIR=\"$REPO/local-workspace/sessions\"; find \"$DIR\" -name \"${TODAY}-*.md\" -mmin -30 2>/dev/null | grep -q . || echo \"ACTION REQUIRED: No active session note found (none created or updated in the last 30 minutes). Create local-workspace/sessions/${TODAY}-HHmm-slug.md now, before writing more files.\""
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "REPO=$(git -C \"$(pwd)\" rev-parse --show-toplevel 2>/dev/null || echo .); LOG=\"$REPO/local-workspace/sessions/tool-calls.log\"; python3 -c \"import sys,json; from datetime import datetime,timezone; d=json.load(sys.stdin); tool=d.get('tool_name','?'); ts=datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'); open('$LOG','a').write(ts+' '+tool+'\\n')\" 2>/dev/null || true"
           }
         ]
       }

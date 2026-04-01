@@ -3,6 +3,11 @@ name: Auto-Create PR from Employee Branch
 # Watches operator/* branches. When new tool, skill, or field definition files
 # are pushed, automatically opens a pull request to main so the QA agent can
 # review and the promotion pipeline can run on merge.
+#
+# Instead of PRing the operator branch directly (which carries session notes,
+# operator profiles, and other personal files), this workflow carves out a clean
+# promotion branch containing only the promotable paths, then opens the PR from
+# that branch. Operator-specific files never touch main.
 
 on:
   push:
@@ -13,7 +18,7 @@ on:
       - "local-workspace/context/fields/**"
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 jobs:
@@ -25,59 +30,73 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Derive names
+        id: names
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          EMPLOYEE=$(echo "$BRANCH" | sed 's|operator/||')
+          TOOLS=$(git diff --name-only origin/main...HEAD -- 'local-workspace/.claude/skills/*/scripts/*.py' | xargs -I{} basename {} .py | tr '\n' ', ' | sed 's/,$//')
+          PROMOTE_BRANCH="promote/${BRANCH}"
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          echo "operator=$EMPLOYEE" >> $GITHUB_OUTPUT
+          echo "tools=$TOOLS" >> $GITHUB_OUTPUT
+          echo "promote_branch=$PROMOTE_BRANCH" >> $GITHUB_OUTPUT
+
       - name: Check for existing PR
         id: check_pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          BRANCH="${{ github.ref_name }}"
-          EXISTING=$(gh pr list --head "$BRANCH" --base main --json number --jq '.[0].number // empty')
+          PROMOTE_BRANCH="${{ steps.names.outputs.promote_branch }}"
+          EXISTING=$(gh pr list --head "$PROMOTE_BRANCH" --base main --json number --jq '.[0].number // empty')
           echo "existing=$EXISTING" >> $GITHUB_OUTPUT
-          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
 
-      - name: Get changed files summary
-        id: summary
+      - name: Build promotion branch
         run: |
-          BRANCH="${{ github.ref_name }}"
-          EMPLOYEE=$(echo "$BRANCH" | sed 's|operator/||')
-          TOOLS=$(git diff --name-only origin/main...HEAD -- 'local-workspace/.claude/skills/*/scripts/*.py' | xargs -I{} basename {} .py | tr '\n' ', ' | sed 's/,$//')
-          echo "operator=$EMPLOYEE" >> $GITHUB_OUTPUT
-          echo "tools=$TOOLS" >> $GITHUB_OUTPUT
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          BRANCH="${{ steps.names.outputs.branch }}"
+          PROMOTE_BRANCH="${{ steps.names.outputs.promote_branch }}"
+
+          # Start from main, create or reset the promotion branch
+          git checkout main
+          git checkout -B "$PROMOTE_BRANCH"
+
+          # Cherry-pick only the promotable paths from the operator branch
+          git checkout "origin/$BRANCH" -- local-workspace/.claude/skills/ 2>/dev/null || true
+          git checkout "origin/$BRANCH" -- local-workspace/context/fields/ 2>/dev/null || true
+
+          # Commit only if there are changes vs main
+          if git diff --cached --quiet; then
+            echo "No promotable changes vs main — nothing to do."
+            exit 0
+          fi
+
+          git commit -m "promote(${{ steps.names.outputs.operator }}): skills and fields from $BRANCH [skip ci]"
+          git push origin "$PROMOTE_BRANCH" --force
 
       - name: Create pull request
         if: steps.check_pr.outputs.existing == ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          EMPLOYEE="${{ steps.summary.outputs.operator }}"
-          TOOLS="${{ steps.summary.outputs.tools }}"
-          BRANCH="${{ steps.check_pr.outputs.branch }}"
+          EMPLOYEE="${{ steps.names.outputs.operator }}"
+          TOOLS="${{ steps.names.outputs.tools }}"
+          PROMOTE_BRANCH="${{ steps.names.outputs.promote_branch }}"
+
+          printf '## Automated PR from Employee Workspace\n\n**Employee:** %s\n**New tools:** %s\n\nThis PR was created automatically by the agent gateway pipeline.\nThe QA Agent will review this PR for safety, security, and quality.\n\n### What happens on merge\n- Field definitions → `remote-gateway/context/fields/`\n- Tool functions → promoted into `remote-gateway/core/mcp_server.py` via Claude\n- Skills → available to all agents on `git pull`\n\n> Do not merge manually. Wait for the QA Agent review below.\n' \
+            "$EMPLOYEE" "$TOOLS" > /tmp/pr-body.md
 
           gh pr create \
             --base main \
-            --head "$BRANCH" \
+            --head "$PROMOTE_BRANCH" \
             --title "feat($EMPLOYEE): promote tool(s) — $TOOLS" \
-            --body "$(cat <<EOF
-## Automated PR from Employee Workspace
+            --body-file /tmp/pr-body.md
 
-**Employee:** $EMPLOYEE
-**New tools:** $TOOLS
-
-This PR was created automatically by the agent gateway pipeline.
-The QA Agent will review this PR for safety, security, and quality.
-
-### What happens on merge
-- Field definitions → \`remote-gateway/context/fields/\`
-- Tool functions → promoted into \`remote-gateway/core/mcp_server.py\` via Claude
-- Skills → available to all agents on \`git pull\`
-
-> Do not merge manually. Wait for the QA Agent review below.
-EOF
-)"
-
-      - name: Update existing PR description
+      - name: Update existing PR
         if: steps.check_pr.outputs.existing != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "PR #${{ steps.check_pr.outputs.existing }} already exists for this branch — QA will re-run on the new commit."
+          echo "PR #${{ steps.check_pr.outputs.existing }} already exists — promotion branch updated, QA will re-run on the new commit."

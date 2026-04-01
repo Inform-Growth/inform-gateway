@@ -100,6 +100,12 @@ Present the table and ask:
 For any they want to connect: delegate to `@integration-onboarding`, one system at a
 time. Return to this step after each one completes.
 
+**Important — MCP trust prompt**: After adding a new project-scoped server to
+`.mcp.json`, the operator must restart Claude Code. On first launch, Claude Code will
+show a trust prompt for each project-scoped server — it must be approved or the server
+silently won't load. If a server is missing after restart, see the Troubleshooting
+section in `@integration-onboarding`.
+
 ---
 
 ## Step 4 — Write the Profile

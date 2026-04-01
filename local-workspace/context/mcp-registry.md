@@ -25,7 +25,7 @@ Fields:
 
 | Server | Package | Scope | Env Vars | Skills |
 |--------|---------|-------|----------|--------|
-| _(none yet)_ | | | | |
+| exa | `exa-mcp-server` | project | `EXA_API_KEY` | — |
 
 ---
 

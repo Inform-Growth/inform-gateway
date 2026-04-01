@@ -76,6 +76,15 @@ do not follow that pattern. Real values go in `.env`.
 --scope user` or the Claude desktop app, you don't need a project-scope entry. The
 agent will still track it in `context/mcp-registry.md` so admins know what the gateway needs.
 
+**Restart required**: After editing `.mcp.json`, quit and reopen Claude Code. On first
+launch with a new project-scoped server, Claude Code shows a **trust prompt** — you
+must approve it or the server silently won't load. If a server is missing after restart:
+```bash
+claude mcp reset-project-choices   # re-triggers the trust prompt on next launch
+```
+Note: `claude mcp list` only shows user-scope servers — project-scope servers from
+`.mcp.json` won't appear there even when working correctly.
+
 **Tracking**: `context/mcp-registry.md` is the committed record of all MCP tools in
 active use — regardless of scope. Admins use this to provision the gateway.
 
