@@ -4,9 +4,8 @@
       "url": "http://localhost:8000/sse"
     },
     "exa": {
-      "command": "node",
-      "args": ["/opt/homebrew/lib/node_modules/exa-mcp-server/.smithery/stdio/index.cjs"],
-      "env": { "EXA_API_KEY": "${EXA_API_KEY}" }
+      "url": "https://mcp.exa.ai/mcp",
+      "headers": { "x-api-key": "${EXA_API_KEY}" }
     }
   }
 }
