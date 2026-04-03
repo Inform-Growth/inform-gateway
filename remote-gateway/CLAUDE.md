@@ -48,6 +48,10 @@ Environment variables:
 | `MCP_SERVER_HOST` | No | SSE bind address (default: `0.0.0.0`) |
 | `MCP_SERVER_PORT` | No | SSE port (default: `8000`) |
 | `TELEMETRY_DB_PATH` | No | Path to SQLite telemetry file (default: `data/telemetry.db`) |
+| `GITHUB_TOKEN` | Yes (notes tools) | Fine-grained PAT with Contents read+write on the notes repo |
+| `GITHUB_REPO` | Yes (notes tools) | `owner/repo` slug for the notes repo, e.g. `Inform-Growth/inform-notes` |
+| `GITHUB_BRANCH` | No | Branch for notes read/write (default: `main`) |
+| `NOTES_PATH` | No | Folder inside `GITHUB_REPO` to store notes (default: `notes`) |
 | *(tool-specific vars)* | Yes | Set after each promotion — printed by `auto_promote.yml` |
 
 Deploy target: any Python host — Railway, Fly.io, VPS, Docker. The server is a standard ASGI app.
