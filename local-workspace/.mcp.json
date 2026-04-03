@@ -11,8 +11,7 @@
     },
     "attio": {
       "type": "http",
-      "url": "https://mcp.attio.com/mcp",
-      "headers": { "Authorization": "Bearer ${ATTIO_API_KEY}" }
+      "url": "https://mcp.attio.com/mcp"
     }
   }
 }
