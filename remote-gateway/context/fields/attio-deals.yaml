@@ -1,0 +1,69 @@
+integration: "attio"
+object: "deals"
+source_url: "https://developers.attio.com/reference/get_v2-objects-deals-attributes"
+discovered_at: "2026-04-03"
+last_drift_check: "2026-04-03"
+
+fields:
+  record_id:
+    display_name: "Record ID"
+    description: "Unique identifier for this deal record in Attio."
+    type: "id"
+    notes: "System-generated. Read-only."
+    nullable: false
+
+  name:
+    display_name: "Deal Name"
+    description: "Name of the deal, typically the prospect or opportunity description."
+    type: "string"
+    notes: "Required. Writable."
+    nullable: false
+
+  stage:
+    display_name: "Deal Stage"
+    description: "Current pipeline stage of this deal."
+    type: "string"
+    notes: "Required. Status enum: Lead → In Progress → Won 🎉 | Lost. Writable."
+    nullable: false
+
+  owner:
+    display_name: "Deal Owner"
+    description: "The team member responsible for this deal."
+    type: "id"
+    notes: "Required. Actor reference to a workspace member."
+    nullable: false
+
+  value:
+    display_name: "Deal Value"
+    description: "Monetary value of this deal in USD."
+    type: "currency_usd"
+    notes: "Writable. Represents expected or actual contract value."
+    nullable: true
+
+  associated_people:
+    display_name: "Associated People"
+    description: "People (contacts) linked to this deal."
+    type: "id"
+    notes: "Multiselect record reference → people."
+    nullable: true
+
+  associated_company:
+    display_name: "Associated Company"
+    description: "The company this deal is with."
+    type: "id"
+    notes: "Single record reference → companies."
+    nullable: true
+
+  created_at:
+    display_name: "Created At"
+    description: "Timestamp when this deal record was created in Attio."
+    type: "timestamp"
+    notes: "Read-only. UTC."
+    nullable: false
+
+  created_by:
+    display_name: "Created By"
+    description: "The workspace member or system that created this deal record."
+    type: "id"
+    notes: "Read-only. Actor reference."
+    nullable: true
