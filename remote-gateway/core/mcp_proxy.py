@@ -25,13 +25,19 @@ Usage (called from mcp_server.py lifespan):
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import os
+import re
+import time
 from pathlib import Path
 from typing import Any
 
+import httpx
 from mcp import ClientSession, StdioServerParameters
+from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
+from mcp.client.streamable_http import streamable_http_client
 
 CONNECTIONS_FILE = Path(__file__).parent.parent / "mcp_connections.json"
 
@@ -54,23 +60,182 @@ def load_connections() -> dict[str, dict]:
     return data.get("connections", {})
 
 
-def resolve_env(env_config: dict[str, str]) -> dict[str, str]:
-    """Expand ``${VAR_NAME}`` references to actual environment variable values.
+def resolve_headers(headers_config: dict[str, str]) -> dict[str, str]:
+    """Expand ``${VAR_NAME}`` references in header values to env var values.
+
+    Handles both full-value references (``${VAR}``) and inline references
+    (e.g. ``Bearer ${VAR}``).
 
     Args:
-        env_config: Dict of key → value where values may be ``${VAR}`` refs.
+        headers_config: Dict of header name → value where values may contain ``${VAR}`` refs.
 
     Returns:
         Dict with all ``${VAR}`` references replaced by their runtime values.
     """
-    resolved = {}
-    for key, val in env_config.items():
-        if isinstance(val, str) and val.startswith("${") and val.endswith("}"):
-            var_name = val[2:-1]
-            resolved[key] = os.environ.get(var_name, "")
-        else:
-            resolved[key] = str(val)
-    return resolved
+    def _substitute(val: str) -> str:
+        return re.sub(r"\$\{([^}]+)\}", lambda m: os.environ.get(m.group(1), ""), val)
+
+    return {key: _substitute(str(val)) for key, val in headers_config.items()}
+
+
+def resolve_env(env_config: dict[str, str]) -> dict[str, str]:
+    """Expand ``${VAR_NAME}`` references to actual environment variable values.
+
+    Args:
+        env_config: Dict of key → value where values may contain ``${VAR}`` refs.
+
+    Returns:
+        Dict with all ``${VAR}`` references replaced by their runtime values.
+    """
+    def _substitute(val: str) -> str:
+        return re.sub(r"\$\{([^}]+)\}", lambda m: os.environ.get(m.group(1), ""), val)
+
+    return {key: _substitute(str(val)) for key, val in env_config.items()}
+
+
+# ---------------------------------------------------------------------------
+# OAuth token refresh helpers
+# ---------------------------------------------------------------------------
+
+
+def _jwt_exp(token: str) -> int | None:
+    """Extract the ``exp`` claim from a JWT without verifying the signature.
+
+    Args:
+        token: Raw JWT string.
+
+    Returns:
+        Unix timestamp of expiry, or None if it cannot be decoded.
+    """
+    try:
+        payload_b64 = token.split(".")[1]
+        padding = 4 - len(payload_b64) % 4
+        if padding != 4:
+            payload_b64 += "=" * padding
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+        return payload.get("exp")
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _token_needs_refresh(token: str, buffer_seconds: int = 300) -> bool:
+    """Return True if the token is expired or expires within ``buffer_seconds``.
+
+    Args:
+        token: Bearer token (JWT).
+        buffer_seconds: Refresh this many seconds before actual expiry.
+
+    Returns:
+        True if a refresh is needed.
+    """
+    exp = _jwt_exp(token)
+    if exp is None:
+        return False  # Opaque token — can't determine expiry, use as-is and rely on 401 handling
+    return time.time() >= (exp - buffer_seconds)
+
+
+async def _refresh_oauth_token(oauth_config: dict) -> str:
+    """Exchange a refresh token for a new access token.
+
+    Calls the token endpoint with ``grant_type=refresh_token``. If the
+    server returns a new refresh token, updates ``os.environ`` in place so
+    subsequent refreshes during this process lifetime use the latest value.
+
+    Args:
+        oauth_config: Resolved dict with ``token_url``, ``client_id``, and
+            ``refresh_token`` keys.
+
+    Returns:
+        New access token string.
+
+    Raises:
+        RuntimeError: If the token endpoint returns an error or no access_token.
+    """
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            oauth_config["token_url"],
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": oauth_config["refresh_token"],
+                "client_id": oauth_config["client_id"],
+            },
+        )
+        response.raise_for_status()
+        data = response.json()
+
+    new_token = data.get("access_token")
+    if not new_token:
+        raise RuntimeError(f"No access_token in refresh response: {data}")
+
+    # Persist rotated tokens back to os.environ so the next refresh uses them.
+    new_refresh = data.get("refresh_token")
+    if new_refresh and oauth_config.get("_refresh_env_var"):
+        os.environ[oauth_config["_refresh_env_var"]] = new_refresh
+
+    return new_token
+
+
+def _access_token_env_var(config: dict) -> str | None:
+    """Extract the env var name backing the Authorization Bearer token.
+
+    Looks for a ``Bearer ${VAR_NAME}`` pattern in the headers config and
+    returns ``VAR_NAME``, so callers can update ``os.environ`` after a refresh.
+
+    Args:
+        config: Connection config dict from mcp_connections.json.
+
+    Returns:
+        Env var name (e.g. ``"ATTIO_ACCESS_TOKEN"``), or None if not found.
+    """
+    auth_val = config.get("headers", {}).get("Authorization", "")
+    if auth_val.startswith("Bearer ${") and auth_val.endswith("}"):
+        return auth_val[len("Bearer ${"):-1]
+    return None
+
+
+def _refresh_token_env_var(config: dict) -> str | None:
+    """Extract the env var name for the refresh token in the oauth config.
+
+    Args:
+        config: Connection config dict from mcp_connections.json.
+
+    Returns:
+        Env var name (e.g. ``"ATTIO_REFRESH_TOKEN"``), or None if not found.
+    """
+    refresh_val = config.get("oauth", {}).get("refresh_token", "")
+    if refresh_val.startswith("${") and refresh_val.endswith("}"):
+        return refresh_val[2:-1]
+    return None
+
+
+async def _get_current_token(config: dict) -> str:
+    """Return a valid Bearer token for an HTTP proxy config.
+
+    Reads the current ``Authorization`` header value. If the embedded JWT is
+    near expiry and an ``oauth`` block is present, refreshes it first.
+
+    Args:
+        config: Connection config dict from mcp_connections.json.
+
+    Returns:
+        Valid access token string.
+    """
+    headers = resolve_headers(config.get("headers", {}))
+    auth = headers.get("Authorization", "")
+    token = auth.removeprefix("Bearer ").strip()
+
+    oauth_raw = config.get("oauth")
+    if oauth_raw and _token_needs_refresh(token):
+        oauth = resolve_headers(oauth_raw)
+        oauth["_refresh_env_var"] = _refresh_token_env_var(config)
+        print("  [proxy] OAuth token expiring soon — refreshing...")
+        token = await _refresh_oauth_token(oauth)
+        access_var = _access_token_env_var(config)
+        if access_var:
+            os.environ[access_var] = token
+        print("  [proxy] Token refreshed.")
+
+    return token
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +291,92 @@ async def _run_stdio_proxy(
         ready.set()  # Unblock startup so the gateway still comes up
 
 
+async def _run_http_proxy(
+    name: str,
+    config: dict,
+    mcp_server: Any,
+    ready: asyncio.Event,
+) -> None:
+    """Connect to one HTTP-based upstream MCP and keep it alive.
+
+    Supports both streamable HTTP (``transport: "http"``) and SSE
+    (``transport: "sse"``). Resolves ``Authorization`` headers from env vars
+    and, if an ``oauth`` block is present, automatically refreshes the Bearer
+    token before connecting or when the connection drops.
+
+    Reconnects indefinitely on disconnect with a 30-second back-off.
+
+    Args:
+        name: Integration slug used as the tool name prefix (e.g., "attio").
+        config: Connection config dict from mcp_connections.json.
+        mcp_server: The FastMCP server instance to register tools on.
+        ready: Event set once tools are registered on the first connection.
+    """
+    url: str = config["url"]
+    transport: str = config.get("transport", "http")
+    tools_registered = False
+    auth_retries = 0
+    max_auth_retries = 3
+
+    while True:
+        try:
+            token = await _get_current_token(config)
+            auth_headers = {"Authorization": f"Bearer {token}"}
+            print(f"  [proxy] '{name}' connecting with token ...{token[-8:]}")
+
+            if transport == "sse":
+                client_cm = sse_client(url, headers=auth_headers)
+            else:
+                http_client = httpx.AsyncClient(headers=auth_headers)
+                client_cm = streamable_http_client(url, http_client=http_client)
+
+            async with client_cm as (read, write, *_):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+
+                    if not tools_registered:
+                        tools_response = await session.list_tools()
+                        for tool in tools_response.tools:
+                            _register_proxy_tool(mcp_server, name, tool, session)
+                        count = len(tools_response.tools)
+                        print(f"  [proxy] '{name}' connected — {count} tool(s) available")
+                        tools_registered = True
+                        ready.set()
+
+                    await asyncio.Event().wait()
+
+        except asyncio.CancelledError:
+            return
+        except Exception as exc:  # noqa: BLE001
+            exc_text = repr(exc)
+            is_auth_error = "401" in exc_text or "unauthorized" in exc_text.lower()
+            if is_auth_error and config.get("oauth") and auth_retries < max_auth_retries:
+                auth_retries += 1
+                print(f"  [proxy] '{name}' got 401 — refreshing token (attempt {auth_retries}/{max_auth_retries})...")
+                try:
+                    oauth = resolve_headers(config["oauth"])
+                    oauth["_refresh_env_var"] = _refresh_token_env_var(config)
+                    new_token = await _refresh_oauth_token(oauth)
+                    print(f"  [proxy] '{name}' got new token ...{new_token[-8:]}")
+                    access_var = _access_token_env_var(config)
+                    if access_var:
+                        os.environ[access_var] = new_token
+                    await asyncio.sleep(1)
+                    continue
+                except Exception as refresh_exc:  # noqa: BLE001
+                    print(f"  [proxy] '{name}' token refresh failed: {refresh_exc}")
+            if not tools_registered:
+                if auth_retries >= max_auth_retries:
+                    print(f"  [proxy] '{name}' giving up after {max_auth_retries} auth retries — check credentials.")
+                else:
+                    print(f"  [proxy] '{name}' failed to connect: {exc}")
+                ready.set()
+                return
+            auth_retries = 0
+            print(f"  [proxy] '{name}' disconnected ({exc}), reconnecting in 30s...")
+            await asyncio.sleep(30)
+
+
 # ---------------------------------------------------------------------------
 # Tool registration
 # ---------------------------------------------------------------------------
@@ -157,7 +408,14 @@ def _register_proxy_tool(
 
     async def proxy_fn(**kwargs: Any) -> Any:
         """Forward the call to the upstream MCP server and return its response."""
-        result = await session.call_tool(upstream_name, kwargs)
+        # FastMCP wraps tool args under a single "kwargs" key when the function
+        # signature is **kwargs. Unwrap one level so upstream tools receive flat
+        # params (e.g. {"domain": "gong.io"}) rather than {"kwargs": {"domain": ...}}.
+        if len(kwargs) == 1 and "kwargs" in kwargs and isinstance(kwargs["kwargs"], dict):
+            upstream_kwargs = kwargs["kwargs"]
+        else:
+            upstream_kwargs = kwargs
+        result = await session.call_tool(upstream_name, upstream_kwargs)
         if not result.content:
             return {}
         content = result.content[0]
@@ -202,14 +460,19 @@ async def mount_all_proxies(mcp_server: Any) -> list[asyncio.Task]:
 
     for name, config in connections.items():
         transport = config.get("transport", "stdio")
-        if transport != "stdio":
-            print(f"  [proxy] '{name}' skipped — transport '{transport}' not yet supported.")
+
+        if transport == "stdio":
+            runner = _run_stdio_proxy
+        elif transport in ("http", "sse"):
+            runner = _run_http_proxy
+        else:
+            print(f"  [proxy] '{name}' skipped — transport '{transport}' not supported.")
             continue
 
         ready = asyncio.Event()
         ready_events.append(ready)
         task = asyncio.create_task(
-            _run_stdio_proxy(name, config, mcp_server, ready),
+            runner(name, config, mcp_server, ready),
             name=f"proxy:{name}",
         )
         tasks.append(task)
