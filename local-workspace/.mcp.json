@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "remote-gateway": {
-      "type": "http",
-      "url": "http://localhost:8000/mcp"
+      "type": "sse",
+      "url": "https://inform-gateway-production.up.railway.app/sse"
     },
     "exa": {
       "type": "http",
