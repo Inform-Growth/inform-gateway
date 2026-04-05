@@ -6,14 +6,19 @@ Run with:
     pytest remote-gateway/tests/test_attio_config.py -v
 """
 import json
-import pytest
 from pathlib import Path
 
+import pytest
 
 CONNECTIONS_FILE = Path(__file__).parent.parent / "mcp_connections.json"
 
 
 def _load_attio() -> dict:
+    """Load and return the attio connection entry from mcp_connections.json.
+
+    Calls pytest.fail() immediately if the config file is missing or the
+    attio key is absent, producing a clear FAILED result rather than an error.
+    """
     if not CONNECTIONS_FILE.exists():
         pytest.fail(f"Config file not found: {CONNECTIONS_FILE}")
     data = json.loads(CONNECTIONS_FILE.read_text())
