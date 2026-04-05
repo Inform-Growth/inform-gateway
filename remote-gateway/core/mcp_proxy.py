@@ -421,7 +421,10 @@ def _register_proxy_tool(
         content = result.content[0]
         if hasattr(content, "text"):
             try:
-                return json.loads(content.text)
+                parsed = json.loads(content.text)
+                # FastMCP cannot return a bare list — wrap it so the response
+                # reaches the client rather than being silently dropped.
+                return {"results": parsed} if isinstance(parsed, list) else parsed
             except (json.JSONDecodeError, ValueError):
                 return {"result": content.text}
         return {}
