@@ -3,10 +3,11 @@ Gateway meta tools — health check and telemetry stats.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 
-def make_health_check(server_name_fn: Any):
+def make_health_check(server_name_fn: Any) -> Callable[[], dict]:
     """Return a health_check tool function that reads server name at call time.
 
     Args:
@@ -24,7 +25,7 @@ def make_health_check(server_name_fn: Any):
     return health_check
 
 
-def make_get_tool_stats(telemetry: Any):
+def make_get_tool_stats(telemetry: Any) -> Callable[[str], dict]:
     """Return a get_tool_stats tool function bound to the given telemetry instance."""
 
     def get_tool_stats(tool_name: str = "") -> dict:

@@ -7,6 +7,7 @@ generate definitions for new integrations.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 
@@ -39,7 +40,7 @@ def _infer_type(key: str, value: Any) -> str:
     return "unknown"
 
 
-def make_list_field_integrations(registry: Any):
+def make_list_field_integrations(registry: Any) -> Callable[[], dict]:
     """Return a list_field_integrations tool function bound to the given registry."""
 
     def list_field_integrations() -> dict:
@@ -53,7 +54,7 @@ def make_list_field_integrations(registry: Any):
     return list_field_integrations
 
 
-def make_lookup_field(registry: Any):
+def make_lookup_field(registry: Any) -> Callable[[str, str], dict]:
     """Return a lookup_field tool function bound to the given registry."""
 
     def lookup_field(integration: str, field_name: str) -> dict:
@@ -86,7 +87,7 @@ def make_lookup_field(registry: Any):
     return lookup_field
 
 
-def make_get_field_definitions(registry: Any):
+def make_get_field_definitions(registry: Any) -> Callable[[str], dict]:
     """Return a get_field_definitions tool function bound to the given registry."""
 
     def get_field_definitions(integration: str) -> dict:
@@ -103,7 +104,7 @@ def make_get_field_definitions(registry: Any):
     return get_field_definitions
 
 
-def make_check_field_drift(registry: Any):
+def make_check_field_drift(registry: Any) -> Callable[[str, dict[str, Any]], dict]:
     """Return a check_field_drift tool function bound to the given registry."""
 
     def check_field_drift(integration: str, fresh_sample: dict[str, Any]) -> dict:
@@ -133,7 +134,7 @@ def make_check_field_drift(registry: Any):
     return check_field_drift
 
 
-def make_discover_fields(registry: Any):
+def make_discover_fields(registry: Any) -> Callable[[str, dict[str, Any]], dict]:
     """Return a discover_fields tool function bound to the given registry."""
 
     def discover_fields(integration: str, sample_response: dict[str, Any]) -> dict:
