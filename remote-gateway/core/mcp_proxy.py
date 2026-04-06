@@ -202,14 +202,16 @@ async def _get_oauth_token(auth: dict) -> str:
     Returns:
         Valid access token string.
     """
-    resolved = resolve_headers(auth)
-    token = resolved.get("access_token", "")
+    token = os.environ.get(_extract_env_var_name(auth.get("access_token", "")) or "", "")
 
     if _token_needs_refresh(token):
+        def _resolve(val: str) -> str:
+            return re.sub(r"\$\{([^}]+)\}", lambda m: os.environ.get(m.group(1), ""), val)
+
         refresh_config = {
-            "token_url": resolved.get("token_url", ""),
-            "client_id": resolved.get("client_id", ""),
-            "refresh_token": resolved.get("refresh_token", ""),
+            "token_url": _resolve(auth.get("token_url", "")),
+            "client_id": _resolve(auth.get("client_id", "")),
+            "refresh_token": _resolve(auth.get("refresh_token", "")),
             "_refresh_env_var": _extract_env_var_name(auth.get("refresh_token", "")),
         }
         print("  [proxy] OAuth token expiring soon — refreshing...")
@@ -246,6 +248,8 @@ async def resolve_auth_headers(config: dict) -> dict[str, str]:
         token = await _get_oauth_token(auth)
         return {"Authorization": f"Bearer {token}"}
 
+    if auth_type not in ("none", "header", "oauth", ""):
+        print(f"  [proxy] unknown auth type '{auth_type}' — sending no auth headers")
     return {}
 
 
@@ -311,9 +315,9 @@ async def _run_http_proxy(
     """Connect to one HTTP-based upstream MCP and keep it alive.
 
     Supports both streamable HTTP (``transport: "http"``) and SSE
-    (``transport: "sse"``). Resolves ``Authorization`` headers from env vars
-    and, if an ``oauth`` block is present, automatically refreshes the Bearer
-    token before connecting or when the connection drops.
+    (``transport: "sse"``). Resolves auth headers via the connection's
+    ``auth`` strategy block. For ``"oauth"`` type, automatically refreshes
+    the Bearer token before connecting or when the connection drops.
 
     Reconnects indefinitely on disconnect with a 30-second back-off.
 
