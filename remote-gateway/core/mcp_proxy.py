@@ -254,6 +254,35 @@ async def resolve_auth_headers(config: dict) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
+# Tool registration helpers
+# ---------------------------------------------------------------------------
+
+
+def _should_register_tool(tool_name: str, tools_config: dict | None) -> bool:
+    """Return True if this tool should be registered given the filter config.
+
+    Supports two mutually exclusive filter modes:
+    - ``allow``: whitelist — only listed tools are registered
+    - ``deny``: blacklist — all tools except listed ones are registered
+    Omitting ``tools_config`` (or passing None) registers everything.
+
+    Args:
+        tool_name: Upstream tool name to check.
+        tools_config: The ``tools`` block from a connection config, or None.
+
+    Returns:
+        True if the tool should be registered on the gateway.
+    """
+    if not tools_config:
+        return True
+    if "allow" in tools_config:
+        return tool_name in tools_config["allow"]
+    if "deny" in tools_config:
+        return tool_name not in tools_config["deny"]
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Per-integration proxy runner
 # ---------------------------------------------------------------------------
 
@@ -292,12 +321,15 @@ async def _run_stdio_proxy(
                 tools_response = await session.list_tools()
 
                 tools_config = config.get("tools")
+                registered = 0
                 for tool in tools_response.tools:
                     if _should_register_tool(tool.name, tools_config):
                         _register_proxy_tool(mcp_server, name, tool, session)
+                        registered += 1
 
-                count = len(tools_response.tools)
-                print(f"  [proxy] '{name}' connected — {count} tool(s) available")
+                total = len(tools_response.tools)
+                suffix = f" ({total - registered} filtered)" if registered != total else ""
+                print(f"  [proxy] '{name}' connected — {registered} tool(s) registered{suffix}")
                 ready.set()
 
                 # Hold the connection open for the gateway's lifetime.
@@ -353,11 +385,21 @@ async def _run_http_proxy(
                     if not tools_registered:
                         tools_response = await session.list_tools()
                         tools_config = config.get("tools")
+                        registered = 0
                         for tool in tools_response.tools:
                             if _should_register_tool(tool.name, tools_config):
                                 _register_proxy_tool(mcp_server, name, tool, session)
-                        count = len(tools_response.tools)
-                        print(f"  [proxy] '{name}' connected — {count} tool(s) available")
+                                registered += 1
+                        total = len(tools_response.tools)
+                        suffix = (
+                            f" ({total - registered} filtered)"
+                            if registered != total
+                            else ""
+                        )
+                        print(
+                            f"  [proxy] '{name}' connected — "
+                            f"{registered} tool(s) registered{suffix}"
+                        )
                         tools_registered = True
                         ready.set()
 
@@ -371,7 +413,10 @@ async def _run_http_proxy(
             auth = config.get("auth", {})
             if is_auth_error and auth.get("type") == "oauth" and auth_retries < max_auth_retries:
                 auth_retries += 1
-                print(f"  [proxy] '{name}' got 401 — refreshing token (attempt {auth_retries}/{max_auth_retries})...")
+                print(
+                    f"  [proxy] '{name}' got 401 — refreshing token "
+                    f"(attempt {auth_retries}/{max_auth_retries})..."
+                )
                 try:
                     resolved = resolve_headers(auth)
                     refresh_config = {
@@ -391,7 +436,10 @@ async def _run_http_proxy(
                     print(f"  [proxy] '{name}' token refresh failed: {refresh_exc}")
             if not tools_registered:
                 if auth_retries >= max_auth_retries:
-                    print(f"  [proxy] '{name}' giving up after {max_auth_retries} auth retries — check credentials.")
+                    print(
+                        f"  [proxy] '{name}' giving up after {max_auth_retries} "
+                        f"auth retries — check credentials."
+                    )
                 else:
                     print(f"  [proxy] '{name}' failed to connect: {exc}")
                 ready.set()
@@ -404,30 +452,6 @@ async def _run_http_proxy(
 # ---------------------------------------------------------------------------
 # Tool registration
 # ---------------------------------------------------------------------------
-
-
-def _should_register_tool(tool_name: str, tools_config: dict | None) -> bool:
-    """Return True if this tool should be registered given the filter config.
-
-    Supports two mutually exclusive filter modes:
-    - ``allow``: whitelist — only listed tools are registered
-    - ``deny``: blacklist — all tools except listed ones are registered
-    Omitting ``tools_config`` (or passing None) registers everything.
-
-    Args:
-        tool_name: Upstream tool name to check.
-        tools_config: The ``tools`` block from a connection config, or None.
-
-    Returns:
-        True if the tool should be registered on the gateway.
-    """
-    if not tools_config:
-        return True
-    if "allow" in tools_config:
-        return tool_name in tools_config["allow"]
-    if "deny" in tools_config:
-        return tool_name not in tools_config["deny"]
-    return True
 
 
 def _register_proxy_tool(

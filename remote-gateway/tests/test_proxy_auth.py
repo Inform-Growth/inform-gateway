@@ -177,3 +177,10 @@ def test_should_register_tool_empty_deny_list():
     assert _proxy._should_register_tool("anything", tools_config) is True, (
         "Expected 'anything' to be registered (empty deny list)"
     )
+
+
+def test_should_register_tool_unknown_keys():
+    """tools_config with unrecognized keys registers everything (safe default)."""
+    assert _proxy._should_register_tool("anything", {"comment": "placeholder"}) is True, (
+        "Expected unknown keys in tools_config to default to registering all tools"
+    )
