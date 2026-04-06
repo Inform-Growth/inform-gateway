@@ -2,15 +2,11 @@
   "_comment": "OPTIONAL. Mature integrations the admin has chosen to centralize on the gateway. Employees whose local MCP connections for these integrations have been retired will use these gateway-proxied versions instead. Tools appear as <integration>__<tool_name>. Credentials are server-side env vars only. Start empty — add entries as integrations graduate from local R&D to org-wide shared access.",
   "connections": {
     "attio": {
-      "transport": "http",
-      "url": "https://mcp.attio.com/mcp",
-      "headers": {
-        "Authorization": "Bearer ${ATTIO_ACCESS_TOKEN}"
-      },
-      "oauth": {
-        "token_url": "https://app.attio.com/oidc/token",
-        "client_id": "${ATTIO_CLIENT_ID}",
-        "refresh_token": "${ATTIO_REFRESH_TOKEN}"
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "attio-mcp"],
+      "env": {
+        "ATTIO_API_KEY": "${ATTIO_API_KEY}"
       }
     },
     "apollo": {
