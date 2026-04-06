@@ -2,7 +2,10 @@
 nixPkgs = ["nodejs_20"]
 
 [phases.install]
-cmds = ["pip install -e ."]
+cmds = [
+  "pip install -e .",
+  "npm install -g attio-mcp @modelcontextprotocol/server-github"
+]
 
 [start]
-cmd = "MCP_TRANSPORT=sse python remote-gateway/core/mcp_server.py"
+cmd = "PATH=/root/.nix-profile/bin:/nix/var/nix/profiles/default/bin:$PATH MCP_TRANSPORT=sse python remote-gateway/core/mcp_server.py"
