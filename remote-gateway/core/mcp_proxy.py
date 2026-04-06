@@ -291,8 +291,10 @@ async def _run_stdio_proxy(
                 await session.initialize()
                 tools_response = await session.list_tools()
 
+                tools_config = config.get("tools")
                 for tool in tools_response.tools:
-                    _register_proxy_tool(mcp_server, name, tool, session)
+                    if _should_register_tool(tool.name, tools_config):
+                        _register_proxy_tool(mcp_server, name, tool, session)
 
                 count = len(tools_response.tools)
                 print(f"  [proxy] '{name}' connected — {count} tool(s) available")
@@ -350,8 +352,10 @@ async def _run_http_proxy(
 
                     if not tools_registered:
                         tools_response = await session.list_tools()
+                        tools_config = config.get("tools")
                         for tool in tools_response.tools:
-                            _register_proxy_tool(mcp_server, name, tool, session)
+                            if _should_register_tool(tool.name, tools_config):
+                                _register_proxy_tool(mcp_server, name, tool, session)
                         count = len(tools_response.tools)
                         print(f"  [proxy] '{name}' connected — {count} tool(s) available")
                         tools_registered = True
@@ -400,6 +404,30 @@ async def _run_http_proxy(
 # ---------------------------------------------------------------------------
 # Tool registration
 # ---------------------------------------------------------------------------
+
+
+def _should_register_tool(tool_name: str, tools_config: dict | None) -> bool:
+    """Return True if this tool should be registered given the filter config.
+
+    Supports two mutually exclusive filter modes:
+    - ``allow``: whitelist — only listed tools are registered
+    - ``deny``: blacklist — all tools except listed ones are registered
+    Omitting ``tools_config`` (or passing None) registers everything.
+
+    Args:
+        tool_name: Upstream tool name to check.
+        tools_config: The ``tools`` block from a connection config, or None.
+
+    Returns:
+        True if the tool should be registered on the gateway.
+    """
+    if not tools_config:
+        return True
+    if "allow" in tools_config:
+        return tool_name in tools_config["allow"]
+    if "deny" in tools_config:
+        return tool_name not in tools_config["deny"]
+    return True
 
 
 def _register_proxy_tool(
