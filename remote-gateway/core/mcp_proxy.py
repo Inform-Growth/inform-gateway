@@ -447,6 +447,17 @@ async def _run_http_proxy(
             auth_retries = 0
             print(f"  [proxy] '{name}' disconnected ({exc}), reconnecting in 30s...")
             await asyncio.sleep(30)
+        else:
+            # Connection closed normally (no exception) — treat as a disconnect.
+            # Without this, the while loop would spin immediately causing rapid reconnects.
+            if tools_registered:
+                print(f"  [proxy] '{name}' disconnected (connection closed), reconnecting in 30s...")
+                await asyncio.sleep(30)
+            else:
+                # Never registered tools and exited normally — give up.
+                print(f"  [proxy] '{name}' connection closed before tools were registered.")
+                ready.set()
+                return
 
 
 # ---------------------------------------------------------------------------
