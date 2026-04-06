@@ -7,25 +7,52 @@ Run with:
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
-from pathlib import Path
 import types
-
-import pytest
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
+from pathlib import Path
 
 
 def _import_proxy():
-    """Import mcp_proxy without triggering server startup."""
+    """Import mcp_proxy without triggering server startup or requiring mcp package."""
     import importlib.util
+    import unittest.mock as mock
+
+    # Stub out the MCP client modules imported at module level in mcp_proxy.py
+    for mod_name in (
+        "mcp",
+        "mcp.client",
+        "mcp.client.sse",
+        "mcp.client.stdio",
+        "mcp.client.streamable_http",
+    ):
+        sys.modules.setdefault(mod_name, types.ModuleType(mod_name))
+
+    # Stub top-level classes in mcp
+    mcp_stub = sys.modules["mcp"]
+    for attr in ("ClientSession", "StdioServerParameters"):
+        if not hasattr(mcp_stub, attr):
+            setattr(mcp_stub, attr, mock.MagicMock())
+
+    # Stub client functions
+    for mod_name, func_names in [
+        ("mcp.client.sse", ["sse_client"]),
+        ("mcp.client.stdio", ["stdio_client"]),
+        ("mcp.client.streamable_http", ["streamable_http_client"]),
+    ]:
+        mod = sys.modules[mod_name]
+        for func_name in func_names:
+            if not hasattr(mod, func_name):
+                setattr(mod, func_name, mock.MagicMock())
 
     path = Path(__file__).parent.parent / "core" / "mcp_proxy.py"
     spec = importlib.util.spec_from_file_location("mcp_proxy", path)
     mod = types.ModuleType("mcp_proxy")
+    mod.__file__ = str(path)
     spec.loader.exec_module(mod)  # type: ignore[union-attr]
     return mod
+
+
+_proxy = _import_proxy()
 
 
 # ---------------------------------------------------------------------------
@@ -36,37 +63,33 @@ def _import_proxy():
 def test_resolve_auth_headers_header_type(monkeypatch):
     """auth.type='header' returns resolved header dict."""
     monkeypatch.setenv("EXA_API_KEY", "test-exa-key-123")
-    proxy = _import_proxy()
     config = {
         "auth": {
             "type": "header",
             "headers": {"x-api-key": "${EXA_API_KEY}"},
         }
     }
-    result = asyncio.run(proxy.resolve_auth_headers(config))
+    result = asyncio.run(_proxy.resolve_auth_headers(config))
     assert result == {"x-api-key": "test-exa-key-123"}
 
 
 def test_resolve_auth_headers_none_type():
     """auth.type='none' returns empty dict."""
-    proxy = _import_proxy()
     config = {"auth": {"type": "none"}}
-    result = asyncio.run(proxy.resolve_auth_headers(config))
+    result = asyncio.run(_proxy.resolve_auth_headers(config))
     assert result == {}
 
 
 def test_resolve_auth_headers_missing_auth_block():
     """Missing auth block defaults to empty dict (no auth)."""
-    proxy = _import_proxy()
     config = {"transport": "http", "url": "https://example.com"}
-    result = asyncio.run(proxy.resolve_auth_headers(config))
+    result = asyncio.run(_proxy.resolve_auth_headers(config))
     assert result == {}
 
 
 def test_resolve_auth_headers_oauth_type_opaque_token(monkeypatch):
     """auth.type='oauth' with opaque token (non-JWT) returns Bearer header without refresh."""
     monkeypatch.setenv("TEST_ACCESS_TOKEN", "opaque-token-abc")
-    proxy = _import_proxy()
     config = {
         "auth": {
             "type": "oauth",
@@ -76,7 +99,7 @@ def test_resolve_auth_headers_oauth_type_opaque_token(monkeypatch):
             "refresh_token": "test-refresh",
         }
     }
-    result = asyncio.run(proxy.resolve_auth_headers(config))
+    result = asyncio.run(_proxy.resolve_auth_headers(config))
     assert result == {"Authorization": "Bearer opaque-token-abc"}
 
 
@@ -84,7 +107,6 @@ def test_resolve_auth_headers_header_multiple_headers(monkeypatch):
     """header type passes multiple headers through."""
     monkeypatch.setenv("API_KEY", "key-val")
     monkeypatch.setenv("TENANT_ID", "tenant-123")
-    proxy = _import_proxy()
     config = {
         "auth": {
             "type": "header",
@@ -94,7 +116,7 @@ def test_resolve_auth_headers_header_multiple_headers(monkeypatch):
             },
         }
     }
-    result = asyncio.run(proxy.resolve_auth_headers(config))
+    result = asyncio.run(_proxy.resolve_auth_headers(config))
     assert result == {"x-api-key": "key-val", "x-tenant-id": "tenant-123"}
 
 
@@ -105,38 +127,53 @@ def test_resolve_auth_headers_header_multiple_headers(monkeypatch):
 
 def test_should_register_tool_no_filter():
     """No tools config registers everything."""
-    proxy = _import_proxy()
-    assert proxy._should_register_tool("search_records", None) is True
-    assert proxy._should_register_tool("delete_record", None) is True
+    assert _proxy._should_register_tool("search_records", None) is True, (
+        "Expected 'search_records' to be registered (no filter)"
+    )
+    assert _proxy._should_register_tool("delete_record", None) is True, (
+        "Expected 'delete_record' to be registered (no filter)"
+    )
 
 
 def test_should_register_tool_allow_list():
     """Allow list only registers listed tools."""
-    proxy = _import_proxy()
     tools_config = {"allow": ["get_file_contents", "create_or_update_file"]}
-    assert proxy._should_register_tool("get_file_contents", tools_config) is True
-    assert proxy._should_register_tool("create_or_update_file", tools_config) is True
-    assert proxy._should_register_tool("delete_repository", tools_config) is False
+    assert _proxy._should_register_tool("get_file_contents", tools_config) is True, (
+        "Expected 'get_file_contents' to be registered (in allow list)"
+    )
+    assert _proxy._should_register_tool("create_or_update_file", tools_config) is True, (
+        "Expected 'create_or_update_file' to be registered (in allow list)"
+    )
+    assert _proxy._should_register_tool("delete_repository", tools_config) is False, (
+        "Expected 'delete_repository' to be blocked (not in allow list)"
+    )
 
 
 def test_should_register_tool_deny_list():
     """Deny list blocks listed tools and allows everything else."""
-    proxy = _import_proxy()
     tools_config = {"deny": ["delete_repository", "create_repository"]}
-    assert proxy._should_register_tool("get_file_contents", tools_config) is True
-    assert proxy._should_register_tool("delete_repository", tools_config) is False
-    assert proxy._should_register_tool("create_repository", tools_config) is False
+    assert _proxy._should_register_tool("get_file_contents", tools_config) is True, (
+        "Expected 'get_file_contents' to be registered (not in deny list)"
+    )
+    assert _proxy._should_register_tool("delete_repository", tools_config) is False, (
+        "Expected 'delete_repository' to be blocked (in deny list)"
+    )
+    assert _proxy._should_register_tool("create_repository", tools_config) is False, (
+        "Expected 'create_repository' to be blocked (in deny list)"
+    )
 
 
 def test_should_register_tool_empty_allow_list():
     """Empty allow list registers nothing."""
-    proxy = _import_proxy()
     tools_config = {"allow": []}
-    assert proxy._should_register_tool("anything", tools_config) is False
+    assert _proxy._should_register_tool("anything", tools_config) is False, (
+        "Expected 'anything' to be blocked (empty allow list)"
+    )
 
 
 def test_should_register_tool_empty_deny_list():
     """Empty deny list registers everything."""
-    proxy = _import_proxy()
     tools_config = {"deny": []}
-    assert proxy._should_register_tool("anything", tools_config) is True
+    assert _proxy._should_register_tool("anything", tools_config) is True, (
+        "Expected 'anything' to be registered (empty deny list)"
+    )
