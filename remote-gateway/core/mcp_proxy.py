@@ -315,25 +315,27 @@ async def _run_stdio_proxy(
     )
 
     try:
-        async with stdio_client(server_params) as (read, write):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-                tools_response = await session.list_tools()
+        async with (
+            stdio_client(server_params) as (read, write),
+            ClientSession(read, write) as session,
+        ):
+            await session.initialize()
+            tools_response = await session.list_tools()
 
-                tools_config = config.get("tools")
-                registered = 0
-                for tool in tools_response.tools:
-                    if _should_register_tool(tool.name, tools_config):
-                        _register_proxy_tool(mcp_server, name, tool, session)
-                        registered += 1
+            tools_config = config.get("tools")
+            registered = 0
+            for tool in tools_response.tools:
+                if _should_register_tool(tool.name, tools_config):
+                    _register_proxy_tool(mcp_server, name, tool, session)
+                    registered += 1
 
-                total = len(tools_response.tools)
-                suffix = f" ({total - registered} filtered)" if registered != total else ""
-                print(f"  [proxy] '{name}' connected — {registered} tool(s) registered{suffix}")
-                ready.set()
+            total = len(tools_response.tools)
+            suffix = f" ({total - registered} filtered)" if registered != total else ""
+            print(f"  [proxy] '{name}' connected — {registered} tool(s) registered{suffix}")
+            ready.set()
 
-                # Hold the connection open for the gateway's lifetime.
-                await asyncio.Event().wait()
+            # Hold the connection open for the gateway's lifetime.
+            await asyncio.Event().wait()
 
     except Exception as exc:  # noqa: BLE001
         print(f"  [proxy] '{name}' failed to connect: {exc}")
@@ -346,14 +348,18 @@ async def _run_http_proxy(
     mcp_server: Any,
     ready: asyncio.Event,
 ) -> None:
-    """Connect to one HTTP-based upstream MCP and keep it alive.
+    """Connect to one HTTP-based upstream MCP and register its tools.
 
-    Supports both streamable HTTP (``transport: "http"``) and SSE
-    (``transport: "sse"``). Resolves auth headers via the connection's
-    ``auth`` strategy block. For ``"oauth"`` type, automatically refreshes
-    the Bearer token before connecting or when the connection drops.
+    Handles two transports differently:
 
-    Reconnects indefinitely on disconnect with a 30-second back-off.
+    - ``transport: "http"`` (streamable HTTP): Connects once at startup to
+      enumerate tools, then registers each tool with a per-call connection
+      factory. The SSE response stream closes after each request-response
+      cycle, so a persistent session cannot be reused. No reconnect loop.
+
+    - ``transport: "sse"`` (server-sent events): Maintains a persistent
+      session where the server pushes events. Reconnects with 30s back-off
+      on disconnect.
 
     Args:
         name: Integration slug used as the tool name prefix (e.g., "attio").
@@ -363,6 +369,12 @@ async def _run_http_proxy(
     """
     url: str = config["url"]
     transport: str = config.get("transport", "http")
+
+    if transport == "http":
+        await _run_streamable_http_proxy(name, config, url, mcp_server, ready)
+        return
+
+    # SSE: persistent session with reconnect loop.
     tools_registered = False
     auth_retries = 0
     max_auth_retries = 3
@@ -372,38 +384,34 @@ async def _run_http_proxy(
             auth_headers = await resolve_auth_headers(config)
             print(f"  [proxy] '{name}' connecting...")
 
-            if transport == "sse":
-                client_cm = sse_client(url, headers=auth_headers)
-            else:
-                http_client = httpx.AsyncClient(headers=auth_headers)
-                client_cm = streamable_http_client(url, http_client=http_client)
+            async with (
+                sse_client(url, headers=auth_headers) as (read, write, *_),
+                ClientSession(read, write) as session,
+            ):
+                await session.initialize()
 
-            async with client_cm as (read, write, *_):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
+                if not tools_registered:
+                    tools_response = await session.list_tools()
+                    tools_config = config.get("tools")
+                    registered = 0
+                    for tool in tools_response.tools:
+                        if _should_register_tool(tool.name, tools_config):
+                            _register_proxy_tool(mcp_server, name, tool, session)
+                            registered += 1
+                    total = len(tools_response.tools)
+                    suffix = (
+                        f" ({total - registered} filtered)"
+                        if registered != total
+                        else ""
+                    )
+                    print(
+                        f"  [proxy] '{name}' connected — "
+                        f"{registered} tool(s) registered{suffix}"
+                    )
+                    tools_registered = True
+                    ready.set()
 
-                    if not tools_registered:
-                        tools_response = await session.list_tools()
-                        tools_config = config.get("tools")
-                        registered = 0
-                        for tool in tools_response.tools:
-                            if _should_register_tool(tool.name, tools_config):
-                                _register_proxy_tool(mcp_server, name, tool, session)
-                                registered += 1
-                        total = len(tools_response.tools)
-                        suffix = (
-                            f" ({total - registered} filtered)"
-                            if registered != total
-                            else ""
-                        )
-                        print(
-                            f"  [proxy] '{name}' connected — "
-                            f"{registered} tool(s) registered{suffix}"
-                        )
-                        tools_registered = True
-                        ready.set()
-
-                    await asyncio.Event().wait()
+                await asyncio.Event().wait()
 
         except asyncio.CancelledError:
             return
@@ -447,17 +455,66 @@ async def _run_http_proxy(
             auth_retries = 0
             print(f"  [proxy] '{name}' disconnected ({exc}), reconnecting in 30s...")
             await asyncio.sleep(30)
-        else:
-            # Connection closed normally (no exception) — treat as a disconnect.
-            # Without this, the while loop would spin immediately causing rapid reconnects.
-            if tools_registered:
-                print(f"  [proxy] '{name}' disconnected (connection closed), reconnecting in 30s...")
-                await asyncio.sleep(30)
-            else:
-                # Never registered tools and exited normally — give up.
-                print(f"  [proxy] '{name}' connection closed before tools were registered.")
-                ready.set()
-                return
+
+
+async def _run_streamable_http_proxy(
+    name: str,
+    config: dict,
+    url: str,
+    mcp_server: Any,
+    ready: asyncio.Event,
+) -> None:
+    """Enumerate tools from a streamable HTTP MCP and register per-call connections.
+
+    Streamable HTTP (the MCP default HTTP transport) closes its SSE response
+    stream after each request-response cycle. A session established at startup
+    is dead by the time tool calls arrive, so we cannot reuse it. Instead:
+
+    1. Connect once to enumerate tools.
+    2. Register each tool with a closure that opens a fresh connection per call.
+    3. Hold open forever — no reconnect loop needed since each call is
+       self-connecting.
+
+    Args:
+        name: Integration slug (e.g., "exa").
+        config: Full connection config dict from mcp_connections.json.
+        url: Upstream MCP endpoint URL.
+        mcp_server: FastMCP server to register tools on.
+        ready: Event set once tools are registered (or on failure).
+    """
+    print(f"  [proxy] '{name}' connecting...")
+    try:
+        auth_headers = await resolve_auth_headers(config)
+        async with (
+            httpx.AsyncClient(headers=auth_headers) as http_client,
+            streamable_http_client(url, http_client=http_client) as (read, write, *_),
+            ClientSession(read, write) as session,
+        ):
+            await session.initialize()
+            tools_response = await session.list_tools()
+
+        tools_config = config.get("tools")
+        registered = 0
+        for tool in tools_response.tools:
+            if _should_register_tool(tool.name, tools_config):
+                _register_streamable_http_proxy_tool(mcp_server, name, tool, url, config)
+                registered += 1
+        total = len(tools_response.tools)
+        suffix = f" ({total - registered} filtered)" if registered != total else ""
+        print(f"  [proxy] '{name}' connected — {registered} tool(s) registered{suffix}")
+        ready.set()
+
+    except Exception as exc:  # noqa: BLE001
+        print(f"  [proxy] '{name}' failed to connect: {exc}")
+        ready.set()
+        return
+
+    # Hold the task open for the gateway's lifetime.
+    # Tool calls are self-connecting, so no reconnect loop is needed.
+    try:
+        await asyncio.Event().wait()
+    except asyncio.CancelledError:
+        return
 
 
 # ---------------------------------------------------------------------------
@@ -507,6 +564,67 @@ def _register_proxy_tool(
                 parsed = json.loads(content.text)
                 # FastMCP cannot return a bare list — wrap it so the response
                 # reaches the client rather than being silently dropped.
+                return {"results": parsed} if isinstance(parsed, list) else parsed
+            except (json.JSONDecodeError, ValueError):
+                return {"result": content.text}
+        return {}
+
+    proxy_fn.__name__ = gateway_name
+    proxy_fn.__doc__ = description
+    mcp_server.add_tool(proxy_fn, name=gateway_name, description=description)
+
+
+def _register_streamable_http_proxy_tool(
+    mcp_server: Any,
+    integration: str,
+    tool: Any,
+    url: str,
+    config: dict,
+) -> None:
+    """Register a streamable HTTP tool that opens a fresh connection per call.
+
+    Unlike ``_register_proxy_tool``, this does not capture a session. Instead,
+    the closure reconnects to the upstream server on every invocation. This is
+    required for streamable HTTP because the server's SSE response stream closes
+    after each request-response cycle — a session established at startup is dead
+    by the time the first tool call arrives.
+
+    Args:
+        mcp_server: FastMCP server to register the tool on.
+        integration: Integration slug (e.g., "exa").
+        tool: MCP Tool object from list_tools() response.
+        url: Upstream MCP endpoint URL.
+        config: Full connection config dict (used to resolve auth headers per call).
+    """
+    upstream_name: str = tool.name
+    gateway_name: str = f"{integration}__{upstream_name}"
+    description: str = (
+        (tool.description or upstream_name)
+        + f"\n\n[Proxied from the '{integration}' integration. Managed by gateway admin.]"
+    )
+
+    async def proxy_fn(**kwargs: Any) -> Any:
+        """Forward the call via a fresh connection to the upstream MCP server."""
+        if len(kwargs) == 1 and "kwargs" in kwargs and isinstance(kwargs["kwargs"], dict):
+            upstream_kwargs = kwargs["kwargs"]
+        else:
+            upstream_kwargs = kwargs
+
+        auth_headers = await resolve_auth_headers(config)
+        async with (
+            httpx.AsyncClient(headers=auth_headers) as http_client,
+            streamable_http_client(url, http_client=http_client) as (read, write, *_),
+            ClientSession(read, write) as session,
+        ):
+            await session.initialize()
+            result = await session.call_tool(upstream_name, upstream_kwargs)
+
+        if not result.content:
+            return {}
+        content = result.content[0]
+        if hasattr(content, "text"):
+            try:
+                parsed = json.loads(content.text)
                 return {"results": parsed} if isinstance(parsed, list) else parsed
             except (json.JSONDecodeError, ValueError):
                 return {"result": content.text}
