@@ -9,52 +9,18 @@ Run with:
 import os
 import sys
 
-from dotenv import load_dotenv
-
-# Ensure remote-gateway/core is on the path so mcp_server's local imports resolve
+# Ensure remote-gateway is on the path so tools.notes imports resolve
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+# Also add core for any mcp_server imports if needed
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "core"))
-
-# Load .env from repo root (two levels up from this file)
-_repo_root = os.path.join(os.path.dirname(__file__), "..", "..")
-load_dotenv(os.path.join(_repo_root, ".env"))
-
-# Validate required env vars before importing the server
-for var in ("GITHUB_TOKEN", "GITHUB_REPO"):
-    if not os.environ.get(var):
-        print(f"ERROR: {var} is not set. Add it to .env or export it.")
-        sys.exit(1)
-
-
-def _import_tools():
-    """Import the note functions directly from mcp_server without starting the server."""
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location(
-        "mcp_server",
-        os.path.join(os.path.dirname(__file__), "..", "core", "mcp_server.py"),
-    )
-    mod = importlib.util.load_from_spec(spec)  # type: ignore[arg-type]
-    spec.loader.exec_module(mod)  # type: ignore[union-attr]
-    return mod
 
 
 def run():
+    from tools.notes import delete_note, list_notes, read_note, write_note
+
     print(f"Repo : {os.environ['GITHUB_REPO']}")
     print(f"Branch: {os.environ.get('GITHUB_BRANCH', 'main')}")
     print()
-
-    import importlib.util, types
-
-    # Load mcp_server module
-    path = os.path.join(os.path.dirname(__file__), "..", "core", "mcp_server.py")
-    spec = importlib.util.spec_from_file_location("mcp_server", path)
-    mod = types.ModuleType("mcp_server")
-    spec.loader.exec_module(mod)  # type: ignore[union-attr]
-
-    list_notes = mod.list_notes
-    read_note = mod.read_note
-    write_note = mod.write_note
-    delete_note = mod.delete_note
 
     test_file = "_test_note"
 
@@ -70,7 +36,9 @@ def run():
 
     # ---- 2. write (create) ----
     print("=== write_note() — create ===")
-    created = write_note(test_file, "# Test Note\n\nHello from the test script.", "test: create note")
+    created = write_note(
+        test_file, "# Test Note\n\nHello from the test script.", "test: create note"
+    )
     print(created)
     assert created["action"] == "created", f"Expected 'created', got {created['action']}"
     print()
@@ -115,4 +83,16 @@ def run():
 
 
 if __name__ == "__main__":
+    from dotenv import load_dotenv
+
+    # Load .env from repo root (two levels up from this file)
+    _repo_root = os.path.join(os.path.dirname(__file__), "..", "..")
+    load_dotenv(os.path.join(_repo_root, ".env"))
+
+    # Validate required env vars before running
+    for var in ("GITHUB_TOKEN", "GITHUB_REPO"):
+        if not os.environ.get(var):
+            print(f"ERROR: {var} is not set. Add it to .env or export it.")
+            sys.exit(1)
+
     run()

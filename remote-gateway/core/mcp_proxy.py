@@ -98,6 +98,21 @@ def resolve_env(env_config: dict[str, str]) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
+def _extract_env_var_name(ref: str) -> str | None:
+    """Extract the variable name from a ``${VAR_NAME}`` reference string.
+
+    Args:
+        ref: A string like ``"${APOLLO_ACCESS_TOKEN}"``.
+
+    Returns:
+        The variable name (e.g. ``"APOLLO_ACCESS_TOKEN"``), or None if not a
+        ``${...}`` reference.
+    """
+    if isinstance(ref, str) and ref.startswith("${") and ref.endswith("}"):
+        return ref[2:-1]
+    return None
+
+
 def _jwt_exp(token: str) -> int | None:
     """Extract the ``exp`` claim from a JWT without verifying the signature.
 
@@ -175,67 +190,96 @@ async def _refresh_oauth_token(oauth_config: dict) -> str:
     return new_token
 
 
-def _access_token_env_var(config: dict) -> str | None:
-    """Extract the env var name backing the Authorization Bearer token.
+async def _get_oauth_token(auth: dict) -> str:
+    """Return a valid Bearer token for an OAuth auth config block.
 
-    Looks for a ``Bearer ${VAR_NAME}`` pattern in the headers config and
-    returns ``VAR_NAME``, so callers can update ``os.environ`` after a refresh.
-
-    Args:
-        config: Connection config dict from mcp_connections.json.
-
-    Returns:
-        Env var name (e.g. ``"ATTIO_ACCESS_TOKEN"``), or None if not found.
-    """
-    auth_val = config.get("headers", {}).get("Authorization", "")
-    if auth_val.startswith("Bearer ${") and auth_val.endswith("}"):
-        return auth_val[len("Bearer ${"):-1]
-    return None
-
-
-def _refresh_token_env_var(config: dict) -> str | None:
-    """Extract the env var name for the refresh token in the oauth config.
+    Resolves ``${VAR}`` references in the auth block, checks expiry,
+    and refreshes the token if needed.
 
     Args:
-        config: Connection config dict from mcp_connections.json.
-
-    Returns:
-        Env var name (e.g. ``"ATTIO_REFRESH_TOKEN"``), or None if not found.
-    """
-    refresh_val = config.get("oauth", {}).get("refresh_token", "")
-    if refresh_val.startswith("${") and refresh_val.endswith("}"):
-        return refresh_val[2:-1]
-    return None
-
-
-async def _get_current_token(config: dict) -> str:
-    """Return a valid Bearer token for an HTTP proxy config.
-
-    Reads the current ``Authorization`` header value. If the embedded JWT is
-    near expiry and an ``oauth`` block is present, refreshes it first.
-
-    Args:
-        config: Connection config dict from mcp_connections.json.
+        auth: The ``auth`` block from a connection config (type must be ``"oauth"``).
 
     Returns:
         Valid access token string.
     """
-    headers = resolve_headers(config.get("headers", {}))
-    auth = headers.get("Authorization", "")
-    token = auth.removeprefix("Bearer ").strip()
+    token = os.environ.get(_extract_env_var_name(auth.get("access_token", "")) or "", "")
 
-    oauth_raw = config.get("oauth")
-    if oauth_raw and _token_needs_refresh(token):
-        oauth = resolve_headers(oauth_raw)
-        oauth["_refresh_env_var"] = _refresh_token_env_var(config)
+    if _token_needs_refresh(token):
+        def _resolve(val: str) -> str:
+            return re.sub(r"\$\{([^}]+)\}", lambda m: os.environ.get(m.group(1), ""), val)
+
+        refresh_config = {
+            "token_url": _resolve(auth.get("token_url", "")),
+            "client_id": _resolve(auth.get("client_id", "")),
+            "refresh_token": _resolve(auth.get("refresh_token", "")),
+            "_refresh_env_var": _extract_env_var_name(auth.get("refresh_token", "")),
+        }
         print("  [proxy] OAuth token expiring soon — refreshing...")
-        token = await _refresh_oauth_token(oauth)
-        access_var = _access_token_env_var(config)
+        token = await _refresh_oauth_token(refresh_config)
+        access_var = _extract_env_var_name(auth.get("access_token", ""))
         if access_var:
             os.environ[access_var] = token
         print("  [proxy] Token refreshed.")
 
     return token
+
+
+async def resolve_auth_headers(config: dict) -> dict[str, str]:
+    """Resolve the auth headers for an HTTP connection based on its auth strategy.
+
+    Dispatches on ``config["auth"]["type"]``:
+    - ``"header"``: resolve and return all configured headers as-is
+    - ``"oauth"``: get/refresh Bearer token, return Authorization header
+    - ``"none"`` or missing: return empty dict (no auth)
+
+    Args:
+        config: Full connection config dict from mcp_connections.json.
+
+    Returns:
+        Dict of resolved HTTP headers to send with upstream requests.
+    """
+    auth = config.get("auth", {})
+    auth_type = auth.get("type", "none")
+
+    if auth_type == "header":
+        return resolve_headers(auth.get("headers", {}))
+
+    if auth_type == "oauth":
+        token = await _get_oauth_token(auth)
+        return {"Authorization": f"Bearer {token}"}
+
+    if auth_type not in ("none", "header", "oauth", ""):
+        print(f"  [proxy] unknown auth type '{auth_type}' — sending no auth headers")
+    return {}
+
+
+# ---------------------------------------------------------------------------
+# Tool registration helpers
+# ---------------------------------------------------------------------------
+
+
+def _should_register_tool(tool_name: str, tools_config: dict | None) -> bool:
+    """Return True if this tool should be registered given the filter config.
+
+    Supports two mutually exclusive filter modes:
+    - ``allow``: whitelist — only listed tools are registered
+    - ``deny``: blacklist — all tools except listed ones are registered
+    Omitting ``tools_config`` (or passing None) registers everything.
+
+    Args:
+        tool_name: Upstream tool name to check.
+        tools_config: The ``tools`` block from a connection config, or None.
+
+    Returns:
+        True if the tool should be registered on the gateway.
+    """
+    if not tools_config:
+        return True
+    if "allow" in tools_config:
+        return tool_name in tools_config["allow"]
+    if "deny" in tools_config:
+        return tool_name not in tools_config["deny"]
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -276,11 +320,16 @@ async def _run_stdio_proxy(
                 await session.initialize()
                 tools_response = await session.list_tools()
 
+                tools_config = config.get("tools")
+                registered = 0
                 for tool in tools_response.tools:
-                    _register_proxy_tool(mcp_server, name, tool, session)
+                    if _should_register_tool(tool.name, tools_config):
+                        _register_proxy_tool(mcp_server, name, tool, session)
+                        registered += 1
 
-                count = len(tools_response.tools)
-                print(f"  [proxy] '{name}' connected — {count} tool(s) available")
+                total = len(tools_response.tools)
+                suffix = f" ({total - registered} filtered)" if registered != total else ""
+                print(f"  [proxy] '{name}' connected — {registered} tool(s) registered{suffix}")
                 ready.set()
 
                 # Hold the connection open for the gateway's lifetime.
@@ -300,9 +349,9 @@ async def _run_http_proxy(
     """Connect to one HTTP-based upstream MCP and keep it alive.
 
     Supports both streamable HTTP (``transport: "http"``) and SSE
-    (``transport: "sse"``). Resolves ``Authorization`` headers from env vars
-    and, if an ``oauth`` block is present, automatically refreshes the Bearer
-    token before connecting or when the connection drops.
+    (``transport: "sse"``). Resolves auth headers via the connection's
+    ``auth`` strategy block. For ``"oauth"`` type, automatically refreshes
+    the Bearer token before connecting or when the connection drops.
 
     Reconnects indefinitely on disconnect with a 30-second back-off.
 
@@ -320,9 +369,8 @@ async def _run_http_proxy(
 
     while True:
         try:
-            token = await _get_current_token(config)
-            auth_headers = {"Authorization": f"Bearer {token}"}
-            print(f"  [proxy] '{name}' connecting with token ...{token[-8:]}")
+            auth_headers = await resolve_auth_headers(config)
+            print(f"  [proxy] '{name}' connecting...")
 
             if transport == "sse":
                 client_cm = sse_client(url, headers=auth_headers)
@@ -336,10 +384,22 @@ async def _run_http_proxy(
 
                     if not tools_registered:
                         tools_response = await session.list_tools()
+                        tools_config = config.get("tools")
+                        registered = 0
                         for tool in tools_response.tools:
-                            _register_proxy_tool(mcp_server, name, tool, session)
-                        count = len(tools_response.tools)
-                        print(f"  [proxy] '{name}' connected — {count} tool(s) available")
+                            if _should_register_tool(tool.name, tools_config):
+                                _register_proxy_tool(mcp_server, name, tool, session)
+                                registered += 1
+                        total = len(tools_response.tools)
+                        suffix = (
+                            f" ({total - registered} filtered)"
+                            if registered != total
+                            else ""
+                        )
+                        print(
+                            f"  [proxy] '{name}' connected — "
+                            f"{registered} tool(s) registered{suffix}"
+                        )
                         tools_registered = True
                         ready.set()
 
@@ -350,15 +410,24 @@ async def _run_http_proxy(
         except Exception as exc:  # noqa: BLE001
             exc_text = repr(exc)
             is_auth_error = "401" in exc_text or "unauthorized" in exc_text.lower()
-            if is_auth_error and config.get("oauth") and auth_retries < max_auth_retries:
+            auth = config.get("auth", {})
+            if is_auth_error and auth.get("type") == "oauth" and auth_retries < max_auth_retries:
                 auth_retries += 1
-                print(f"  [proxy] '{name}' got 401 — refreshing token (attempt {auth_retries}/{max_auth_retries})...")
+                print(
+                    f"  [proxy] '{name}' got 401 — refreshing token "
+                    f"(attempt {auth_retries}/{max_auth_retries})..."
+                )
                 try:
-                    oauth = resolve_headers(config["oauth"])
-                    oauth["_refresh_env_var"] = _refresh_token_env_var(config)
-                    new_token = await _refresh_oauth_token(oauth)
-                    print(f"  [proxy] '{name}' got new token ...{new_token[-8:]}")
-                    access_var = _access_token_env_var(config)
+                    resolved = resolve_headers(auth)
+                    refresh_config = {
+                        "token_url": resolved.get("token_url", ""),
+                        "client_id": resolved.get("client_id", ""),
+                        "refresh_token": resolved.get("refresh_token", ""),
+                        "_refresh_env_var": _extract_env_var_name(auth.get("refresh_token", "")),
+                    }
+                    new_token = await _refresh_oauth_token(refresh_config)
+                    print(f"  [proxy] '{name}' token refreshed.")
+                    access_var = _extract_env_var_name(auth.get("access_token", ""))
                     if access_var:
                         os.environ[access_var] = new_token
                     await asyncio.sleep(1)
@@ -367,7 +436,10 @@ async def _run_http_proxy(
                     print(f"  [proxy] '{name}' token refresh failed: {refresh_exc}")
             if not tools_registered:
                 if auth_retries >= max_auth_retries:
-                    print(f"  [proxy] '{name}' giving up after {max_auth_retries} auth retries — check credentials.")
+                    print(
+                        f"  [proxy] '{name}' giving up after {max_auth_retries} "
+                        f"auth retries — check credentials."
+                    )
                 else:
                     print(f"  [proxy] '{name}' failed to connect: {exc}")
                 ready.set()
