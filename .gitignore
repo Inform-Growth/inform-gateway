@@ -37,6 +37,9 @@ htmlcov/
 
 
 
+# Git worktrees
+.worktrees/
+
 # Telemetry — runtime SQLite database, never committed
 remote-gateway/data/
 
