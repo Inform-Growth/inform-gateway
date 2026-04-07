@@ -143,3 +143,35 @@ def test_apollo_has_no_top_level_oauth():
     assert "oauth" not in apollo, (
         "Apollo must not have a top-level 'oauth' key — auth moved to auth block"
     )
+
+
+# ---------------------------------------------------------------------------
+# Attio deny list validation (Fix 2)
+# ---------------------------------------------------------------------------
+
+
+def test_attio_has_tools_deny_list():
+    """attio entry must have a tools.deny list to suppress broken npm tools."""
+    attio = _load_attio()
+    tools = attio.get("tools", {})
+    assert "deny" in tools, (
+        "Expected 'tools.deny' in attio config — broken tools must be suppressed from npm proxy"
+    )
+
+
+def test_attio_deny_list_blocks_search_records():
+    """search_records must be in the deny list (broken in attio-mcp npm package)."""
+    attio = _load_attio()
+    deny = attio.get("tools", {}).get("deny", [])
+    assert "search_records" in deny, (
+        f"Expected 'search_records' in deny list, got: {deny}"
+    )
+
+
+def test_attio_deny_list_blocks_create_record():
+    """create_record must be in the deny list (broken in attio-mcp npm package)."""
+    attio = _load_attio()
+    deny = attio.get("tools", {}).get("deny", [])
+    assert "create_record" in deny, (
+        f"Expected 'create_record' in deny list, got: {deny}"
+    )

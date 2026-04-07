@@ -28,6 +28,9 @@
       "args": ["-y", "attio-mcp"],
       "env": {
         "ATTIO_API_KEY": "${ATTIO_API_KEY}"
+      },
+      "tools": {
+        "deny": ["search_records", "create_record"]
       }
     },
     "github": {
