@@ -199,6 +199,16 @@ def delete_note(filename: str, commit_message: str = "") -> dict:
         }
         resp = client.request("DELETE", url, headers=_github_headers(), json=body)
 
+        if resp.status_code in (409, 422):
+            # SHA is stale — a concurrent write changed the file between our GET and DELETE.
+            # Re-fetch the current SHA and retry once.
+            recheck = client.get(url, headers=_github_headers(), params={"ref": branch})
+            if recheck.status_code == 404:
+                return {"status": "not_found", "filename": base_name}
+            recheck.raise_for_status()
+            body["sha"] = recheck.json()["sha"]
+            resp = client.request("DELETE", url, headers=_github_headers(), json=body)
+
     resp.raise_for_status()
     result = resp.json()
     commit = result.get("commit", {})
@@ -232,7 +242,6 @@ def write_issue(slug: str, content: str, commit_message: str = "") -> dict:
     branch = os.environ.get("GITHUB_BRANCH", "main")
     path = _issue_path(slug)
     url = _github_file_url(path)
-    base_name = os.path.basename(path)
     message = commit_message or f"chore: record issue {slug}"
 
     sha: str | None = None
