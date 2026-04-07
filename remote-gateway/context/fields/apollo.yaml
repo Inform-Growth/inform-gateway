@@ -1,0 +1,92 @@
+integration: apollo
+fields:
+  id:
+    display_name: Id
+    description: 'TODO: Add business description for ''id''.'
+    type: string
+    notes: ''
+    nullable: false
+  first_name:
+    display_name: First Name
+    description: 'TODO: Add business description for ''first_name''.'
+    type: string
+    notes: ''
+    nullable: false
+  last_name:
+    display_name: Last Name
+    description: 'TODO: Add business description for ''last_name''.'
+    type: string
+    notes: ''
+    nullable: false
+  name:
+    display_name: Name
+    description: 'TODO: Add business description for ''name''.'
+    type: string
+    notes: ''
+    nullable: false
+  title:
+    display_name: Title
+    description: 'TODO: Add business description for ''title''.'
+    type: string
+    notes: ''
+    nullable: false
+  organization_name:
+    display_name: Organization Name
+    description: 'TODO: Add business description for ''organization_name''.'
+    type: string
+    notes: ''
+    nullable: false
+  email:
+    display_name: Email
+    description: 'TODO: Add business description for ''email''.'
+    type: string
+    notes: ''
+    nullable: false
+  email_status:
+    display_name: Email Status
+    description: 'TODO: Add business description for ''email_status''.'
+    type: string
+    notes: ''
+    nullable: false
+  city:
+    display_name: City
+    description: 'TODO: Add business description for ''city''.'
+    type: string
+    notes: ''
+    nullable: false
+  state:
+    display_name: State
+    description: 'TODO: Add business description for ''state''.'
+    type: string
+    notes: ''
+    nullable: false
+  country:
+    display_name: Country
+    description: 'TODO: Add business description for ''country''.'
+    type: string
+    notes: ''
+    nullable: false
+  linkedin_uid:
+    display_name: Linkedin Uid
+    description: 'TODO: Add business description for ''linkedin_uid''.'
+    type: string
+    notes: ''
+    nullable: false
+  created_at:
+    display_name: Created At
+    description: 'TODO: Add business description for ''created_at''.'
+    type: timestamp
+    notes: ''
+    nullable: false
+  updated_at:
+    display_name: Updated At
+    description: 'TODO: Add business description for ''updated_at''.'
+    type: timestamp
+    notes: ''
+    nullable: false
+  existence_level:
+    display_name: Existence Level
+    description: 'TODO: Add business description for ''existence_level''.'
+    type: string
+    notes: ''
+    nullable: false

@@ -305,7 +305,16 @@ async def _run_stdio_proxy(
         mcp_server: The FastMCP server instance to register tools on.
         ready: Event set once tools are registered (or on failure).
     """
-    env_overrides = resolve_env(config.get("env", {}))
+    raw_env = config.get("env", {})
+    env_overrides = resolve_env(raw_env)
+    for key, raw_val in raw_env.items():
+        if re.search(r"\$\{([^}]+)\}", str(raw_val)) and not env_overrides.get(key):
+            var_name = re.search(r"\$\{([^}]+)\}", str(raw_val))
+            print(
+                f"  [proxy] WARNING: '{name}' env var "
+                f"{var_name.group(1) if var_name else key} is not set — "
+                f"tools will fail at call time"
+            )
     merged_env = {**os.environ, **env_overrides}
 
     server_params = StdioServerParameters(

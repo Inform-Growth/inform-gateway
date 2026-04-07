@@ -35,18 +35,18 @@ def _headers() -> dict[str, str]:
 
 def attio__search_records(
     object_type: str,
-    query: str,
+    query: str | None = None,
     limit: int = 20,
 ) -> dict[str, Any]:
-    """Search Attio records by name.
+    """Search or list Attio records by name.
 
     Searches companies or people by name using a contains filter against the
-    Attio v2 records/query endpoint. Returns matching records with their IDs
-    and attribute values.
+    Attio v2 records/query endpoint. Omit query to list all records up to limit.
 
     Args:
         object_type: Record type to search — "companies" or "people".
         query: Text to search for in the record name field (partial match).
+            Omit or pass None to list all records without filtering.
         limit: Maximum number of records to return. Defaults to 20.
 
     Returns:
@@ -56,15 +56,18 @@ def attio__search_records(
     import httpx
 
     url = f"{_ATTIO_BASE}/objects/{object_type}/records/query"
-    body: dict[str, Any] = {
-        "filter": {"name": {"$str_contains": query}},
-        "limit": limit,
-    }
+    body: dict[str, Any] = {"limit": limit}
+    if query:
+        body["filter"] = {"name": {"$str_contains": query}}
 
     with httpx.Client() as client:
         resp = client.post(url, headers=_headers(), json=body)
 
-    resp.raise_for_status()
+    if not resp.is_success:
+        return {
+            "error": f"Attio API error {resp.status_code}: {resp.text}",
+            "object_type": object_type,
+        }
     data = resp.json().get("data", [])
     return {"records": data, "count": len(data), "object_type": object_type}
 
