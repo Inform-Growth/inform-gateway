@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import inspect
 import os
 import time as _time
 from contextlib import asynccontextmanager
@@ -72,6 +73,22 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
     fastmcp_decorator = _orig_mcp_tool(*args, **kwargs)
 
     def wrapper(fn: Any) -> Any:
+        if inspect.iscoroutinefunction(fn):
+            @functools.wraps(fn)
+            async def tracked_async(*fn_args: Any, **fn_kwargs: Any) -> Any:
+                t0 = _time.monotonic()
+                try:
+                    result = await fn(*fn_args, **fn_kwargs)
+                    _telemetry.record(fn.__name__, int((_time.monotonic() - t0) * 1000), True)
+                    return result
+                except Exception as exc:
+                    _telemetry.record(
+                        fn.__name__, int((_time.monotonic() - t0) * 1000), False, type(exc).__name__
+                    )
+                    raise
+
+            return fastmcp_decorator(tracked_async)
+
         @functools.wraps(fn)
         def tracked(*fn_args: Any, **fn_kwargs: Any) -> Any:
             t0 = _time.monotonic()
