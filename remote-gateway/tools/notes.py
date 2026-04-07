@@ -233,7 +233,7 @@ def write_issue(slug: str, content: str, commit_message: str = "") -> dict:
     path = _issue_path(slug)
     url = _github_file_url(path)
     base_name = os.path.basename(path)
-    message = commit_message or f"chore: record issue {base_name}"
+    message = commit_message or f"chore: record issue {slug}"
 
     sha: str | None = None
     with httpx.Client() as client:
