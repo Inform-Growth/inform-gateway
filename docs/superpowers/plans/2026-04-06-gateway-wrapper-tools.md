@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add four promoted gateway tools (`apollo_enrich_company`, `apollo_find_contacts`, `exa_fetch_pages`, `attio_push_company`) that wrap the raw proxied integrations with correct params, sequential enforcement, and graceful error handling.
+**Goal:** Add five promoted gateway tools (`apollo_enrich_company`, `apollo_find_contacts`, `exa_search`, `exa_fetch_pages`, `attio_push_company`) that wrap the raw proxied integrations with correct params, sequential enforcement, and graceful error handling.
 
 **Architecture:** Each tool lives in a dedicated module under `remote-gateway/tools/`, calls the external REST API directly via `httpx` (same pattern as `tools/notes.py`), and is registered on the FastMCP server via a `register(mcp)` function. The raw proxied tools (`apollo__*`, `attio__*`, `exa__*`) remain available for admin/debugging.
 
@@ -15,7 +15,7 @@
 | File | Action | Responsibility |
 |---|---|---|
 | `remote-gateway/tools/apollo.py` | Create | `apollo_enrich_company`, `apollo_find_contacts` |
-| `remote-gateway/tools/exa.py` | Create | `exa_fetch_pages` |
+| `remote-gateway/tools/exa.py` | Create | `exa_search`, `exa_fetch_pages` |
 | `remote-gateway/tools/attio.py` | Create | `attio_push_company` |
 | `remote-gateway/core/mcp_server.py` | Modify | Import and register three new tool modules |
 | `remote-gateway/tests/test_apollo_tools.py` | Create | Unit tests for apollo.py (httpx mocked) |
@@ -563,6 +563,192 @@ Expected: all 4 tests pass.
 ```bash
 git add remote-gateway/tools/exa.py remote-gateway/tests/test_exa_tools.py
 git commit -m "feat(gateway): add exa_fetch_pages wrapper tool with Ashby detection"
+```
+
+---
+
+## Task 4a: Exa search — tests
+
+**Files:**
+- Modify: `remote-gateway/tests/test_exa_tools.py` (append new tests)
+
+- [ ] **Step 1: Append the failing tests**
+
+Add to the bottom of `remote-gateway/tests/test_exa_tools.py`:
+
+```python
+# ---------------------------------------------------------------------------
+# exa_search
+# ---------------------------------------------------------------------------
+
+from tools.exa import exa_search
+
+SEARCH_RESULTS = {
+    "results": [
+        {
+            "url": "https://revopscareers.com/jobs/123",
+            "title": "GTM Engineer at Acme",
+            "text": "Job description text here...",
+            "publishedDate": "2026-03-15",
+            "score": 0.92,
+        }
+    ]
+}
+
+
+def test_search_returns_clean_results():
+    with patch("httpx.Client", return_value=_mock_httpx_post(SEARCH_RESULTS)):
+        result = exa_search("GTM Engineer AI workflow")
+
+    assert len(result["results"]) == 1
+    r = result["results"][0]
+    assert r["url"] == "https://revopscareers.com/jobs/123"
+    assert r["title"] == "GTM Engineer at Acme"
+    assert r["text"] == "Job description text here..."
+    assert r["published_date"] == "2026-03-15"
+
+
+def test_search_default_num_results():
+    with patch("httpx.Client", return_value=_mock_httpx_post(SEARCH_RESULTS)) as mock_cls:
+        exa_search("GTM Engineer AI workflow")
+
+    call_kwargs = mock_cls.return_value.post.call_args
+    body = call_kwargs.kwargs.get("json") or call_kwargs.args[1]
+    assert body["num_results"] == 10
+
+
+def test_search_passes_domain_filter_when_provided():
+    with patch("httpx.Client", return_value=_mock_httpx_post(SEARCH_RESULTS)) as mock_cls:
+        exa_search("GTM Engineer", domains=["revopscareers.com", "greenhouse.io"])
+
+    call_kwargs = mock_cls.return_value.post.call_args
+    body = call_kwargs.kwargs.get("json") or call_kwargs.args[1]
+    assert body["include_domains"] == ["revopscareers.com", "greenhouse.io"]
+
+
+def test_search_omits_domain_filter_when_not_provided():
+    with patch("httpx.Client", return_value=_mock_httpx_post(SEARCH_RESULTS)) as mock_cls:
+        exa_search("GTM Engineer")
+
+    call_kwargs = mock_cls.return_value.post.call_args
+    body = call_kwargs.kwargs.get("json") or call_kwargs.args[1]
+    assert "include_domains" not in body
+
+
+def test_search_returns_error_on_failure():
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status.side_effect = Exception("503")
+
+    mock_client = MagicMock()
+    mock_client.__enter__ = MagicMock(return_value=mock_client)
+    mock_client.__exit__ = MagicMock(return_value=False)
+    mock_client.post.return_value = mock_resp
+
+    with patch("httpx.Client", return_value=mock_client):
+        result = exa_search("GTM Engineer")
+
+    assert "error" in result
+    assert result["results"] == []
+```
+
+- [ ] **Step 2: Run to confirm failure**
+
+```bash
+pytest remote-gateway/tests/test_exa_tools.py -v -k "search"
+```
+
+Expected: `ImportError: cannot import name 'exa_search' from 'tools.exa'`
+
+---
+
+## Task 4b: Exa search — implementation
+
+**Files:**
+- Modify: `remote-gateway/tools/exa.py` (add `exa_search` function and update `register`)
+
+- [ ] **Step 1: Add `exa_search` to `remote-gateway/tools/exa.py`**
+
+Insert after the `_is_ashby` function and before `exa_fetch_pages`:
+
+```python
+def exa_search(
+    query: str,
+    domains: list[str] | None = None,
+    num_results: int = 10,
+) -> dict[str, Any]:
+    """Search the web using Exa and return matching pages with extracted text.
+
+    Use this for targeted research — job board searches, company news, industry signals.
+    Keyword search mode is best for specific terms like job titles or company names.
+
+    Args:
+        query: Search query, e.g. "GTM Engineer AI workflow seed startup hiring".
+        domains: Optional list of domains to restrict the search to,
+            e.g. ["revopscareers.com", "greenhouse.io"]. Omit to search all.
+        num_results: Number of results to return (default 10, max 100).
+
+    Returns:
+        Dict with 'results' list. Each result has url, title, text, published_date.
+        On failure: {"error": "<message>", "results": []}.
+    """
+    import httpx
+
+    url = "https://api.exa.ai/search"
+    body: dict[str, Any] = {
+        "query": query,
+        "num_results": num_results,
+        "type": "keyword",
+        "contents": {"text": True},
+    }
+    if domains:
+        body["include_domains"] = domains
+
+    try:
+        with httpx.Client() as client:
+            resp = client.post(url, headers=_exa_headers(), json=body)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:
+        return {"error": str(exc), "results": []}
+
+    results = [
+        {
+            "url": r.get("url", ""),
+            "title": r.get("title"),
+            "text": r.get("text"),
+            "published_date": r.get("publishedDate"),
+        }
+        for r in data.get("results", [])
+    ]
+    return {"results": results}
+```
+
+Also update the `register` function at the bottom of `exa.py`:
+
+```python
+def register(mcp: Any) -> None:
+    """Register Exa wrapper tools on the given FastMCP server instance.
+
+    Args:
+        mcp: The FastMCP server instance (with telemetry patch already applied).
+    """
+    mcp.tool()(exa_search)
+    mcp.tool()(exa_fetch_pages)
+```
+
+- [ ] **Step 2: Run exa tests**
+
+```bash
+pytest remote-gateway/tests/test_exa_tools.py -v
+```
+
+Expected: all 9 tests pass (4 fetch + 5 search).
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add remote-gateway/tools/exa.py remote-gateway/tests/test_exa_tools.py
+git commit -m "feat(gateway): add exa_search wrapper tool with domain filtering"
 ```
 
 ---
