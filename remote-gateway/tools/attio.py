@@ -8,6 +8,11 @@ two tool names; these tools fill the gap.
 
 Required env vars:
     ATTIO_API_KEY — Attio workspace API token (Bearer token)
+
+Note: These tools do not call validated("attio", result) because no field
+definitions exist yet in remote-gateway/context/fields/attio.yaml. Once
+field definitions are added, wrap the return value of each function with
+validated("attio", result) from mcp_server.py.
 """
 from __future__ import annotations
 
@@ -19,8 +24,11 @@ _ATTIO_BASE = "https://api.attio.com/v2"
 
 def _headers() -> dict[str, str]:
     """Return Attio API request headers using ATTIO_API_KEY from env."""
+    api_key = os.environ.get("ATTIO_API_KEY")
+    if not api_key:
+        raise ValueError("ATTIO_API_KEY environment variable is not set")
     return {
-        "Authorization": f"Bearer {os.environ.get('ATTIO_API_KEY', '')}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
 

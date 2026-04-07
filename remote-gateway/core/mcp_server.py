@@ -110,7 +110,7 @@ from tools import registry as _registry_tools  # noqa: E402
 _meta_tools.register(mcp, lambda: mcp.name, _telemetry)
 _notes_tools.register(mcp)
 _registry_tools.register(mcp, registry)
-_attio_tools.register(mcp)
+_attio_tools.register(mcp)  # must register after telemetry patch is applied
 
 
 # ---------------------------------------------------------------------------
