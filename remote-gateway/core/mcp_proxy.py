@@ -700,8 +700,15 @@ async def mount_all_proxies(mcp_server: Any) -> list[asyncio.Task]:
                 asyncio.gather(*(e.wait() for e in ready_events)),
                 timeout=30,
             )
-        except asyncio.TimeoutError:
-            timed_out = [name for name, ev in zip(connections, ready_events) if not ev.is_set()]
-            print(f"  [proxy] Startup timeout — still waiting for: {timed_out}. Proceeding anyway.")
+        except TimeoutError:
+            timed_out = [
+                name
+                for name, ev in zip(connections, ready_events, strict=False)
+                if not ev.is_set()
+            ]
+            print(
+                f"  [proxy] Startup timeout — still waiting for: {timed_out}. "
+                f"Proceeding anyway."
+            )
 
     return tasks
