@@ -21,12 +21,17 @@ def run():
 
     test_slug = "_test-issue"
 
-    # ---- 1. write (create) ----
+    # ---- 0. detect any leftover from a previous run ----
+    existing = [i for i in list_issues().get("issues", []) if i["name"] == "_test-issue.md"]
+    is_first_run = len(existing) == 0
+
+    # ---- 1. write (create or update if leftover exists) ----
     print("=== write_issue() — create ===")
     content = "# Test Issue\n\n**Type:** test\n\n## Description\nCreated by test script."
     created = write_issue(test_slug, content, "test: create issue")
     print(created)
-    assert created["action"] == "created", f"Expected 'created', got {created['action']}"
+    expected_action = "created" if is_first_run else "updated"
+    assert created["action"] == expected_action, f"Expected '{expected_action}', got {created['action']}"
     assert "issues/" in created["path"], f"Expected issues/ in path, got {created['path']}"
     print()
 
@@ -54,7 +59,7 @@ def run():
         "test: resolve test issue",
     )
     print(resolved)
-    assert resolved["status"] == "ok"
+    assert resolved["action"] == "updated", f"Expected 'updated', got {resolved['action']}"
     print()
 
     print("All assertions passed.")
