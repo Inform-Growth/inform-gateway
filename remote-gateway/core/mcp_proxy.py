@@ -555,11 +555,16 @@ def _register_proxy_tool(
             upstream_kwargs = kwargs["kwargs"]
         else:
             upstream_kwargs = kwargs
-        result = await session.call_tool(upstream_name, upstream_kwargs)
+        try:
+            result = await session.call_tool(upstream_name, upstream_kwargs)
+        except Exception as exc:
+            return {"error": str(exc), "tool": upstream_name, "is_proxy_error": True}
         if not result.content:
             return {}
         content = result.content[0]
         if hasattr(content, "text"):
+            if getattr(result, "isError", False):
+                return {"error": content.text, "is_mcp_error": True}
             try:
                 parsed = json.loads(content.text)
                 # FastMCP cannot return a bare list — wrap it so the response
@@ -610,19 +615,24 @@ def _register_streamable_http_proxy_tool(
         else:
             upstream_kwargs = kwargs
 
-        auth_headers = await resolve_auth_headers(config)
-        async with (
-            httpx.AsyncClient(headers=auth_headers) as http_client,
-            streamable_http_client(url, http_client=http_client) as (read, write, *_),
-            ClientSession(read, write) as session,
-        ):
-            await session.initialize()
-            result = await session.call_tool(upstream_name, upstream_kwargs)
+        try:
+            auth_headers = await resolve_auth_headers(config)
+            async with (
+                httpx.AsyncClient(headers=auth_headers) as http_client,
+                streamable_http_client(url, http_client=http_client) as (read, write, *_),
+                ClientSession(read, write) as session,
+            ):
+                await session.initialize()
+                result = await session.call_tool(upstream_name, upstream_kwargs)
+        except Exception as exc:
+            return {"error": str(exc), "tool": upstream_name, "is_proxy_error": True}
 
         if not result.content:
             return {}
         content = result.content[0]
         if hasattr(content, "text"):
+            if getattr(result, "isError", False):
+                return {"error": content.text, "is_mcp_error": True}
             try:
                 parsed = json.loads(content.text)
                 return {"results": parsed} if isinstance(parsed, list) else parsed
@@ -682,8 +692,16 @@ async def mount_all_proxies(mcp_server: Any) -> list[asyncio.Task]:
         tasks.append(task)
 
     # Wait until all proxies have either connected or failed before the
-    # gateway starts accepting requests.
+    # gateway starts accepting requests. Cap at 30s so a slow/hanging
+    # subprocess (e.g. npx download) doesn't block the server indefinitely.
     if ready_events:
-        await asyncio.gather(*(e.wait() for e in ready_events))
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*(e.wait() for e in ready_events)),
+                timeout=30,
+            )
+        except asyncio.TimeoutError:
+            timed_out = [name for name, ev in zip(connections, ready_events) if not ev.is_set()]
+            print(f"  [proxy] Startup timeout — still waiting for: {timed_out}. Proceeding anyway.")
 
     return tasks
