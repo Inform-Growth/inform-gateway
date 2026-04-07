@@ -91,7 +91,7 @@ Guidance by integration type:
   or the minimal params shown in the tool description.
 
 **github** → `github__search_repositories` with `{"query": "stars:>1000", "page": 1}`
-  or `github__list_files_in_repo` with `{"repo": repo_slug, "path": "/"}`.
+  or `github__list_files_in_repo` with `{"repo": "owner/repo-name", "path": "/"}` (use the actual repo slug from context or GITHUB_REPO env var).
 
 **Unknown integration** → Use the first tool listed for that prefix with no required
   parameters (check the tool description), or the simplest read operation.
@@ -105,7 +105,8 @@ Call the smoke tool. Then:
 - Determine if it is an auth error (contains "401", "403", "unauthorized", "invalid key",
   "token", "credentials") or a connectivity/config error.
 - Write an issue:
-  - Slug: `{integration}-{auth|error}-{YYYY-MM-DD}`
+  - For auth errors: slug `{integration}-auth-failure-{YYYY-MM-DD}`
+  - For non-auth errors: slug `{integration}-tool-error-{YYYY-MM-DD}`
   - Template:
 
 ```
