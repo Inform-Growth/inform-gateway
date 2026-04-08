@@ -46,14 +46,18 @@ CONNECTIONS_FILE = Path(__file__).parent.parent / "mcp_connections.json"
 # Common Node.js binary locations across environments.
 # Used as a fallback when the command is not found via PATH alone.
 _NODE_BIN_FALLBACKS: list[str] = [
+    "/app/remote-gateway/vendor/node_modules/.bin", # Build-time vendoring on Railway
+    "remote-gateway/vendor/node_modules/.bin",     # Local build-time vendoring
     "/npm-global/bin",                              # Railway/nixpacks custom prefix
     "/root/.nix-profile/bin",                       # nix (Railway, NixOS, devenv)
     "/nix/var/nix/profiles/default/bin",            # nix system profile
     "/usr/local/bin",                               # standard Linux / macOS
     "/usr/bin",                                     # standard Linux
+    "/bin",                                         # standard Linux
     "/opt/homebrew/bin",                            # macOS Homebrew (Apple Silicon + Intel)
-    str(Path.home() / ".volta" / "bin"),            # Volta version manager
-    str(Path.home() / ".nvm" / "current" / "bin"), # nvm (current symlink)
+    str(Path.home() / ".volta/bin"),                # Volta version manager
+    str(Path.home() / ".nvm/current/bin"),          # nvm (current symlink)
+    str(Path.home() / ".npm-global/bin"),           # common npm global prefix
 ]
 
 
@@ -72,27 +76,52 @@ def _resolve_command(command: str, env: dict[str, str]) -> str:
     Linux, Volta, nvm, and nix environments without requiring PATH config.
 
     Args:
-        command: Command name or absolute path.
-        env: Merged environment dict that will be passed to the subprocess.
+        command: Command name, relative path, or absolute path.
+        env: Merged environment dict that will be modified in-place to include
+            the resolved directory in its PATH.
 
     Returns:
         Absolute path to the command if found, otherwise the original command
         string (subprocess will raise a clear ENOENT if still not found).
     """
+    def _inject_path(resolved_abs_path: str):
+        """Prepend the binary's directory to the env's PATH if not already there."""
+        parent_dir = str(Path(resolved_abs_path).parent)
+        current_path = env.get("PATH", os.environ.get("PATH", ""))
+        if parent_dir not in current_path.split(os.pathsep):
+            env["PATH"] = (
+                f"{parent_dir}{os.pathsep}{current_path}"
+                if current_path else parent_dir
+            )
+
+    # If it's already an absolute path, just ensure its parent is in the PATH
     if os.path.isabs(command):
+        if os.path.exists(command):
+            _inject_path(command)
         return command
 
     # Primary: use the merged env's PATH (covers most cases when PATH is set).
     env_path = env.get("PATH", os.environ.get("PATH", ""))
     resolved = shutil.which(command, path=env_path)
     if resolved:
-        return resolved
+        _inject_path(os.path.abspath(resolved))
+        return os.path.abspath(resolved)
+
+    # Secondary: If the command is a relative path (e.g. "remote-gateway/vendor/..."),
+    # try resolving it against the current working directory.
+    if os.path.exists(command):
+        abs_path = os.path.abspath(command)
+        _inject_path(abs_path)
+        return abs_path
 
     # Fallback: scan well-known Node.js locations not covered by PATH.
-    fallback_path = os.pathsep.join(_NODE_BIN_FALLBACKS)
-    resolved = shutil.which(command, path=fallback_path)
-    if resolved:
-        return resolved
+    for fallback in _NODE_BIN_FALLBACKS:
+        resolved = shutil.which(command, path=fallback)
+        if resolved:
+            abs_path = os.path.abspath(resolved)
+            _inject_path(abs_path)
+            print(f"  [proxy] Resolved '{command}' to '{abs_path}' via fallback.")
+            return abs_path
 
     return command
 
@@ -582,6 +611,109 @@ async def _run_streamable_http_proxy(
 
 
 # ---------------------------------------------------------------------------
+# Throttling & Reliability
+# ---------------------------------------------------------------------------
+
+
+class Throttler:
+    """Manages concurrency and rate limits for an integration.
+
+    Uses an asyncio.Semaphore for concurrency and tracks request timestamps
+    to enforce a requests-per-minute (RPM) limit.
+    """
+
+    def __init__(self, name: str, rpm: int = 0, concurrency: int = 2) -> None:
+        self.name = name
+        self.rpm = rpm
+        self.semaphore = asyncio.Semaphore(concurrency)
+        self._history: list[float] = []
+
+    async def acquire(self) -> None:
+        """Wait for a permit to execute a request."""
+        await self.semaphore.acquire()
+
+        if self.rpm > 0:
+            now = time.time()
+            # Purge history older than 60s
+            self._history = [t for t in self._history if now - t < 60]
+            if len(self._history) >= self.rpm:
+                # Wait until the oldest request is > 60s old
+                wait_time = 60 - (now - self._history[0])
+                if wait_time > 0:
+                    print(f"  [proxy] '{self.name}' rate limit reached — waiting {wait_time:.1f}s")
+                    await asyncio.sleep(wait_time)
+            self._history.append(time.time())
+
+    def release(self) -> None:
+        """Release the concurrency permit."""
+        self.semaphore.release()
+
+
+_THROTTLERS: dict[str, Throttler] = {}
+
+
+def get_throttler(name: str, config: dict) -> Throttler:
+    """Return or create a throttler for an integration based on its config."""
+    if name not in _THROTTLERS:
+        limit_cfg = config.get("rate_limit", {})
+        rpm = limit_cfg.get("rpm", 0)
+        concurrency = limit_cfg.get("concurrency", 2)
+        _THROTTLERS[name] = Throttler(name, rpm, concurrency)
+    return _THROTTLERS[name]
+
+
+def _is_rate_limit_error(result: Any) -> bool:
+    """Return True if the result or error message indicates a rate limit."""
+    if not isinstance(result, dict):
+        return False
+
+    # Check for explicit flags
+    if result.get("is_rate_limit") or result.get("is_throttled"):
+        return True
+
+    # Check for 429 status or common strings in error messages
+    error_msg = str(result.get("error", "")).lower()
+    if any(s in error_msg for s in ("429", "rate limit", "too many requests", "throttled")):
+        return True
+
+    return False
+
+
+async def _call_with_retry(
+    integration: str,
+    tool_name: str,
+    call_fn: Any,
+    max_retries: int = 3,
+) -> Any:
+    """Execute a tool call with throttling and exponential backoff on rate limits."""
+    # We use a global registry so limits are shared across all tools of one integration
+    config = load_connections().get(integration, {})
+    throttler = get_throttler(integration, config)
+
+    for attempt in range(max_retries + 1):
+        await throttler.acquire()
+        try:
+            result = await call_fn()
+            if _is_rate_limit_error(result) and attempt < max_retries:
+                backoff = (2**attempt) + (time.time() % 1)  # 1s, 2s, 4s + jitter
+                print(
+                    f"  [proxy] '{integration}__{tool_name}' rate limited — "
+                    f"retry {attempt + 1}/{max_retries} in {backoff:.1f}s"
+                )
+                await asyncio.sleep(backoff)
+                continue
+            return result
+        finally:
+            throttler.release()
+
+    return {
+        "error": f"Maximum retries exceeded for '{integration}__{tool_name}' (rate limited)",
+        "is_proxy_error": True,
+        "is_rate_limit": True,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Tool registration
 # ---------------------------------------------------------------------------
 
@@ -594,7 +726,7 @@ def _register_proxy_tool(
 ) -> None:
     """Register a single upstream tool as a callable on the gateway.
 
-    The gateway-side name is ``<integration>__<upstream_tool_name>`` so tools
+    The gateway-side name is ``<integration>__<tool_name>`` so tools
     from different integrations never collide and the source is always clear.
 
     Args:
@@ -619,24 +751,28 @@ def _register_proxy_tool(
             upstream_kwargs = kwargs["kwargs"]
         else:
             upstream_kwargs = kwargs
-        try:
-            result = await session.call_tool(upstream_name, upstream_kwargs)
-        except Exception as exc:
-            return {"error": str(exc), "tool": upstream_name, "is_proxy_error": True}
-        if not result.content:
-            return {}
-        content = result.content[0]
-        if hasattr(content, "text"):
-            if getattr(result, "isError", False):
-                return {"error": content.text, "is_mcp_error": True}
+
+        async def _execute():
             try:
-                parsed = json.loads(content.text)
-                # FastMCP cannot return a bare list — wrap it so the response
-                # reaches the client rather than being silently dropped.
-                return {"results": parsed} if isinstance(parsed, list) else parsed
-            except (json.JSONDecodeError, ValueError):
-                return {"result": content.text}
-        return {}
+                result = await session.call_tool(upstream_name, upstream_kwargs)
+            except Exception as exc:
+                return {"error": str(exc), "tool": upstream_name, "is_proxy_error": True}
+            if not result.content:
+                return {}
+            content = result.content[0]
+            if hasattr(content, "text"):
+                if getattr(result, "isError", False):
+                    return {"error": content.text, "is_mcp_error": True}
+                try:
+                    parsed = json.loads(content.text)
+                    # FastMCP cannot return a bare list — wrap it so the response
+                    # reaches the client rather than being silently dropped.
+                    return {"results": parsed} if isinstance(parsed, list) else parsed
+                except (json.JSONDecodeError, ValueError):
+                    return {"result": content.text}
+            return {}
+
+        return await _call_with_retry(integration, upstream_name, _execute)
 
     proxy_fn.__name__ = gateway_name
     proxy_fn.__doc__ = description
@@ -679,30 +815,33 @@ def _register_streamable_http_proxy_tool(
         else:
             upstream_kwargs = kwargs
 
-        try:
-            auth_headers = await resolve_auth_headers(config)
-            async with (
-                httpx.AsyncClient(headers=auth_headers) as http_client,
-                streamable_http_client(url, http_client=http_client) as (read, write, *_),
-                ClientSession(read, write) as session,
-            ):
-                await session.initialize()
-                result = await session.call_tool(upstream_name, upstream_kwargs)
-        except Exception as exc:
-            return {"error": str(exc), "tool": upstream_name, "is_proxy_error": True}
-
-        if not result.content:
-            return {}
-        content = result.content[0]
-        if hasattr(content, "text"):
-            if getattr(result, "isError", False):
-                return {"error": content.text, "is_mcp_error": True}
+        async def _execute():
             try:
-                parsed = json.loads(content.text)
-                return {"results": parsed} if isinstance(parsed, list) else parsed
-            except (json.JSONDecodeError, ValueError):
-                return {"result": content.text}
-        return {}
+                auth_headers = await resolve_auth_headers(config)
+                async with (
+                    httpx.AsyncClient(headers=auth_headers) as http_client,
+                    streamable_http_client(url, http_client=http_client) as (read, write, *_),
+                    ClientSession(read, write) as session,
+                ):
+                    await session.initialize()
+                    result = await session.call_tool(upstream_name, upstream_kwargs)
+            except Exception as exc:
+                return {"error": str(exc), "tool": upstream_name, "is_proxy_error": True}
+
+            if not result.content:
+                return {}
+            content = result.content[0]
+            if hasattr(content, "text"):
+                if getattr(result, "isError", False):
+                    return {"error": content.text, "is_mcp_error": True}
+                try:
+                    parsed = json.loads(content.text)
+                    return {"results": parsed} if isinstance(parsed, list) else parsed
+                except (json.JSONDecodeError, ValueError):
+                    return {"result": content.text}
+            return {}
+
+        return await _call_with_retry(integration, upstream_name, _execute)
 
     proxy_fn.__name__ = gateway_name
     proxy_fn.__doc__ = description

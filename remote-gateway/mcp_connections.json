@@ -4,6 +4,10 @@
     "exa": {
       "transport": "http",
       "url": "https://mcp.exa.ai/mcp",
+      "rate_limit": {
+        "rpm": 20,
+        "concurrency": 2
+      },
       "auth": {
         "type": "header",
         "headers": {
@@ -14,6 +18,10 @@
     "apollo": {
       "transport": "http",
       "url": "https://mcp.apollo.io/mcp",
+      "rate_limit": {
+        "rpm": 10,
+        "concurrency": 1
+      },
       "auth": {
         "type": "oauth",
         "access_token": "${APOLLO_ACCESS_TOKEN}",
@@ -24,8 +32,8 @@
     },
     "attio": {
       "transport": "stdio",
-      "command": "npx",
-      "args": ["-y", "attio-mcp"],
+      "command": "remote-gateway/vendor/node_modules/.bin/attio-mcp",
+      "args": [],
       "env": {
         "ATTIO_API_KEY": "${ATTIO_API_KEY}"
       },
@@ -35,8 +43,8 @@
     },
     "github": {
       "transport": "stdio",
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "command": "remote-gateway/vendor/node_modules/.bin/mcp-server-github",
+      "args": [],
       "env": {
         "GITHUB_TOKEN": "${GITHUB_TOKEN}"
       },
