@@ -328,11 +328,20 @@ def validated(integration: str, response: dict[str, Any]) -> dict[str, Any]:
 
 if __name__ == "__main__":
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
-    if transport == "sse":
+    if transport in ("sse", "combined"):
         import uvicorn
+        from starlette.applications import Starlette
+
+        # Serve both SSE (legacy Claude Code / existing operators) and
+        # streamable-http (Claude Desktop, newer clients) on the same port.
+        # SSE: GET /sse + POST /messages
+        # Streamable-HTTP: POST /mcp
+        _sse = mcp.sse_app()
+        _http = mcp.streamable_http_app()
+        _combined = Starlette(routes=list(_sse.routes) + list(_http.routes))
 
         uvicorn.run(
-            _AuthMiddleware(mcp.sse_app()),
+            _AuthMiddleware(_combined),
             host=os.environ.get("MCP_SERVER_HOST", "0.0.0.0"),
             port=int(os.environ.get("MCP_SERVER_PORT", "8000")),
         )
