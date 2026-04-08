@@ -334,11 +334,20 @@ if __name__ == "__main__":
 
         # Serve both SSE (legacy Claude Code / existing operators) and
         # streamable-http (Claude Desktop, newer clients) on the same port.
-        # SSE: GET /sse + POST /messages
+        # SSE: GET /sse + POST /messages/
         # Streamable-HTTP: POST /mcp
+        #
+        # streamable_http_app() lazily creates mcp._session_manager and
+        # returns a Starlette app whose lifespan calls session_manager.run().
+        # We must preserve that lifespan in the combined app — without it the
+        # session manager's task group is never started and every POST /mcp
+        # raises RuntimeError("Task group is not initialized").
         _sse = mcp.sse_app()
-        _http = mcp.streamable_http_app()
-        _combined = Starlette(routes=list(_sse.routes) + list(_http.routes))
+        _http = mcp.streamable_http_app()  # initialises mcp._session_manager
+        _combined = Starlette(
+            routes=list(_sse.routes) + list(_http.routes),
+            lifespan=lambda _app: mcp.session_manager.run(),
+        )
 
         uvicorn.run(
             _AuthMiddleware(_combined),
