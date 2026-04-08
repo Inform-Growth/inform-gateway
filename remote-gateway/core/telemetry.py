@@ -41,7 +41,7 @@ from typing import Any
 
 _DB_PATH = Path(os.environ.get("TELEMETRY_DB_PATH", "data/telemetry.db"))
 
-_SCHEMA = """
+_SCHEMA_TABLES = """
 PRAGMA journal_mode = WAL;
 
 CREATE TABLE IF NOT EXISTS api_keys (
@@ -60,7 +60,11 @@ CREATE TABLE IF NOT EXISTS tool_calls (
     user_id     TEXT,
     request_id  TEXT
 );
+"""
 
+# Indexes are created after migrations so that columns added via ALTER TABLE
+# are present before any index on those columns is attempted.
+_SCHEMA_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_tool_name ON tool_calls (tool_name);
 CREATE INDEX IF NOT EXISTS idx_called_at ON tool_calls (called_at);
 CREATE INDEX IF NOT EXISTS idx_user_id   ON tool_calls (user_id);
@@ -86,8 +90,9 @@ class TelemetryStore:
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             conn = sqlite3.connect(self._path)
-            conn.executescript(_SCHEMA)
+            conn.executescript(_SCHEMA_TABLES)
             self._migrate(conn)
+            conn.executescript(_SCHEMA_INDEXES)
             conn.close()
             self._enabled = True
         except Exception as exc:
