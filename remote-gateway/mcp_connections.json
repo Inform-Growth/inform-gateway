@@ -27,8 +27,7 @@
       "command": "attio-mcp",
       "args": [],
       "env": {
-        "ATTIO_API_KEY": "${ATTIO_API_KEY}",
-        "PATH": "${PATH}:/root/.nix-profile/bin:/nix/var/nix/profiles/default/bin"
+        "ATTIO_API_KEY": "${ATTIO_API_KEY}"
       },
       "tools": {
         "deny": ["search_records", "create_record"]
@@ -39,8 +38,7 @@
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-github"],
       "env": {
-        "GITHUB_TOKEN": "${GITHUB_TOKEN}",
-        "PATH": "${PATH}:/root/.nix-profile/bin:/nix/var/nix/profiles/default/bin"
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
       },
       "tools": {
         "allow": [
