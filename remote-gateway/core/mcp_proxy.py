@@ -29,6 +29,7 @@ import base64
 import json
 import os
 import re
+import shutil
 import time
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,32 @@ from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 
 CONNECTIONS_FILE = Path(__file__).parent.parent / "mcp_connections.json"
+
+
+def _resolve_command(command: str, env: dict[str, str]) -> str:
+    """Resolve a command name to its full path using the merged environment PATH.
+
+    subprocess.Popen looks up bare command names using the *current process*
+    PATH, not the ``env=`` parameter passed to it. When the binary lives in a
+    directory that is only present in the child env (e.g. a nix profile or a
+    custom npm prefix) the exec will raise ENOENT even though the binary
+    exists. Pre-resolving with the merged env's PATH and passing an absolute
+    path sidesteps that lookup entirely.
+
+    Args:
+        command: Command name or absolute path.
+        env: Merged environment dict that will be passed to the subprocess.
+
+    Returns:
+        Absolute path to the command if found via env PATH, otherwise the
+        original command string (subprocess will raise a clear error).
+    """
+    if os.path.isabs(command):
+        return command
+    resolved = shutil.which(command, path=env.get("PATH", os.environ.get("PATH", "")))
+    if resolved:
+        return resolved
+    return command
 
 
 # ---------------------------------------------------------------------------
@@ -318,7 +345,7 @@ async def _run_stdio_proxy(
     merged_env = {**os.environ, **env_overrides}
 
     server_params = StdioServerParameters(
-        command=config["command"],
+        command=_resolve_command(config["command"], merged_env),
         args=config.get("args", []),
         env=merged_env,
     )
