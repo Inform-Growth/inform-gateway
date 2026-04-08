@@ -53,6 +53,37 @@ def make_get_tool_stats(telemetry: Any) -> Callable[[str], dict]:
     return get_tool_stats
 
 
+def make_create_user(telemetry: Any) -> Callable[[str, str], dict]:
+    """Return a create_user tool function bound to the given telemetry instance."""
+
+    def create_user(user_id: str, key: str = "") -> dict:
+        """Create an API key for a new user. Admin only.
+
+        Generates a new API key and associates it with the given user identifier.
+        The key is returned once — store it immediately. Share it with the user
+        so they can add it to their MCP connection URL or Authorization header.
+
+        Args:
+            user_id: Any identifier for the user (email, name, UUID, etc.).
+            key: Optional custom key value. A secure random key is generated if
+                omitted (recommended).
+
+        Returns:
+            Dict with user_id, key, and connection instructions.
+        """
+        created_key = telemetry.add_api_key(user_id, key or None)
+        return {
+            "user_id": user_id,
+            "key": created_key,
+            "usage": {
+                "header": f"Authorization: Bearer {created_key}",
+                "query_param": f"?api_key={created_key}",
+            },
+        }
+
+    return create_user
+
+
 def register(mcp: Any, server_name_fn: Any, telemetry: Any) -> None:
     """Register meta tools on the given FastMCP server instance.
 
@@ -63,3 +94,4 @@ def register(mcp: Any, server_name_fn: Any, telemetry: Any) -> None:
     """
     mcp.tool()(make_health_check(server_name_fn))
     mcp.tool()(make_get_tool_stats(telemetry))
+    mcp.tool()(make_create_user(telemetry))

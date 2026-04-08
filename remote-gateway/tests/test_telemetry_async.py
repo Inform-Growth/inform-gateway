@@ -25,9 +25,17 @@ def _import_mcp_server():
     """
     import importlib.util
 
-    # Stub mcp packages (FastMCP)
-    for mod_name in ("mcp", "mcp.server", "mcp.server.fastmcp"):
+    # Stub mcp packages (FastMCP + lowlevel)
+    import contextvars
+
+    for mod_name in (
+        "mcp", "mcp.server", "mcp.server.fastmcp",
+        "mcp.server.lowlevel", "mcp.server.lowlevel.server",
+    ):
         sys.modules.setdefault(mod_name, types.ModuleType(mod_name))
+
+    # request_ctx: ContextVar with no value set — _get_call_ids() returns (None, None)
+    sys.modules["mcp.server.lowlevel.server"].request_ctx = contextvars.ContextVar("request_ctx")
 
     # FastMCP: mcp.tool() decorator returns fn unchanged for test isolation
     mock_fastmcp_class = MagicMock()
@@ -55,9 +63,11 @@ def _import_mcp_server():
     recorded: list[dict] = []
     mod_tel = types.ModuleType("telemetry")
     mock_tel = MagicMock()
-    mock_tel.record = lambda name, duration_ms, success, exc_type=None: recorded.append(
-        {"name": name, "duration_ms": duration_ms, "success": success, "exc_type": exc_type}
+    mock_tel.record = lambda name, duration_ms, success, exc_type=None, user_id=None, request_id=None: recorded.append(  # noqa: E501
+        {"name": name, "duration_ms": duration_ms, "success": success, "exc_type": exc_type,
+         "user_id": user_id, "request_id": request_id}
     )
+    mock_tel.lookup_user = MagicMock(return_value=None)
     mod_tel.telemetry = mock_tel
     sys.modules["telemetry"] = mod_tel
 

@@ -17,6 +17,7 @@ Run with:
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import functools
 import inspect
 import os
@@ -36,6 +37,7 @@ if _env_file.exists():
 
 from field_registry import registry  # noqa: E402
 from mcp.server.fastmcp import FastMCP  # noqa: E402
+from mcp.server.lowlevel.server import request_ctx as _request_ctx  # noqa: E402
 from mcp_proxy import mount_all_proxies  # noqa: E402
 from telemetry import telemetry as _telemetry  # noqa: E402
 
@@ -60,10 +62,84 @@ mcp = FastMCP(
 
 
 # ---------------------------------------------------------------------------
-# Telemetry — patches mcp.tool() so every registered tool is tracked.
-# Applies automatically to built-in and promoted tools; no per-tool changes
-# needed. Uses functools.wraps so FastMCP sees the original function signature.
+# Auth — Bearer token → user_id resolution via ASGI middleware.
+#
+# Each operator gets one API key (created by an admin via telemetry.add_api_key).
+# They configure it in .mcp.json:
+#   "headers": {"Authorization": "Bearer sk-<their-key>"}
+#
+# _AuthMiddleware extracts the key on every HTTP request, resolves the user_id
+# from the telemetry DB, and stores it in _current_user for the duration of
+# the request. The telemetry wrappers below read it automatically.
 # ---------------------------------------------------------------------------
+
+_current_user: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "_current_user", default=None
+)
+
+
+class _AuthMiddleware:
+    """ASGI middleware: API key → user_id → ContextVar.
+
+    Checks two locations in priority order:
+    1. ``Authorization: Bearer <key>`` header  — Claude Code, API clients
+    2. ``?api_key=<key>`` query parameter       — Claude Desktop/Web, OpenAI, Gemini
+       (clients that set a URL but cannot add custom headers)
+    """
+
+    def __init__(self, app: Any) -> None:
+        self._app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] in ("http", "websocket"):
+            key = self._extract_key(scope)
+            user_id = _telemetry.lookup_user(key) if key else None
+            token = _current_user.set(user_id)
+            try:
+                await self._app(scope, receive, send)
+            finally:
+                _current_user.reset(token)
+        else:
+            await self._app(scope, receive, send)
+
+    @staticmethod
+    def _extract_key(scope: Any) -> str | None:
+        """Return the API key from the Authorization header or api_key query param."""
+        headers = {k.lower(): v for k, v in scope.get("headers", [])}
+        auth: str = headers.get(b"authorization", b"").decode()
+        if auth.lower().startswith("bearer "):
+            return auth[7:].strip() or None
+
+        # Fall back to query param — used by clients that can't set headers
+        qs: str = scope.get("query_string", b"").decode()
+        for part in qs.split("&"):
+            if part.startswith("api_key="):
+                return part[8:] or None
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Telemetry — patches mcp.tool() and mcp.add_tool() so every registered tool
+# is tracked. mcp.tool() covers decorated built-in and promoted tools; mcp.add_tool()
+# covers proxy tools (attio, exa, apollo, etc.) registered by mcp_proxy.py.
+# Uses functools.wraps so FastMCP sees the original function signatures.
+# ---------------------------------------------------------------------------
+
+
+def _get_call_ids() -> tuple[str | None, str | None]:
+    """Return (user_id, request_id) for the current request.
+
+    user_id comes from _current_user, which _AuthMiddleware sets by resolving
+    the caller's Bearer token. request_id comes from the MCP request context.
+    Both are None outside of an active request (e.g. during tests).
+    """
+    user_id = _current_user.get()
+    try:
+        request_id = str(_request_ctx.get().request_id)
+    except LookupError:
+        request_id = None
+    return user_id, request_id
+
 
 _orig_mcp_tool = mcp.tool
 
@@ -77,13 +153,18 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
             @functools.wraps(fn)
             async def tracked_async(*fn_args: Any, **fn_kwargs: Any) -> Any:
                 t0 = _time.monotonic()
+                sid, rid = _get_call_ids()
                 try:
                     result = await fn(*fn_args, **fn_kwargs)
-                    _telemetry.record(fn.__name__, int((_time.monotonic() - t0) * 1000), True)
+                    _telemetry.record(
+                        fn.__name__, int((_time.monotonic() - t0) * 1000), True,
+                        user_id=sid, request_id=rid,
+                    )
                     return result
                 except Exception as exc:
                     _telemetry.record(
-                        fn.__name__, int((_time.monotonic() - t0) * 1000), False, type(exc).__name__
+                        fn.__name__, int((_time.monotonic() - t0) * 1000), False,
+                        type(exc).__name__, user_id=sid, request_id=rid,
                     )
                     raise
 
@@ -92,13 +173,18 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
         @functools.wraps(fn)
         def tracked(*fn_args: Any, **fn_kwargs: Any) -> Any:
             t0 = _time.monotonic()
+            sid, rid = _get_call_ids()
             try:
                 result = fn(*fn_args, **fn_kwargs)
-                _telemetry.record(fn.__name__, int((_time.monotonic() - t0) * 1000), True)
+                _telemetry.record(
+                    fn.__name__, int((_time.monotonic() - t0) * 1000), True,
+                    user_id=sid, request_id=rid,
+                )
                 return result
             except Exception as exc:
                 _telemetry.record(
-                    fn.__name__, int((_time.monotonic() - t0) * 1000), False, type(exc).__name__
+                    fn.__name__, int((_time.monotonic() - t0) * 1000), False, type(exc).__name__,
+                    user_id=sid, request_id=rid,
                 )
                 raise
 
@@ -108,6 +194,62 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
 
 
 mcp.tool = _tracked_mcp_tool
+
+_orig_add_tool = mcp.add_tool
+
+
+def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
+    """Replacement for mcp.add_tool() that injects timing and error recording.
+
+    Proxy tools (attio, exa, apollo, etc.) are registered via add_tool() rather
+    than the @mcp.tool() decorator, so they bypass _tracked_mcp_tool. This patch
+    ensures every tool — decorator or direct — is captured in telemetry.
+    """
+    tool_name: str = kwargs.get("name", fn.__name__)
+
+    if inspect.iscoroutinefunction(fn):
+        @functools.wraps(fn)
+        async def tracked_async(*fn_args: Any, **fn_kwargs: Any) -> Any:
+            t0 = _time.monotonic()
+            sid, rid = _get_call_ids()
+            try:
+                result = await fn(*fn_args, **fn_kwargs)
+                _telemetry.record(
+                    tool_name, int((_time.monotonic() - t0) * 1000), True,
+                    user_id=sid, request_id=rid,
+                )
+                return result
+            except Exception as exc:
+                _telemetry.record(
+                    tool_name, int((_time.monotonic() - t0) * 1000), False, type(exc).__name__,
+                    user_id=sid, request_id=rid,
+                )
+                raise
+
+        return _orig_add_tool(tracked_async, *args, **kwargs)
+
+    @functools.wraps(fn)
+    def tracked(*fn_args: Any, **fn_kwargs: Any) -> Any:
+        t0 = _time.monotonic()
+        sid, rid = _get_call_ids()
+        try:
+            result = fn(*fn_args, **fn_kwargs)
+            _telemetry.record(
+                tool_name, int((_time.monotonic() - t0) * 1000), True,
+                user_id=sid, request_id=rid,
+            )
+            return result
+        except Exception as exc:
+            _telemetry.record(
+                tool_name, int((_time.monotonic() - t0) * 1000), False, type(exc).__name__,
+                user_id=sid, request_id=rid,
+            )
+            raise
+
+    return _orig_add_tool(tracked, *args, **kwargs)
+
+
+mcp.add_tool = _tracked_add_tool
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +329,13 @@ def validated(integration: str, response: dict[str, Any]) -> dict[str, Any]:
 if __name__ == "__main__":
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
     if transport == "sse":
-        mcp.run(transport="sse")
+        import uvicorn
+
+        uvicorn.run(
+            _AuthMiddleware(mcp.sse_app()),
+            host=os.environ.get("MCP_SERVER_HOST", "0.0.0.0"),
+            port=int(os.environ.get("MCP_SERVER_PORT", "8000")),
+        )
     elif transport == "streamable-http":
         mcp.run(transport="streamable-http")
     else:
