@@ -43,6 +43,20 @@ from mcp.client.streamable_http import streamable_http_client
 CONNECTIONS_FILE = Path(__file__).parent.parent / "mcp_connections.json"
 
 
+# Common Node.js binary locations across environments.
+# Used as a fallback when the command is not found via PATH alone.
+_NODE_BIN_FALLBACKS: list[str] = [
+    "/npm-global/bin",                              # Railway/nixpacks custom prefix
+    "/root/.nix-profile/bin",                       # nix (Railway, NixOS, devenv)
+    "/nix/var/nix/profiles/default/bin",            # nix system profile
+    "/usr/local/bin",                               # standard Linux / macOS
+    "/usr/bin",                                     # standard Linux
+    "/opt/homebrew/bin",                            # macOS Homebrew (Apple Silicon + Intel)
+    str(Path.home() / ".volta" / "bin"),            # Volta version manager
+    str(Path.home() / ".nvm" / "current" / "bin"), # nvm (current symlink)
+]
+
+
 def _resolve_command(command: str, env: dict[str, str]) -> str:
     """Resolve a command name to its full path using the merged environment PATH.
 
@@ -53,19 +67,33 @@ def _resolve_command(command: str, env: dict[str, str]) -> str:
     exists. Pre-resolving with the merged env's PATH and passing an absolute
     path sidesteps that lookup entirely.
 
+    Falls back to a list of common Node.js binary locations so that stdio
+    MCP servers (npm packages) work out of the box on Railway, macOS, standard
+    Linux, Volta, nvm, and nix environments without requiring PATH config.
+
     Args:
         command: Command name or absolute path.
         env: Merged environment dict that will be passed to the subprocess.
 
     Returns:
-        Absolute path to the command if found via env PATH, otherwise the
-        original command string (subprocess will raise a clear error).
+        Absolute path to the command if found, otherwise the original command
+        string (subprocess will raise a clear ENOENT if still not found).
     """
     if os.path.isabs(command):
         return command
-    resolved = shutil.which(command, path=env.get("PATH", os.environ.get("PATH", "")))
+
+    # Primary: use the merged env's PATH (covers most cases when PATH is set).
+    env_path = env.get("PATH", os.environ.get("PATH", ""))
+    resolved = shutil.which(command, path=env_path)
     if resolved:
         return resolved
+
+    # Fallback: scan well-known Node.js locations not covered by PATH.
+    fallback_path = os.pathsep.join(_NODE_BIN_FALLBACKS)
+    resolved = shutil.which(command, path=fallback_path)
+    if resolved:
+        return resolved
+
     return command
 
 
