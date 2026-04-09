@@ -39,8 +39,6 @@ COPY . .
 # Ensure the vendor directory install also runs
 RUN npm install --prefix remote-gateway/vendor attio-mcp @modelcontextprotocol/server-github
 
-# Expose the gateway port (Railway provides this via PORT env var)
-EXPOSE 8000
-
 # Start the gateway, mapping Railway's PORT to MCP_SERVER_PORT
-CMD ["sh", "-c", "MCP_SERVER_PORT=${PORT:-8000} python remote-gateway/core/mcp_server.py"]
+# We use python3 for maximum compatibility in the slim image
+CMD ["sh", "-c", "MCP_SERVER_PORT=${PORT:-8000} python3 remote-gateway/core/mcp_server.py"]

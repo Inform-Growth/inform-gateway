@@ -344,8 +344,15 @@ if __name__ == "__main__":
         # raises RuntimeError("Task group is not initialized").
         _sse = mcp.sse_app()
         _http = mcp.streamable_http_app()  # initialises mcp._session_manager
+        
+        from starlette.responses import JSONResponse
+        from starlette.routing import Route
+
+        async def health_check_handler(request):
+            return JSONResponse({"status": "ok", "transport": transport})
+
         _combined = Starlette(
-            routes=list(_sse.routes) + list(_http.routes),
+            routes=list(_sse.routes) + list(_http.routes) + [Route("/", health_check_handler)],
             lifespan=lambda _app: mcp.session_manager.run(),
         )
 
