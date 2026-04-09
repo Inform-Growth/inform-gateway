@@ -46,6 +46,8 @@ CONNECTIONS_FILE = Path(__file__).parent.parent / "mcp_connections.json"
 # Common Node.js binary locations across environments.
 # Used as a fallback when the command is not found via PATH alone.
 _NODE_BIN_FALLBACKS: list[str] = [
+    "/app/node_modules/.bin",                      # Railway standard install
+    "node_modules/.bin",                           # Local standard install
     "/app/remote-gateway/vendor/node_modules/.bin", # Build-time vendoring on Railway
     "remote-gateway/vendor/node_modules/.bin",     # Local build-time vendoring
     "/npm-global/bin",                              # Railway/nixpacks custom prefix

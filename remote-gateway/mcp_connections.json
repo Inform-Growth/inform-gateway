@@ -32,7 +32,7 @@
     },
     "attio": {
       "transport": "stdio",
-      "command": "remote-gateway/vendor/node_modules/.bin/attio-mcp",
+      "command": "attio-mcp",
       "args": [],
       "env": {
         "ATTIO_API_KEY": "${ATTIO_API_KEY}"
@@ -43,7 +43,7 @@
     },
     "github": {
       "transport": "stdio",
-      "command": "remote-gateway/vendor/node_modules/.bin/mcp-server-github",
+      "command": "mcp-server-github",
       "args": [],
       "env": {
         "GITHUB_TOKEN": "${GITHUB_TOKEN}"
