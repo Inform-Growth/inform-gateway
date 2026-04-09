@@ -343,16 +343,23 @@ if __name__ == "__main__":
         # session manager's task group is never started and every POST /mcp
         # raises RuntimeError("Task group is not initialized").
         _sse = mcp.sse_app()
-        _http = mcp.streamable_http_app()  # initialises mcp._session_manager
+        _http = mcp.streamable_http_app()
         
         from starlette.responses import JSONResponse
-        from starlette.routing import Route
+        from starlette.routing import Route, Mount
 
         async def health_check_handler(request):
             return JSONResponse({"status": "ok", "transport": transport})
 
+        # SSE: GET /sse + POST /messages/
+        # HTTP: POST /mcp
         _combined = Starlette(
-            routes=list(_sse.routes) + list(_http.routes) + [Route("/", health_check_handler)],
+            routes=[
+                Mount("/sse", routes=_sse.routes),
+                Mount("/mcp", routes=_http.routes),
+                Route("/health", health_check_handler),
+                Route("/", health_check_handler),
+            ],
             lifespan=lambda _app: mcp.session_manager.run(),
         )
 
