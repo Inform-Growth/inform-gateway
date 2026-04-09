@@ -2,15 +2,18 @@
 FROM python:3.11-slim
 
 # Set environment variables
+# MCP_TRANSPORT=sse is CRITICAL for Railway/Remote deployment
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     NODE_MAJOR=20 \
+    MCP_TRANSPORT=sse \
+    MCP_SERVER_HOST=0.0.0.0 \
     PATH="/app/node_modules/.bin:/app/remote-gateway/vendor/node_modules/.bin:${PATH}"
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies and Node.js
+# Install system dependencies, Node.js, and curl
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
@@ -27,22 +30,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml package.json ./
 
 # Install Python and Node.js dependencies
-# Note: package.json install will put tools in /app/node_modules/.bin
 RUN pip install --no-cache-dir -e . && \
     npm install
 
 # Copy the rest of the application
 COPY . .
 
-# Ensure the vendor directory install also runs if needed (redundant but safe based on your previous config)
+# Ensure the vendor directory install also runs
 RUN npm install --prefix remote-gateway/vendor attio-mcp @modelcontextprotocol/server-github
 
-# Expose the gateway port
+# Expose the gateway port (Railway provides this via PORT env var)
 EXPOSE 8000
 
-# Set health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/ || exit 1
-
-# Start the gateway
-CMD ["python", "remote-gateway/core/mcp_server.py"]
+# Start the gateway, mapping Railway's PORT to MCP_SERVER_PORT
+CMD ["sh", "-c", "MCP_SERVER_PORT=${PORT:-8000} python remote-gateway/core/mcp_server.py"]
