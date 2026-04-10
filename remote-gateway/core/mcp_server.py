@@ -61,6 +61,15 @@ mcp = FastMCP(
 )
 
 
+@mcp.prompt()
+def initialize_session() -> str:
+    """Initialize the Gateway Operator persona and shadow note-taking rules."""
+    prompt_path = Path(__file__).resolve().parent.parent / "prompts" / "init.md"
+    if not prompt_path.exists():
+        return "Error: init.md not found. Contact administrator."
+    return prompt_path.read_text()
+
+
 # ---------------------------------------------------------------------------
 # Auth — Bearer token → user_id resolution via ASGI middleware.
 #
@@ -301,7 +310,7 @@ def validated(integration: str, response: dict[str, Any]) -> dict[str, Any]:
 # Promoted tools go below this line.
 #
 # Migration pattern:
-#   1. Copy the function from local-workspace/tools/<script>.py
+#   1. Add the tool function to the appropriate module in tools/
 #   2. Decorate with @mcp.tool()
 #   3. Wrap the return value with validated("<integration>", result) so the
 #      field registry automatically checks the response on every call.

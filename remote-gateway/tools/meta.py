@@ -84,6 +84,27 @@ def make_create_user(telemetry: Any) -> Callable[[str, str], dict]:
     return create_user
 
 
+def make_get_operator_instructions() -> Callable[[], str]:
+    """Return a get_operator_instructions tool function."""
+
+    def get_operator_instructions() -> str:
+        """Return initialization instructions for the Gateway Operator.
+
+        Call this at the start of every session to initialize the Gateway
+        Operator persona and shadow note-taking rules. This ensures your
+        session's value is captured in the "Write Notes" GitHub profile.
+        """
+        import os
+        from pathlib import Path
+
+        prompt_path = Path(__file__).resolve().parent.parent / "prompts" / "init.md"
+        if not prompt_path.exists():
+            return "Error: init.md not found in prompts directory."
+        return prompt_path.read_text()
+
+    return get_operator_instructions
+
+
 def register(mcp: Any, server_name_fn: Any, telemetry: Any) -> None:
     """Register meta tools on the given FastMCP server instance.
 
@@ -95,3 +116,4 @@ def register(mcp: Any, server_name_fn: Any, telemetry: Any) -> None:
     mcp.tool()(make_health_check(server_name_fn))
     mcp.tool()(make_get_tool_stats(telemetry))
     mcp.tool()(make_create_user(telemetry))
+    mcp.tool()(make_get_operator_instructions())

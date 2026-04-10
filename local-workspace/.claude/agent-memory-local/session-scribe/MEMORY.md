@@ -1,1 +1,0 @@
-- [Jaron operator profile](user_jaron.md) — owner/founder, operator branch operator/jaron, first session 2026-03-31 (workspace onboarding + Exa MCP config, key pending)

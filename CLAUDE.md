@@ -1,70 +1,55 @@
-# CLAUDE.md
+# CLAUDE.md: Agent Gateway
 
-This file provides guidance to Claude Code when working in this repository.
+This file provides guidance to Claude Code when working in the **inform-gateway** repository.
 
-# Agent Gateway — Monorepo
+# System Overview
 
-Distributed agent work. Governed through middleware. One source of truth.
+The Agent Gateway is a centralized MCP server that hosts promoted tools for business integrations (Attio, Apollo, Exa, etc.) and provides a unified interface for AI agents. It operates under a **"Gateway First"** architecture where all agent interactions are governed, documented, and shadowed for proactive improvement.
 
-Two isolated zones:
-
-- **`local-workspace/`** — Employee R&D sandbox. Employees sparse-checkout only this folder. Local AI agents connect to raw data sources, explore workflows, and codify them as skills.
-- **`remote-gateway/`** — Centralized MCP gateway. Admin-managed. Hosts promoted, QA-approved tools as official MCP endpoints. Never pulled by operators.
-
-## Commands
+## Core Commands
 
 ```bash
 # Install (from repo root)
 pip install -e .
 pip install -e ".[dev]"   # includes pytest and ruff
 
-# Lint
+# Lint & Test
 ruff check .
-
-# Test
 pytest
 
-# Run the remote gateway (stdio — local dev)
+# Run the Remote Gateway
+# Local dev (stdio)
 python remote-gateway/core/mcp_server.py
 
-# Run as SSE server (production — operators connect to this)
+# Production (SSE — operators connect to this)
 MCP_TRANSPORT=sse python remote-gateway/core/mcp_server.py
 ```
 
-## Architecture
+## Primary Mandate: Gateway Operator
 
-### Lifecycle: Local → Gateway
+When acting as an agent in this environment, you MUST initialize your session by calling `get_operator_instructions` or using the `initialize-session` prompt. This activates your **Shadow Note-taking** and **Issue Logging** duties.
 
-1. **Explore** — operator asks a question; agent uses local MCP connections (Stripe, HubSpot, Snowflake, etc.) to fetch data and answer.
-2. **Codify** — if the workflow is worth repeating, the agent creates `.claude/skills/<name>/SKILL.md` (instructions, becomes a `/slash-command`) and `.claude/skills/<name>/scripts/<name>.py` (the Python logic).
-3. **Auto-push** — Stop hook commits and pushes to `operator/<username>` branch automatically.
-4. **Auto-PR** — `auto_pr.yml` opens a pull request to main.
-5. **QA review** — `qa_agent_review.yml` runs a Claude agent (via OpenRouter) that reviews for safety, security, type hints, and docstring quality. Posts result as PR comment.
-6. **Human merge** — admin reads QA comment, merges if approved. Only mandatory human gate.
-7. **Auto-promote** — `auto_promote.yml` injects the script into `remote-gateway/core/mcp_server.py` with `@mcp.tool()`, copies field definitions, commits back to main.
-8. **Admin redeploys** — provisions any new env vars on the gateway server, restarts.
-9. **Fleet sync** — operators `git pull`; new skill is available as slash-command, new tool available on gateway.
+### Shadow Note-taking
+- **Trigger**: After every significant task or discovery.
+- **Action**: Call `write_note` to record the user's goal, the outcome, and whether the gateway did a "good job."
+- **Persistence**: Notes are written to the dedicated "Write Notes" GitHub repository.
 
-### Skill/Script Pairing Rule
+### Issue Logging
+- **Trigger**: Auth failures, tool errors (4xx/5xx), or "noisy/raw" data.
+- **Action**: Call `write_issue` to surface the problem to gateway administrators.
 
-Every Python script in `.claude/skills/<name>/scripts/` must have a `SKILL.md` in the same skill directory. Enforced by the QA agent.
+## Repository Structure
 
-### MCP Server Transports
-
-`remote-gateway/core/mcp_server.py` uses FastMCP and supports:
-- **stdio** (default) — local dev and `mcp run`
-- **SSE** — production; set `MCP_TRANSPORT=sse`
-
-### Zone-Specific Instructions
-
-- `local-workspace/.claude/CLAUDE.md` — skill structure, MCP config, background automation
-- `local-workspace/.claude/AGENTS.md` — agent identity, incubation loop, git protocol, guardrails
-- `remote-gateway/CLAUDE.md` — migration workflow, gateway management, field registry, admin guardrails
+- **`remote-gateway/`** — The core infrastructure.
+  - `core/` — FastMCP server and proxy logic.
+  - `tools/` — Integration tools (Attio, Notes, Meta).
+  - `prompts/` — System prompts and initialization logic.
+- **`tests/`** — Verification for tools and proxy reliability.
 
 ## Coding Standards
 
-- Python 3.14+. Type hints and docstrings required on every function.
-- Docstrings are MCP tool descriptions — write them for non-technical users.
-- All credentials via `os.environ` — never hardcoded.
-- Read-only by default. Mutating operations require explicit admin approval.
-- `ruff` for linting, line length 100.
+- **Python 3.14+**. Strict type hints and comprehensive docstrings are required.
+- **Docstrings are MCP descriptions**. Write them clearly for end-users.
+- **No Hardcoded Credentials**. Use `os.environ` exclusively.
+- **Read-Only by Default**. Mutating operations (POST, DELETE) require explicit admin approval in code review.
+- **Field Registry**. Wrap all tool responses with `validated("<integration>", result)` to ensure field consistency and drift detection.
