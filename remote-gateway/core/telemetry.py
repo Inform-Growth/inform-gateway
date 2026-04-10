@@ -51,14 +51,15 @@ CREATE TABLE IF NOT EXISTS api_keys (
 );
 
 CREATE TABLE IF NOT EXISTS tool_calls (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    tool_name   TEXT    NOT NULL,
-    called_at   REAL    NOT NULL,
-    duration_ms INTEGER NOT NULL,
-    success     INTEGER NOT NULL,
-    error_type  TEXT,
-    user_id     TEXT,
-    request_id  TEXT
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    tool_name     TEXT    NOT NULL,
+    called_at     REAL    NOT NULL,
+    duration_ms   INTEGER NOT NULL,
+    success       INTEGER NOT NULL,
+    error_type    TEXT,
+    user_id       TEXT,
+    request_id    TEXT,
+    response_size INTEGER
 );
 """
 
@@ -72,8 +73,9 @@ CREATE INDEX IF NOT EXISTS idx_user_id   ON tool_calls (user_id);
 
 # Columns added after initial release — applied via ALTER TABLE migration.
 _MIGRATIONS = [
-    ("tool_calls", "user_id",    "TEXT"),
-    ("tool_calls", "request_id", "TEXT"),
+    ("tool_calls", "user_id",       "TEXT"),
+    ("tool_calls", "request_id",    "TEXT"),
+    ("tool_calls", "response_size", "INTEGER"),
 ]
 
 
@@ -197,6 +199,7 @@ class TelemetryStore:
         error_type: str | None = None,
         user_id: str | None = None,
         request_id: str | None = None,
+        response_size: int | None = None,
     ) -> None:
         """Record a single tool invocation. Silent no-op if disabled.
 
@@ -208,6 +211,7 @@ class TelemetryStore:
             user_id: Resolved from the caller's API key by the auth middleware.
                 None for unauthenticated calls.
             request_id: Unique MCP request ID for this invocation.
+            response_size: Size of the response in characters/bytes.
         """
         if not self._enabled:
             return
@@ -215,11 +219,11 @@ class TelemetryStore:
             conn = self._connect()
             conn.execute(
                 "INSERT INTO tool_calls"
-                " (tool_name, called_at, duration_ms, success, error_type, user_id, request_id)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                " (tool_name, called_at, duration_ms, success, error_type, user_id, request_id, response_size)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     tool_name, time.time(), duration_ms, int(success),
-                    error_type, user_id, request_id,
+                    error_type, user_id, request_id, response_size,
                 ),
             )
             conn.commit()
@@ -240,7 +244,8 @@ class TelemetryStore:
         Returns:
             Dict with:
               - tools: list of per-tool stat dicts (call_count, error_count,
-                error_rate, last_called, avg_duration_ms, max_duration_ms)
+                error_rate, last_called, avg_duration_ms, max_duration_ms,
+                avg_response_size, max_response_size)
               - summary: total_calls, total_tools_seen, high_error_rate list
                 (tools with ≥5% error rate across ≥10 calls)
         """
@@ -263,7 +268,9 @@ class TelemetryStore:
                     SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END)  AS error_count,
                     MAX(called_at)                                 AS last_called_ts,
                     AVG(duration_ms)                               AS avg_ms,
-                    MAX(duration_ms)                               AS max_ms
+                    MAX(duration_ms)                               AS max_ms,
+                    AVG(response_size)                             AS avg_size,
+                    MAX(response_size)                             AS max_size
                 FROM tool_calls
                 {where}
                 GROUP BY tool_name
@@ -300,6 +307,8 @@ class TelemetryStore:
                     "last_called": last_called,
                     "avg_duration_ms": round(row["avg_ms"] or 0),
                     "max_duration_ms": row["max_ms"] or 0,
+                    "avg_response_size": round(row["avg_size"] or 0),
+                    "max_response_size": row["max_size"] or 0,
                 }
             )
 
@@ -322,7 +331,7 @@ class TelemetryStore:
             limit: Maximum number of recent calls to analyze.
 
         Returns:
-            Dict with 'sessions' (call sequences) and 'user_breakdown' (total calls per user).
+            Dict with 'recent_sequences' (call sequences) and 'user_breakdown' (total calls per user).
         """
         if not self._enabled:
             return {"error": "telemetry disabled"}
@@ -333,7 +342,7 @@ class TelemetryStore:
             # 1. Get raw sequence of recent calls
             rows = conn.execute(
                 """
-                SELECT tool_name, called_at, success, user_id, request_id
+                SELECT tool_name, called_at, success, user_id, request_id, response_size
                 FROM tool_calls
                 ORDER BY called_at DESC
                 LIMIT ?
@@ -367,7 +376,8 @@ class TelemetryStore:
                 "tool": row["tool_name"],
                 "time": ts,
                 "success": bool(row["success"]),
-                "request_id": row["request_id"]
+                "request_id": row["request_id"],
+                "response_size": row["response_size"],
             })
 
         return {
@@ -376,6 +386,84 @@ class TelemetryStore:
                 row["user_id"] or "anonymous": row["call_count"] 
                 for row in user_rows
             }
+        }
+
+    def user_flow_analysis(self, limit: int = 500) -> dict[str, Any]:
+        """Analyze common sequences of tool calls (flows) across all users.
+
+        Args:
+            limit: Number of recent calls to analyze.
+
+        Returns:
+            Dict with 'common_flows' (list of tool sequences and their frequencies).
+        """
+        if not self._enabled:
+            return {"error": "telemetry disabled"}
+
+        try:
+            conn = self._connect()
+            # Get calls ordered by user and time to reconstruct flows
+            rows = conn.execute(
+                """
+                SELECT user_id, request_id, tool_name, called_at
+                FROM tool_calls
+                WHERE success = 1
+                ORDER BY user_id, called_at ASC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            conn.close()
+        except Exception as exc:
+            return {"error": str(exc)}
+
+        # Reconstruct flows (sequences of tools) per session/user
+        # For simplicity, we define a flow as tools called within a 10-minute window
+        # or sharing the same request_id if available.
+        flows: list[list[str]] = []
+        current_flow: list[str] = []
+        last_user = None
+        last_time = 0
+
+        for row in rows:
+            user = row["user_id"]
+            time_ts = row["called_at"]
+            tool = row["tool_name"]
+
+            # Start new flow if user changes or more than 10 minutes pass
+            if user != last_user or (time_ts - last_time) > 600:
+                if current_flow:
+                    flows.append(current_flow)
+                current_flow = [tool]
+            else:
+                current_flow.append(tool)
+            
+            last_user = user
+            last_time = time_ts
+        
+        if current_flow:
+            flows.append(current_flow)
+
+        # Count frequencies of sequences (length 2 and 3)
+        sequences: dict[str, int] = {}
+        for flow in flows:
+            # Pairs
+            for i in range(len(flow) - 1):
+                seq = f"{flow[i]} -> {flow[i+1]}"
+                sequences[seq] = sequences.get(seq, 0) + 1
+            # Triplets
+            for i in range(len(flow) - 2):
+                seq = f"{flow[i]} -> {flow[i+1]} -> {flow[i+2]}"
+                sequences[seq] = sequences.get(seq, 0) + 1
+
+        # Sort by frequency
+        sorted_sequences = sorted(sequences.items(), key=lambda x: x[1], reverse=True)
+        
+        return {
+            "common_flows": [
+                {"sequence": seq, "count": count}
+                for seq, count in sorted_sequences[:20]
+            ]
         }
 
 

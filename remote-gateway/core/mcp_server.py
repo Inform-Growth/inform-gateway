@@ -257,6 +257,14 @@ def _get_call_ids() -> tuple[str | None, str | None]:
     return user_id, request_id
 
 
+def _calculate_response_size(result: Any) -> int:
+    """Return the approximate size of the result in characters."""
+    try:
+        return len(str(result))
+    except Exception:
+        return 0
+
+
 _orig_mcp_tool = mcp.tool
 
 
@@ -274,7 +282,7 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                     result = await fn(*fn_args, **fn_kwargs)
                     _telemetry.record(
                         fn.__name__, int((_time.monotonic() - t0) * 1000), True,
-                        user_id=sid, request_id=rid,
+                        user_id=sid, request_id=rid, response_size=_calculate_response_size(result),
                     )
                     return result
                 except Exception as exc:
@@ -294,7 +302,7 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                 result = fn(*fn_args, **fn_kwargs)
                 _telemetry.record(
                     fn.__name__, int((_time.monotonic() - t0) * 1000), True,
-                    user_id=sid, request_id=rid,
+                    user_id=sid, request_id=rid, response_size=_calculate_response_size(result),
                 )
                 return result
             except Exception as exc:
@@ -332,7 +340,7 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
                 result = await fn(*fn_args, **fn_kwargs)
                 _telemetry.record(
                     tool_name, int((_time.monotonic() - t0) * 1000), True,
-                    user_id=sid, request_id=rid,
+                    user_id=sid, request_id=rid, response_size=_calculate_response_size(result),
                 )
                 return result
             except Exception as exc:
@@ -352,7 +360,7 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
             result = fn(*fn_args, **fn_kwargs)
             _telemetry.record(
                 tool_name, int((_time.monotonic() - t0) * 1000), True,
-                user_id=sid, request_id=rid,
+                user_id=sid, request_id=rid, response_size=_calculate_response_size(result),
             )
             return result
         except Exception as exc:
