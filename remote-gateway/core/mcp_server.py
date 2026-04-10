@@ -316,33 +316,8 @@ def validated(integration: str, response: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Promoted tools go below this line.
-#
-# Migration pattern:
-#   1. Add the tool function to the appropriate module in tools/
-#   2. Decorate with @mcp.tool()
-#   3. Wrap the return value with validated("<integration>", result) so the
-#      field registry automatically checks the response on every call.
-#   4. Ensure all credentials use os.environ (never hardcode)
-#   5. Verify the docstring is clear — it becomes the MCP tool description
-#
-# Example:
-#
-#   @mcp.tool()
-#   def get_churn_metrics(period: str = "30d") -> dict:
-#       """Fetch customer churn metrics from Stripe for a given period.
-#
-#       Args:
-#           period: Time window for churn calculation (e.g., "7d", "30d", "90d").
-#
-#       Returns:
-#           Dict with churn_rate, churned_customers, and total_customers.
-#       """
-#       result = {...}  # fetch from Stripe
-#       return validated("stripe", result)
-#
+# Main Entrypoint
 # ---------------------------------------------------------------------------
-
 
 if __name__ == "__main__":
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
@@ -352,14 +327,6 @@ if __name__ == "__main__":
 
         # Serve both SSE (legacy Claude Code / existing operators) and
         # streamable-http (Claude Desktop, newer clients) on the same port.
-        # SSE: GET /sse + POST /messages/
-        # Streamable-HTTP: POST /mcp
-        #
-        # streamable_http_app() lazily creates mcp._session_manager and
-        # returns a Starlette app whose lifespan calls session_manager.run().
-        # We must preserve that lifespan in the combined app — without it the
-        # session manager's task group is never started and every POST /mcp
-        # raises RuntimeError("Task group is not initialized").
         _sse = mcp.sse_app()
         _http = mcp.streamable_http_app()
         
@@ -369,9 +336,21 @@ if __name__ == "__main__":
         async def health_check_handler(request):
             return JSONResponse({"status": "ok", "transport": transport})
 
+        @asynccontextmanager
+        async def combined_lifespan(app):
+            # 1. Start upstream MCP proxy connections using our defined lifespan logic.
+            # This registers tools/prompts on the 'mcp' (FastMCP) instance.
+            async with lifespan(mcp):
+                # 2. Re-setup handlers to ensure Prompts/Tools capabilities are updated
+                # in the MCP server instance based on what was just mounted.
+                mcp._setup_handlers()
+                
+                # 3. Start the FastMCP session manager which handles the underlying 
+                # JSON-RPC protocol state for both SSE and HTTP transports.
+                async with mcp.session_manager.run():
+                    yield
+
         # Mount SSE and streamable-http routes directly at the root.
-        # SSE: GET /sse + POST /messages/
-        # HTTP: POST /mcp
         _combined = Starlette(
             routes=[
                 *_sse.routes,
@@ -379,7 +358,7 @@ if __name__ == "__main__":
                 Route("/health", health_check_handler),
                 Route("/", health_check_handler),
             ],
-            lifespan=lambda _app: mcp.session_manager.run(),
+            lifespan=combined_lifespan,
         )
 
         uvicorn.run(
