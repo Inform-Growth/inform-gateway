@@ -416,17 +416,24 @@ async def _run_stdio_proxy(
         ):
             await session.initialize()
             tools_response = await session.list_tools()
+            prompts_response = await session.list_prompts()
 
             tools_config = config.get("tools")
-            registered = 0
+            registered_tools = 0
             for tool in tools_response.tools:
                 if _should_register_tool(tool.name, tools_config):
                     _register_proxy_tool(mcp_server, name, tool, session)
-                    registered += 1
+                    registered_tools += 1
 
-            total = len(tools_response.tools)
-            suffix = f" ({total - registered} filtered)" if registered != total else ""
-            print(f"  [proxy] '{name}' connected — {registered} tool(s) registered{suffix}")
+            registered_prompts = 0
+            for prompt in prompts_response.prompts:
+                _register_proxy_prompt(mcp_server, name, prompt, session)
+                registered_prompts += 1
+
+            total_tools = len(tools_response.tools)
+            suffix = f" ({total_tools - registered_tools} filtered)" if registered_tools != total_tools else ""
+            prompt_suffix = f", {registered_prompts} prompt(s)" if registered_prompts else ""
+            print(f"  [proxy] '{name}' connected — {registered_tools} tool(s){prompt_suffix} registered{suffix}")
             ready.set()
 
             # Hold the connection open for the gateway's lifetime.
@@ -487,21 +494,29 @@ async def _run_http_proxy(
 
                 if not tools_registered:
                     tools_response = await session.list_tools()
+                    prompts_response = await session.list_prompts()
                     tools_config = config.get("tools")
-                    registered = 0
+                    registered_tools = 0
                     for tool in tools_response.tools:
                         if _should_register_tool(tool.name, tools_config):
                             _register_proxy_tool(mcp_server, name, tool, session)
-                            registered += 1
-                    total = len(tools_response.tools)
+                            registered_tools += 1
+                    
+                    registered_prompts = 0
+                    for prompt in prompts_response.prompts:
+                        _register_proxy_prompt(mcp_server, name, prompt, session)
+                        registered_prompts += 1
+
+                    total_tools = len(tools_response.tools)
                     suffix = (
-                        f" ({total - registered} filtered)"
-                        if registered != total
+                        f" ({total_tools - registered_tools} filtered)"
+                        if registered_tools != total_tools
                         else ""
                     )
+                    prompt_suffix = f", {registered_prompts} prompt(s)" if registered_prompts else ""
                     print(
                         f"  [proxy] '{name}' connected — "
-                        f"{registered} tool(s) registered{suffix}"
+                        f"{registered_tools} tool(s){prompt_suffix} registered{suffix}"
                     )
                     tools_registered = True
                     ready.set()
@@ -587,16 +602,24 @@ async def _run_streamable_http_proxy(
         ):
             await session.initialize()
             tools_response = await session.list_tools()
+            prompts_response = await session.list_prompts()
 
         tools_config = config.get("tools")
-        registered = 0
+        registered_tools = 0
         for tool in tools_response.tools:
             if _should_register_tool(tool.name, tools_config):
                 _register_streamable_http_proxy_tool(mcp_server, name, tool, url, config)
-                registered += 1
-        total = len(tools_response.tools)
-        suffix = f" ({total - registered} filtered)" if registered != total else ""
-        print(f"  [proxy] '{name}' connected — {registered} tool(s) registered{suffix}")
+                registered_tools += 1
+
+        registered_prompts = 0
+        for prompt in prompts_response.prompts:
+            _register_streamable_http_proxy_prompt(mcp_server, name, prompt, url, config)
+            registered_prompts += 1
+
+        total_tools = len(tools_response.tools)
+        suffix = f" ({total_tools - registered_tools} filtered)" if registered_tools != total_tools else ""
+        prompt_suffix = f", {registered_prompts} prompt(s)" if registered_prompts else ""
+        print(f"  [proxy] '{name}' connected — {registered_tools} tool(s){prompt_suffix} registered{suffix}")
         ready.set()
 
     except Exception as exc:  # noqa: BLE001
@@ -781,6 +804,47 @@ def _register_proxy_tool(
     mcp_server.add_tool(proxy_fn, name=gateway_name, description=description)
 
 
+def _register_proxy_prompt(
+    mcp_server: Any,
+    integration: str,
+    prompt: Any,
+    session: ClientSession,
+) -> None:
+    """Register a single upstream prompt as a callable on the gateway.
+
+    Args:
+        mcp_server: FastMCP server to register the prompt on.
+        integration: Integration slug (e.g., "stripe").
+        prompt: MCP Prompt object from list_prompts() response.
+        session: Live ClientSession used to forward calls.
+    """
+    upstream_name: str = prompt.name
+    gateway_name: str = f"{integration}__{upstream_name}"
+    description: str = (
+        (prompt.description or upstream_name)
+        + f"\n\n[Proxied from the '{integration}' integration. Managed by gateway admin.]"
+    )
+
+    async def proxy_fn(arguments: dict[str, Any] | None = None) -> str:
+        """Forward the prompt request to the upstream MCP server."""
+        try:
+            result = await session.get_prompt(upstream_name, arguments)
+            # Prompts return a list of messages (text/image/resource).
+            # FastMCP expects the function to return a single string or a Prompt object.
+            # We join text components for simplicity if returning a string.
+            texts = []
+            for msg in result.messages:
+                if msg.content.type == "text":
+                    texts.append(msg.content.text)
+            return "\n\n".join(texts)
+        except Exception as exc:
+            return f"Error fetching proxied prompt '{gateway_name}': {exc}"
+
+    proxy_fn.__name__ = gateway_name
+    proxy_fn.__doc__ = description
+    mcp_server.add_prompt(proxy_fn, name=gateway_name, description=description)
+
+
 def _register_streamable_http_proxy_tool(
     mcp_server: Any,
     integration: str,
@@ -848,6 +912,53 @@ def _register_streamable_http_proxy_tool(
     proxy_fn.__name__ = gateway_name
     proxy_fn.__doc__ = description
     mcp_server.add_tool(proxy_fn, name=gateway_name, description=description)
+
+
+def _register_streamable_http_proxy_prompt(
+    mcp_server: Any,
+    integration: str,
+    prompt: Any,
+    url: str,
+    config: dict,
+) -> None:
+    """Register a streamable HTTP prompt that opens a fresh connection per call.
+
+    Args:
+        mcp_server: FastMCP server to register the prompt on.
+        integration: Integration slug (e.g., "exa").
+        prompt: MCP Prompt object from list_prompts() response.
+        url: Upstream MCP endpoint URL.
+        config: Full connection config.
+    """
+    upstream_name: str = prompt.name
+    gateway_name: str = f"{integration}__{upstream_name}"
+    description: str = (
+        (prompt.description or upstream_name)
+        + f"\n\n[Proxied from the '{integration}' integration. Managed by gateway admin.]"
+    )
+
+    async def proxy_fn(arguments: dict[str, Any] | None = None) -> str:
+        """Forward the call via a fresh connection to the upstream MCP server."""
+        try:
+            auth_headers = await resolve_auth_headers(config)
+            async with (
+                httpx.AsyncClient(headers=auth_headers) as http_client,
+                streamable_http_client(url, http_client=http_client) as (read, write, *_),
+                ClientSession(read, write) as session,
+            ):
+                await session.initialize()
+                result = await session.get_prompt(upstream_name, arguments)
+                texts = []
+                for msg in result.messages:
+                    if msg.content.type == "text":
+                        texts.append(msg.content.text)
+                return "\n\n".join(texts)
+        except Exception as exc:
+            return f"Error fetching proxied prompt '{gateway_name}': {exc}"
+
+    proxy_fn.__name__ = gateway_name
+    proxy_fn.__doc__ = description
+    mcp_server.add_prompt(proxy_fn, name=gateway_name, description=description)
 
 
 # ---------------------------------------------------------------------------

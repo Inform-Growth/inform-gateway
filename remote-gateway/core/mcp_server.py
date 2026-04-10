@@ -70,6 +70,15 @@ def initialize_session() -> str:
     return prompt_path.read_text()
 
 
+@mcp.prompt()
+def qa_agent_instructions() -> str:
+    """Standard instructions for QA agents reviewing gateway tool usage."""
+    prompt_path = Path(__file__).resolve().parent.parent / "prompts" / "qa_agent_instructions.md"
+    if not prompt_path.exists():
+        return "Error: qa_agent_instructions.md not found. Contact administrator."
+    return prompt_path.read_text()
+
+
 # ---------------------------------------------------------------------------
 # Auth — Bearer token → user_id resolution via ASGI middleware.
 #
@@ -355,17 +364,18 @@ if __name__ == "__main__":
         _http = mcp.streamable_http_app()
         
         from starlette.responses import JSONResponse
-        from starlette.routing import Route, Mount
+        from starlette.routing import Route
 
         async def health_check_handler(request):
             return JSONResponse({"status": "ok", "transport": transport})
 
+        # Mount SSE and streamable-http routes directly at the root.
         # SSE: GET /sse + POST /messages/
         # HTTP: POST /mcp
         _combined = Starlette(
             routes=[
-                Mount("/sse", routes=_sse.routes),
-                Mount("/mcp", routes=_http.routes),
+                *_sse.routes,
+                *_http.routes,
                 Route("/health", health_check_handler),
                 Route("/", health_check_handler),
             ],
