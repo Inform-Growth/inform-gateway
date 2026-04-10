@@ -61,8 +61,8 @@ mcp = FastMCP(
 )
 
 
-@mcp.prompt()
-def initialize_session() -> str:
+@mcp.prompt(description="Initialize gateway operator context")
+def operator_init() -> str:
     """Initialize the Gateway Operator persona and shadow note-taking rules."""
     prompt_path = Path(__file__).resolve().parent.parent / "prompts" / "init.md"
     if not prompt_path.exists():
@@ -70,13 +70,57 @@ def initialize_session() -> str:
     return prompt_path.read_text()
 
 
-@mcp.prompt()
+@mcp.prompt(description="Standard instructions for QA agents reviewing gateway tool usage")
 def qa_agent_instructions() -> str:
-    """Standard instructions for QA agents reviewing gateway tool usage."""
+    """Return instructions for QA agents reviewing gateway tool usage."""
     prompt_path = Path(__file__).resolve().parent.parent / "prompts" / "qa_agent_instructions.md"
     if not prompt_path.exists():
         return "Error: qa_agent_instructions.md not found. Contact administrator."
     return prompt_path.read_text()
+
+
+@mcp.prompt(description="Run a weekly pipeline review across Attio and Apollo")
+def weekly_pipeline_review() -> str:
+    """Analyze Attio deals and cross-reference with Apollo activity."""
+    return """
+Pull all open deals from Attio. For each:
+- Check last activity date — flag anything with no contact in 14+ days
+- Check Apollo for any recent email activity on the contact
+Return a prioritized action list: who to follow up with toospect.
+"""
+
+
+@mcp.prompt(description="Research a company and brief the outreach angle")
+def research_prospect(company: str) -> str:
+    """Research a company using Exa and check Attio/Apollo."""
+    return f"""
+Research {company} using Exa web search. Then check if they exist in Attio and Apollo.
+Return a 1-page brief: what they do, company size, tech stack signals, recent news, and the best outreach angle.
+"""
+
+
+@mcp.prompt(description="Morning RevOps briefing")
+def morning_briefing() -> str:
+    """Daily summary of Attio deals and new Apollo contacts."""
+    return """
+Give me my morning RevOps briefing:
+1. Attio: any deals with activity today or overdue tasks
+2. Apollo: new contacts added this week
+3. Anything that needs immediate attention
+Keep it tight — bullets only.
+"""
+
+
+@mcp.prompt(description="Add a new prospect to Attio and Apollo")
+def add_prospect(name: str, company: str) -> str:
+    """Enrich a contact in Apollo and create records in Attio."""
+    return f"""
+Add {name} from {company} as a new prospect:
+1. Search Apollo for their contact record and enrich it
+2. Create or update their record in Attio under People
+3. Link them to the company in Attio
+4. Confirm at was created.
+"""
 
 
 # ---------------------------------------------------------------------------
