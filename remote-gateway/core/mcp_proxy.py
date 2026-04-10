@@ -415,8 +415,18 @@ async def _run_stdio_proxy(
             ClientSession(read, write) as session,
         ):
             await session.initialize()
-            tools_response = await session.list_tools()
-            prompts_response = await session.list_prompts()
+            
+            try:
+                tools_response = await session.list_tools()
+            except Exception:
+                from mcp.types import ListToolsResult
+                tools_response = ListToolsResult(tools=[])
+
+            try:
+                prompts_response = await session.list_prompts()
+            except Exception:
+                from mcp.types import ListPromptsResult
+                prompts_response = ListPromptsResult(prompts=[])
 
             tools_config = config.get("tools")
             registered_tools = 0
@@ -493,8 +503,18 @@ async def _run_http_proxy(
                 await session.initialize()
 
                 if not tools_registered:
-                    tools_response = await session.list_tools()
-                    prompts_response = await session.list_prompts()
+                    try:
+                        tools_response = await session.list_tools()
+                    except Exception:
+                        from mcp.types import ListToolsResult
+                        tools_response = ListToolsResult(tools=[])
+
+                    try:
+                        prompts_response = await session.list_prompts()
+                    except Exception:
+                        from mcp.types import ListPromptsResult
+                        prompts_response = ListPromptsResult(prompts=[])
+
                     tools_config = config.get("tools")
                     registered_tools = 0
                     for tool in tools_response.tools:
@@ -601,8 +621,17 @@ async def _run_streamable_http_proxy(
             ClientSession(read, write) as session,
         ):
             await session.initialize()
-            tools_response = await session.list_tools()
-            prompts_response = await session.list_prompts()
+            try:
+                tools_response = await session.list_tools()
+            except Exception:
+                from mcp.types import ListToolsResult
+                tools_response = ListToolsResult(tools=[])
+
+            try:
+                prompts_response = await session.list_prompts()
+            except Exception:
+                from mcp.types import ListPromptsResult
+                prompts_response = ListPromptsResult(prompts=[])
 
         tools_config = config.get("tools")
         registered_tools = 0
