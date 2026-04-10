@@ -315,6 +315,69 @@ class TelemetryStore:
             },
         }
 
+    def session_usage(self, limit: int = 100) -> dict[str, Any]:
+        """Return a sequence of recent tool calls grouped by user and request.
+
+        Args:
+            limit: Maximum number of recent calls to analyze.
+
+        Returns:
+            Dict with 'sessions' (call sequences) and 'user_breakdown' (total calls per user).
+        """
+        if not self._enabled:
+            return {"error": "telemetry disabled"}
+
+        try:
+            conn = self._connect()
+            
+            # 1. Get raw sequence of recent calls
+            rows = conn.execute(
+                """
+                SELECT tool_name, called_at, success, user_id, request_id
+                FROM tool_calls
+                ORDER BY called_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            
+            # 2. Get breakdown by user (all time)
+            user_rows = conn.execute(
+                """
+                SELECT user_id, COUNT(*) as call_count
+                FROM tool_calls
+                GROUP BY user_id
+                ORDER BY call_count DESC
+                """
+            ).fetchall()
+            
+            conn.close()
+        except Exception as exc:
+            return {"error": str(exc)}
+
+        # Group calls by user_id
+        user_history: dict[str, list[dict]] = {}
+        for row in rows:
+            uid = row["user_id"] or "anonymous"
+            if uid not in user_history:
+                user_history[uid] = []
+            
+            ts = datetime.datetime.fromtimestamp(row["called_at"], tz=datetime.UTC).strftime("%H:%M:%S")
+            user_history[uid].append({
+                "tool": row["tool_name"],
+                "time": ts,
+                "success": bool(row["success"]),
+                "request_id": row["request_id"]
+            })
+
+        return {
+            "recent_sequences": user_history,
+            "user_breakdown": {
+                row["user_id"] or "anonymous": row["call_count"] 
+                for row in user_rows
+            }
+        }
+
 
 # Module-level singleton — imported by mcp_server.py
 telemetry = TelemetryStore()

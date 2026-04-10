@@ -16,13 +16,13 @@ The Agent Gateway is a centralized MCP server that bridges the gap between raw d
 
 ### 1. Connect to the Gateway
 
-Add the gateway's SSE or HTTP endpoint to your MCP client (Claude Desktop, Claude Code, etc.):
+Add the gateway's URL to your MCP client (Claude for Work, Claude Desktop, etc.):
 
 ```json
 {
   "mcpServers": {
     "inform-gateway": {
-      "url": "https://your-gateway-url.com/sse",
+      "url": "https://your-gateway.railway.app/sse",
       "headers": {
         "Authorization": "Bearer sk-your-api-key"
       }
@@ -33,13 +33,23 @@ Add the gateway's SSE or HTTP endpoint to your MCP client (Claude Desktop, Claud
 
 ### 2. Initialize your Session
 
-At the start of every session, call the `get_operator_instructions` tool or use the `initialize-session` prompt. This will:
+At the start of every session, use the `/operator_init` slash command (or call the `operator_init` tool if your client does not support slash commands). This will:
 - Initialize the **Gateway Operator** persona.
 - Activate the **Shadow Note-taking** and **Issue Logging** rules.
 
 ---
 
-## How it Works
+## Features
+
+### Prompt Discovery
+The gateway provides several high-level prompts for common workflows. If your client supports slash commands, you can invoke these directly by typing `/`:
+- `/operator_init`: Set up your session context.
+- `/morning_briefing`: Get a summary of Attio deals and Apollo contacts.
+- `/weekly_pipeline_review`: Cross-reference Attio deals with Apollo activity.
+- `/research_prospect`: Deep research on a company using Exa, Attio, and Apollo.
+- `/add_prospect`: Enrich a contact in Apollo and create records in Attio.
+
+**If you don't see slash commands:** Use the `list_prompts` tool to see available templates and `get_prompt` to execute them.
 
 ### Shadow Note-taking
 When you use the gateway, the agent acting on your behalf is instructed to "shadow" your work. After significant tasks, it calls `write_note` to record:

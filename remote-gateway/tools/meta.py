@@ -105,6 +105,27 @@ def make_get_operator_instructions() -> Callable[[], str]:
     return get_operator_instructions
 
 
+def make_get_session_usage(telemetry: Any) -> Callable[[int], dict]:
+    """Return a get_session_usage tool function bound to the given telemetry instance."""
+
+    def get_session_usage(limit: int = 100) -> dict:
+        """Analyze tool call sequences and user-level usage breakdown.
+
+        Use this to understand how operators are interacting with the gateway:
+        the order in which tools are called (sequences) and the distribution
+        of work across different users.
+
+        Args:
+            limit: Maximum number of recent calls to include in the sequence analysis.
+
+        Returns:
+            Dict with 'recent_sequences' (calls grouped by user) and 'user_breakdown'.
+        """
+        return telemetry.session_usage(limit)
+
+    return get_session_usage
+
+
 def register(mcp: Any, server_name_fn: Any, telemetry: Any) -> None:
     """Register meta tools on the given FastMCP server instance.
 
@@ -115,5 +136,6 @@ def register(mcp: Any, server_name_fn: Any, telemetry: Any) -> None:
     """
     mcp.tool()(make_health_check(server_name_fn))
     mcp.tool()(make_get_tool_stats(telemetry))
+    mcp.tool()(make_get_session_usage(telemetry))
     mcp.tool()(make_create_user(telemetry))
     mcp.tool()(make_get_operator_instructions())

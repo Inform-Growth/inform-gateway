@@ -37,6 +37,7 @@ def attio__search_records(
     object_type: str,
     query: str | None = None,
     limit: int = 20,
+    ctx: Any | None = None,
 ) -> dict[str, Any]:
     """Search or list Attio records by name.
 
@@ -48,12 +49,17 @@ def attio__search_records(
         query: Text to search for in the record name field (partial match).
             Omit or pass None to list all records without filtering.
         limit: Maximum number of records to return. Defaults to 20.
+        ctx: MCP Context for session state (optional).
 
     Returns:
         Dict with 'records' list, 'count', and 'object_type'.
         Each record has 'id.record_id' and 'values'.
     """
     import httpx
+
+    # If Context is available, we could track 'last_searched_object'
+    # if ctx and hasattr(ctx, 'set_state'):
+    #     asyncio.create_task(ctx.set_state("last_searched_object", object_type))
 
     url = f"{_ATTIO_BASE}/objects/{object_type}/records/query"
     body: dict[str, Any] = {"limit": limit}
@@ -75,6 +81,7 @@ def attio__search_records(
 def attio__create_record(
     object_type: str,
     values: dict[str, Any],
+    ctx: Any | None = None,
 ) -> dict[str, Any]:
     """Create a new record in Attio.
 
@@ -93,6 +100,7 @@ def attio__create_record(
     Args:
         object_type: Record type to create — "companies" or "people".
         values: Attribute values in Attio REST API format (see docstring examples).
+        ctx: MCP Context for session state (optional).
 
     Returns:
         Dict with 'record_id', 'object_type', and 'data' (the created record).

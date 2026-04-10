@@ -53,12 +53,48 @@ async def lifespan(server: FastMCP):
         await asyncio.gather(*proxy_tasks, return_exceptions=True)
 
 
+# Load instructions from init.md
+_init_prompt_path = Path(__file__).resolve().parent.parent / "prompts" / "init.md"
+_instructions = _init_prompt_path.read_text() if _init_prompt_path.exists() else None
+
 mcp = FastMCP(
     os.environ.get("MCP_SERVER_NAME", "inform-gateway"),
+    instructions=_instructions,
     lifespan=lifespan,
     host=os.environ.get("MCP_SERVER_HOST", "0.0.0.0"),
     port=int(os.environ.get("MCP_SERVER_PORT", "8000")),
 )
+
+
+@mcp.tool()
+async def list_prompts() -> list[dict[str, Any]]:
+    """Return a list of all available prompts and their arguments.
+    
+    Use this to discover templates for specific workflows like research or briefings.
+    """
+    prompts = await mcp.list_prompts()
+    return [
+        {
+            "name": p.name,
+            "description": p.description,
+            "arguments": [
+                {"name": arg.name, "description": arg.description, "required": arg.required}
+                for arg in (p.arguments or [])
+            ]
+        }
+        for p in prompts
+    ]
+
+
+@mcp.tool()
+async def get_prompt(name: str, arguments: dict[str, Any] | None = None) -> str:
+    """Retrieve and render a specific prompt template by name.
+    
+    Args:
+        name: The name of the prompt to retrieve.
+        arguments: Dict of arguments to fill into the template.
+    """
+    return await mcp.get_prompt(name, arguments)
 
 
 @mcp.prompt(description="Initialize gateway operator context")
@@ -120,6 +156,24 @@ Add {name} from {company} as a new prospect:
 2. Create or update their record in Attio under People
 3. Link them to the company in Attio
 4. Confirm at was created.
+"""
+
+
+@mcp.prompt(description="How to use these prompts in your client")
+def how_to_use_prompts() -> str:
+    """Return a guide on how to invoke these workflows in Claude."""
+    return """
+# How to use Gateway Workflows
+
+## 1. Slash Commands (Preferred)
+In your chat box, simply type `/` followed by a command name. For example:
+- `/operator_init`
+- `/morning_briefing`
+
+## 2. Prompts as Tools
+If you do not see a slash menu (common in some desktop versions), you can ask Claude to "list available prompts" or "run the morning briefing prompt". 
+
+Claude will use the `list_prompts` and `get_prompt` tools to find and execute these templates for you automatically.
 """
 
 
