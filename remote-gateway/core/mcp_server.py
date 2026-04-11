@@ -445,21 +445,22 @@ if __name__ == "__main__":
         _http = mcp.streamable_http_app()
         
         from starlette.responses import JSONResponse
-        from starlette.routing import Route
+        from starlette.routing import Mount, Route
+        from admin_api import create_admin_app as _create_admin_app
 
-        async def health_check_handler(request):
+        async def health_check_handler(_request):
             return JSONResponse({"status": "ok", "transport": transport})
 
         @asynccontextmanager
-        async def combined_lifespan(app):
+        async def combined_lifespan(_app):
             # 1. Start upstream MCP proxy connections using our defined lifespan logic.
             # This registers tools/prompts on the 'mcp' (FastMCP) instance.
             async with lifespan(mcp):
                 # 2. Re-setup handlers to ensure Prompts/Tools capabilities are updated
                 # in the MCP server instance based on what was just mounted.
                 mcp._setup_handlers()
-                
-                # 3. Start the FastMCP session manager which handles the underlying 
+
+                # 3. Start the FastMCP session manager which handles the underlying
                 # JSON-RPC protocol state for both SSE and HTTP transports.
                 async with mcp.session_manager.run():
                     yield
@@ -467,6 +468,7 @@ if __name__ == "__main__":
         # Mount SSE and streamable-http routes directly at the root.
         _combined = Starlette(
             routes=[
+                Mount("/admin", app=_create_admin_app(_telemetry)),
                 *_sse.routes,
                 *_http.routes,
                 Route("/health", health_check_handler),
