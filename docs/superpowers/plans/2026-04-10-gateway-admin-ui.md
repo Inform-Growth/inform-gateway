@@ -1053,78 +1053,95 @@ git commit -m "test: add admin API tests for token enforcement, users, permissio
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gateway Admin</title>
   <style>
+    /* Mid-Century Modern — cream, forest green, burnt orange */
+    :root {
+      --cream:       #f2ead8;
+      --cream-light: #faf6ec;
+      --cream-dark:  #e6dcc4;
+      --green:       #2d5a27;
+      --green-mid:   #4a7a3e;
+      --green-light: #6ba35a;
+      --orange:      #c8501a;
+      --orange-light:#e07040;
+      --text:        #1e2a18;
+      --text-muted:  #6b6b50;
+      --border:      #c4b492;
+    }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
-    header { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.5rem; background: #1a1d27; border-bottom: 1px solid #2d3148; }
-    header h1 { font-size: 1.1rem; font-weight: 600; color: #fff; flex: 1; }
-    .tabs { display: flex; gap: 0.25rem; }
-    .tab { padding: 0.4rem 1rem; border: 1px solid #2d3148; border-radius: 6px; background: transparent; color: #94a3b8; cursor: pointer; font-size: 0.85rem; }
-    .tab.active { background: #2563eb; border-color: #2563eb; color: #fff; }
-    .refresh-btn { padding: 0.35rem 0.75rem; border: 1px solid #374151; border-radius: 6px; background: transparent; color: #94a3b8; cursor: pointer; font-size: 0.8rem; }
-    .refresh-btn:hover { background: #1f2937; }
+    body { font-family: 'Georgia', 'Times New Roman', serif; background: var(--cream); color: var(--text); min-height: 100vh; }
+    /* Header — deep green bar with cream text */
+    header { display: flex; align-items: center; gap: 1rem; padding: 0.9rem 1.5rem; background: var(--green); border-bottom: 4px solid var(--orange); }
+    header h1 { font-family: system-ui, sans-serif; font-size: 1rem; font-weight: 700; color: var(--cream); letter-spacing: 0.12em; text-transform: uppercase; flex: 1; }
+    .tabs { display: flex; gap: 0; border: 2px solid var(--cream-dark); border-radius: 0; overflow: hidden; }
+    .tab { padding: 0.35rem 1.1rem; border: none; background: transparent; color: var(--cream-dark); cursor: pointer; font-family: system-ui, sans-serif; font-size: 0.78rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; border-right: 2px solid var(--cream-dark); }
+    .tab:last-child { border-right: none; }
+    .tab.active { background: var(--orange); color: #fff; }
+    .tab:hover:not(.active) { background: var(--green-mid); }
+    .refresh-btn { padding: 0.3rem 0.75rem; border: 1px solid var(--cream-dark); background: transparent; color: var(--cream-dark); cursor: pointer; font-family: system-ui, sans-serif; font-size: 0.75rem; }
+    .refresh-btn:hover { background: var(--green-mid); }
     main { padding: 1.5rem; }
     .view { display: none; }
     .view.active { display: block; }
-    /* Cards */
+    /* Cards — cream panels with green left border */
     .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
-    .card { background: #1a1d27; border: 1px solid #2d3148; border-radius: 10px; padding: 1.25rem; }
-    .card .label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .05em; color: #64748b; margin-bottom: 0.4rem; }
-    .card .value { font-size: 2rem; font-weight: 700; color: #fff; }
-    .card .value.red { color: #f87171; }
-    .card .value.green { color: #34d399; }
+    .card { background: var(--cream-light); border: 1px solid var(--border); border-left: 4px solid var(--green); padding: 1.25rem; }
+    .card .label { font-family: system-ui, sans-serif; font-size: 0.68rem; text-transform: uppercase; letter-spacing: .1em; color: var(--text-muted); margin-bottom: 0.5rem; }
+    .card .value { font-size: 2.2rem; font-weight: 700; font-family: system-ui, sans-serif; color: var(--green); }
+    .card .value.red { color: var(--orange); }
+    .card .value.green { color: var(--green-mid); }
     /* Section titles */
-    h2 { font-size: 0.85rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 0.75rem; }
-    .section { background: #1a1d27; border: 1px solid #2d3148; border-radius: 10px; padding: 1.25rem; margin-bottom: 1.5rem; }
+    h2 { font-family: system-ui, sans-serif; font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .12em; margin-bottom: 0.75rem; border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }
+    .section { background: var(--cream-light); border: 1px solid var(--border); padding: 1.25rem; margin-bottom: 1.5rem; }
     /* Tables */
-    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-    th { text-align: left; padding: 0.5rem 0.75rem; font-size: 0.72rem; text-transform: uppercase; color: #64748b; border-bottom: 1px solid #2d3148; cursor: pointer; user-select: none; }
-    th:hover { color: #94a3b8; }
-    td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #1e2132; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; font-family: system-ui, sans-serif; }
+    th { text-align: left; padding: 0.5rem 0.75rem; font-size: 0.68rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); border-bottom: 2px solid var(--green); cursor: pointer; user-select: none; background: var(--cream-dark); }
+    th:hover { color: var(--green); }
+    td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--cream-dark); }
     tr:last-child td { border-bottom: none; }
-    tr:hover td { background: #20253a; }
-    .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.7rem; font-weight: 600; }
-    .badge.red { background: #7f1d1d; color: #fca5a5; }
-    .badge.green { background: #14532d; color: #86efac; }
-    .badge.yellow { background: #78350f; color: #fcd34d; }
+    tr:hover td { background: #eee8d4; }
+    .badge { display: inline-block; padding: 0.15rem 0.5rem; font-size: 0.7rem; font-weight: 700; font-family: system-ui, sans-serif; letter-spacing: .04em; }
+    .badge.red { background: var(--orange); color: #fff; }
+    .badge.green { background: var(--green-mid); color: #fff; }
+    .badge.yellow { background: #b8860b; color: #fff; }
     /* Charts */
     .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
-    #sankey-container svg text { fill: #94a3b8; }
+    #sankey-container svg text { fill: var(--text-muted); font-family: system-ui, sans-serif; }
     .bar-chart { display: flex; flex-direction: column; gap: 0.4rem; }
-    .bar-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; }
-    .bar-label { width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #94a3b8; text-align: right; }
-    .bar-track { flex: 1; background: #2d3148; border-radius: 3px; height: 18px; overflow: hidden; }
-    .bar-fill { height: 100%; background: #2563eb; border-radius: 3px; display: flex; align-items: center; padding: 0 6px; font-size: 0.7rem; color: #fff; white-space: nowrap; transition: width 0.4s; }
+    .bar-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; font-family: system-ui, sans-serif; }
+    .bar-label { width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); text-align: right; }
+    .bar-track { flex: 1; background: var(--cream-dark); height: 20px; overflow: hidden; }
+    .bar-fill { height: 100%; background: var(--green); display: flex; align-items: center; padding: 0 6px; font-size: 0.7rem; color: #fff; white-space: nowrap; transition: width 0.4s; }
     /* Ops */
     .ops-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
     .add-user-form { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
-    .add-user-form input { flex: 1; padding: 0.4rem 0.75rem; background: #0f1117; border: 1px solid #374151; border-radius: 6px; color: #e2e8f0; font-size: 0.85rem; }
-    .add-user-form input:focus { outline: none; border-color: #2563eb; }
-    .btn { padding: 0.4rem 1rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.82rem; font-weight: 500; }
-    .btn-primary { background: #2563eb; color: #fff; }
-    .btn-primary:hover { background: #1d4ed8; }
-    .btn-danger { background: #7f1d1d; color: #fca5a5; }
-    .btn-danger:hover { background: #991b1b; }
-    .btn-sm { padding: 0.2rem 0.6rem; font-size: 0.75rem; }
-    .key-reveal { font-family: monospace; font-size: 0.8rem; background: #0f1117; border: 1px solid #374151; border-radius: 4px; padding: 0.4rem 0.75rem; color: #34d399; margin-top: 0.5rem; display: none; }
+    .add-user-form input { flex: 1; padding: 0.4rem 0.75rem; background: var(--cream); border: 1px solid var(--border); color: var(--text); font-family: system-ui, sans-serif; font-size: 0.85rem; }
+    .add-user-form input:focus { outline: none; border-color: var(--green); }
+    .btn { padding: 0.4rem 1rem; border: none; cursor: pointer; font-family: system-ui, sans-serif; font-size: 0.78rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+    .btn-primary { background: var(--green); color: var(--cream-light); }
+    .btn-primary:hover { background: var(--green-mid); }
+    .btn-danger { background: var(--orange); color: #fff; }
+    .btn-danger:hover { background: var(--orange-light); }
+    .btn-sm { padding: 0.2rem 0.6rem; font-size: 0.7rem; }
+    .key-reveal { font-family: monospace; font-size: 0.8rem; background: var(--green); border: 2px solid var(--green-mid); padding: 0.5rem 0.75rem; color: var(--cream-light); margin-top: 0.5rem; display: none; }
     /* Permission grid */
     .perm-header { display: flex; justify-content: space-between; align-items: center; }
-    .perm-placeholder { color: #64748b; font-size: 0.82rem; padding: 1rem 0; }
-    .perm-grid { display: flex; flex-direction: column; gap: 0.3rem; max-height: 450px; overflow-y: auto; margin-top: 0.5rem; }
-    .perm-row { display: flex; align-items: center; justify-content: space-between; padding: 0.4rem 0; border-bottom: 1px solid #2d3148; font-size: 0.82rem; }
+    .perm-placeholder { color: var(--text-muted); font-family: system-ui, sans-serif; font-size: 0.82rem; padding: 1rem 0; }
+    .perm-grid { display: flex; flex-direction: column; gap: 0; max-height: 450px; overflow-y: auto; margin-top: 0.5rem; }
+    .perm-row { display: flex; align-items: center; justify-content: space-between; padding: 0.45rem 0; border-bottom: 1px solid var(--cream-dark); font-size: 0.82rem; font-family: system-ui, sans-serif; }
     .perm-row:last-child { border-bottom: none; }
     .toggle { position: relative; width: 36px; height: 20px; }
     .toggle input { opacity: 0; width: 0; height: 0; }
-    .toggle-slider { position: absolute; inset: 0; background: #374151; border-radius: 20px; cursor: pointer; transition: background 0.2s; }
-    .toggle input:checked + .toggle-slider { background: #2563eb; }
-    .toggle-slider::before { content: ''; position: absolute; width: 14px; height: 14px; left: 3px; top: 3px; background: white; border-radius: 50%; transition: transform 0.2s; }
+    .toggle-slider { position: absolute; inset: 0; background: var(--cream-dark); border: 1px solid var(--border); cursor: pointer; transition: background 0.2s; }
+    .toggle input:checked + .toggle-slider { background: var(--green); border-color: var(--green); }
+    .toggle-slider::before { content: ''; position: absolute; width: 14px; height: 14px; left: 2px; top: 2px; background: white; transition: transform 0.2s; }
     .toggle input:checked + .toggle-slider::before { transform: translateX(16px); }
-    .muted { color: #64748b; font-size: 0.82rem; }
-    .error { color: #f87171; font-size: 0.82rem; }
+    .muted { color: var(--text-muted); font-family: system-ui, sans-serif; font-size: 0.82rem; }
+    .error { color: var(--orange); font-family: system-ui, sans-serif; font-size: 0.82rem; }
   </style>
 </head>
 <body>
 <header>
-  <h1>⚡ Gateway Admin</h1>
+  <h1>Gateway Admin</h1>
   <div class="tabs">
     <button class="tab active" onclick="switchTab('exec')">Executive</button>
     <button class="tab" onclick="switchTab('ops')">Ops</button>
@@ -1286,6 +1303,8 @@ function renderSankey(data) {
   el.innerHTML = '';
   const W = el.clientWidth || 500, H = 320;
   const svg = d3.select(el).append('svg').attr('width', W).attr('height', H);
+  const green = '#2d5a27';
+  const orange = '#c8501a';
   const sankey = d3.sankey()
     .nodeId(d => d.id)
     .nodeWidth(14)
@@ -1300,7 +1319,7 @@ function renderSankey(data) {
   svg.append('g').selectAll('path')
     .data(graph.links).join('path')
     .attr('d', d3.sankeyLinkHorizontal())
-    .attr('stroke', '#2563eb')
+    .attr('stroke', '#c8501a')
     .attr('stroke-width', d => Math.max(1, d.width))
     .attr('fill', 'none')
     .attr('opacity', 0.35);
@@ -1310,7 +1329,7 @@ function renderSankey(data) {
     .attr('x', d => d.x0).attr('y', d => d.y0)
     .attr('width', d => d.x1 - d.x0)
     .attr('height', d => Math.max(1, d.y1 - d.y0))
-    .attr('fill', '#3b82f6').attr('rx', 2);
+    .attr('fill', '#2d5a27');
 
   svg.append('g').selectAll('text')
     .data(graph.nodes).join('text')
