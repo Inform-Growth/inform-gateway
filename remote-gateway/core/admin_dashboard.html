@@ -626,11 +626,11 @@
     const tools = stats.tools || [];
     const summary = stats.summary || {};
 
-    const totalCalls = tools.reduce((s, t) => s + (t.calls || 0), 0);
+    const totalCalls = tools.reduce((s, t) => s + (t.call_count || 0), 0);
     const toolsTracked = tools.length;
     const highError = (summary.high_error_rate || []);
     const avgLatency = tools.length
-      ? tools.reduce((s, t) => s + (t.avg_latency_ms || 0), 0) / tools.length
+      ? tools.reduce((s, t) => s + (t.avg_duration_ms || 0), 0) / tools.length
       : null;
 
     document.getElementById('card-total-calls').textContent = totalCalls.toLocaleString();
@@ -756,8 +756,8 @@
     });
 
     tbody.innerHTML = data.map(t => {
-      const calls = t.calls || 0;
-      const errors = t.errors || 0;
+      const calls = t.call_count || 0;
+      const errors = t.error_count || 0;
       const rate = calls > 0 ? (errors / calls) : 0;
       const ratePct = (rate * 100).toFixed(1);
       let badgeCls = 'badge-green';
@@ -765,13 +765,13 @@
       else if (rate >= 0.01) badgeCls = 'badge-amber';
 
       return `<tr>
-        <td>${escHtml(t.tool_name)}</td>
+        <td>${escHtml(t.name)}</td>
         <td>${escHtml(calls)}</td>
         <td>${escHtml(errors)}</td>
         <td><span class="badge ${badgeCls}">${ratePct}%</span></td>
-        <td>${fmtMs(t.avg_latency_ms)}</td>
-        <td>${fmtMs(t.max_latency_ms)}</td>
-        <td>${fmtDate(t.last_called_at)}</td>
+        <td>${fmtMs(t.avg_duration_ms)}</td>
+        <td>${fmtMs(t.max_duration_ms)}</td>
+        <td>${fmtDate(t.last_called)}</td>
       </tr>`;
     }).join('');
   }

@@ -23,6 +23,13 @@ from starlette.routing import Route
 _DASHBOARD_HTML = Path(__file__).parent / "admin_dashboard.html"
 _DEFAULT_TOKEN = "inform-admin-2026"
 
+if not os.environ.get("ADMIN_TOKEN"):
+    print(
+        "[admin] WARNING: ADMIN_TOKEN env var not set — using insecure default token."
+        " Set ADMIN_TOKEN in production.",
+        flush=True,
+    )
+
 
 def _admin_token() -> str:
     return os.environ.get("ADMIN_TOKEN", _DEFAULT_TOKEN)
