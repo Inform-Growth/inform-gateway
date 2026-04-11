@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gateway Admin</title>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
+  <style>
+    :root {
+      --cream:       #f2ead8;
+      --cream-light: #faf6ec;
+      --cream-dark:  #e6dcc4;
+      --green:       #2d5a27;
+      --green-mid:   #4a7a3e;
+      --green-light: #6ba35a;
+      --orange:      #c8501a;
+      --orange-light:#e07040;
+      --text:        #1e2a18;
+      --text-muted:  #6b6b50;
+      --border:      #c4b492;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--cream);
+      color: var(--text);
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    /* ---- HEADER ---- */
+    header {
+      background: var(--green);
+      color: var(--cream-light);
+      padding: 0 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 56px;
+      border-bottom: 3px solid var(--orange);
+    }
+    header h1 {
+      font-size: 1.1rem;
+      font-family: Georgia, serif;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 1.2rem;
+    }
+    #timestamp {
+      font-family: 'Courier New', monospace;
+      font-size: 0.8rem;
+      color: var(--cream-dark);
+      opacity: 0.85;
+    }
+    button.refresh-btn {
+      background: var(--orange);
+      color: #fff;
+      border: none;
+      padding: 0.35rem 0.9rem;
+      font-size: 0.78rem;
+      font-family: Georgia, serif;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    button.refresh-btn:hover { background: var(--orange-light); }
+
+    /* ---- TABS ---- */
+    .tab-bar {
+      background: var(--green);
+      display: flex;
+      gap: 0;
+      padding: 0 2rem;
+      border-bottom: 2px solid var(--border);
+    }
+    .tab {
+      padding: 0.6rem 1.4rem;
+      cursor: pointer;
+      font-family: Georgia, serif;
+      font-size: 0.85rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--cream-dark);
+      border-bottom: 3px solid transparent;
+      transition: color 0.15s;
+    }
+    .tab:hover { color: #fff; }
+    .tab.active {
+      color: #fff;
+      border-bottom: 3px solid var(--orange);
+      font-weight: 700;
+    }
+
+    /* ---- MAIN CONTENT ---- */
+    main { padding: 1.8rem 2rem; }
+
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* ---- SUMMARY CARDS ---- */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.8rem;
+    }
+    .card {
+      background: var(--cream-light);
+      border: 1px solid var(--border);
+      padding: 1.2rem 1.4rem;
+    }
+    .card-label {
+      font-family: 'Arial', sans-serif;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 0.45rem;
+    }
+    .card-value {
+      font-size: 2rem;
+      font-weight: 700;
+      font-family: Georgia, serif;
+      color: var(--green);
+      line-height: 1;
+    }
+    .card-value.alert { color: var(--orange); }
+
+    /* ---- CHARTS ROW ---- */
+    .charts-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.2rem;
+      margin-bottom: 1.8rem;
+    }
+    .chart-box {
+      background: var(--cream-light);
+      border: 1px solid var(--border);
+      padding: 1.2rem;
+    }
+    .chart-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+      font-family: 'Arial', sans-serif;
+    }
+    .muted-msg {
+      color: var(--text-muted);
+      font-style: italic;
+      font-size: 0.88rem;
+      padding: 1.5rem 0;
+      text-align: center;
+    }
+
+    /* ---- SANKEY ---- */
+    #sankey-container { width: 100%; height: 300px; }
+    #sankey-container svg { width: 100%; height: 100%; }
+
+    /* ---- USER ADOPTION BARS ---- */
+    #adoption-container { width: 100%; }
+    .bar-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 0.45rem;
+      gap: 0.6rem;
+    }
+    .bar-label {
+      font-family: 'Courier New', monospace;
+      font-size: 0.78rem;
+      color: var(--text);
+      width: 130px;
+      flex-shrink: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .bar-track {
+      flex: 1;
+      height: 16px;
+      background: var(--cream-dark);
+      position: relative;
+    }
+    .bar-fill {
+      height: 100%;
+      background: var(--green);
+      transition: width 0.4s;
+    }
+    .bar-count {
+      font-family: 'Courier New', monospace;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      width: 40px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    /* ---- TOOL HEALTH TABLE ---- */
+    .section-box {
+      background: var(--cream-light);
+      border: 1px solid var(--border);
+      padding: 1.2rem;
+      margin-bottom: 1.8rem;
+    }
+    .section-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+      font-family: 'Arial', sans-serif;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+    }
+    thead th {
+      background: var(--cream-dark);
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+      font-family: 'Arial', sans-serif;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      cursor: pointer;
+      user-select: none;
+      border-bottom: 1px solid var(--border);
+    }
+    thead th:hover { color: var(--green); }
+    thead th.sorted { color: var(--green); }
+    tbody tr:nth-child(odd) { background: var(--cream-light); }
+    tbody tr:nth-child(even) { background: var(--cream-dark); }
+    tbody td {
+      padding: 0.45rem 0.75rem;
+      font-family: 'Courier New', monospace;
+      font-size: 0.82rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+    tbody td:first-child { font-family: Georgia, serif; }
+
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.45rem;
+      font-size: 0.72rem;
+      font-family: 'Arial', sans-serif;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+    }
+    .badge-green  { background: var(--green-light); color: #fff; }
+    .badge-amber  { background: #b89020; color: #fff; }
+    .badge-orange { background: var(--orange); color: #fff; }
+
+    /* ---- OPS VIEW ---- */
+    .ops-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.2rem;
+    }
+
+    /* Users panel */
+    #users-table-wrap { overflow-x: auto; margin-bottom: 1.2rem; }
+    #users-table tbody tr { cursor: pointer; }
+    #users-table tbody tr:hover { background: var(--cream-dark); outline: 1px solid var(--border); }
+    #users-table tbody tr.selected { background: #d8ecd3; outline: 1px solid var(--green); }
+
+    .btn {
+      border: none;
+      padding: 0.3rem 0.7rem;
+      font-size: 0.75rem;
+      font-family: 'Arial', sans-serif;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .btn-green  { background: var(--green); color: #fff; }
+    .btn-green:hover  { background: var(--green-mid); }
+    .btn-orange { background: var(--orange); color: #fff; }
+    .btn-orange:hover { background: var(--orange-light); }
+
+    .add-user-form {
+      display: flex;
+      gap: 0.6rem;
+      align-items: center;
+      margin-top: 0.8rem;
+      padding-top: 0.8rem;
+      border-top: 1px solid var(--border);
+    }
+    .add-user-form input[type="text"] {
+      flex: 1;
+      padding: 0.4rem 0.6rem;
+      border: 1px solid var(--border);
+      background: var(--cream);
+      font-family: 'Courier New', monospace;
+      font-size: 0.82rem;
+      color: var(--text);
+      outline: none;
+    }
+    .add-user-form input[type="text"]:focus {
+      border-color: var(--green);
+    }
+
+    #new-key-box {
+      display: none;
+      margin-top: 0.8rem;
+      padding: 0.8rem 1rem;
+      background: #d8ecd3;
+      border: 1px solid var(--green);
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+      color: var(--green);
+      word-break: break-all;
+    }
+    #new-key-box .key-label {
+      font-family: 'Arial', sans-serif;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--green-mid);
+      margin-bottom: 0.3rem;
+    }
+    #new-key-box .key-countdown {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-top: 0.3rem;
+    }
+
+    /* Permissions panel */
+    #perms-placeholder {
+      color: var(--text-muted);
+      font-style: italic;
+      font-size: 0.88rem;
+      padding: 2rem 0;
+      text-align: center;
+    }
+    #perms-user-header {
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+      color: var(--green);
+      margin-bottom: 1rem;
+      font-weight: 700;
+    }
+    .perm-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.4rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .perm-tool-name {
+      font-family: 'Courier New', monospace;
+      font-size: 0.82rem;
+      color: var(--text);
+    }
+
+    /* Toggle switch */
+    .toggle-wrap {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+    .toggle-wrap input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--cream-dark);
+      transition: 0.25s;
+    }
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background: white;
+      transition: 0.25s;
+    }
+    .toggle-wrap input:checked + .toggle-slider { background: var(--green); }
+    .toggle-wrap input:checked + .toggle-slider:before { transform: translateX(18px); }
+
+    /* ---- RESPONSIVE ---- */
+    @media (max-width: 900px) {
+      .cards-grid { grid-template-columns: repeat(2, 1fr); }
+      .charts-row { grid-template-columns: 1fr; }
+      .ops-grid   { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 560px) {
+      .cards-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Gateway Admin</h1>
+  <div class="header-right">
+    <span id="timestamp"></span>
+    <button class="refresh-btn" onclick="refreshCurrent()">Refresh</button>
+  </div>
+</header>
+
+<div class="tab-bar">
+  <div class="tab active" id="tab-exec" onclick="switchTab('exec')">Executive</div>
+  <div class="tab" id="tab-ops" onclick="switchTab('ops')">Ops</div>
+</div>
+
+<main>
+
+  <!-- ======== EXECUTIVE VIEW ======== -->
+  <div class="view active" id="view-exec">
+
+    <!-- Summary cards -->
+    <div class="cards-grid">
+      <div class="card">
+        <div class="card-label">Total Calls</div>
+        <div class="card-value" id="card-total-calls">—</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Tools Tracked</div>
+        <div class="card-value" id="card-tools-tracked">—</div>
+      </div>
+      <div class="card">
+        <div class="card-label">High Error Rate</div>
+        <div class="card-value" id="card-high-error">—</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Avg Latency</div>
+        <div class="card-value" id="card-avg-latency">—</div>
+      </div>
+    </div>
+
+    <!-- Charts row -->
+    <div class="charts-row">
+      <div class="chart-box">
+        <div class="chart-title">Tool Flow Patterns</div>
+        <div id="sankey-container"></div>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">User Adoption</div>
+        <div id="adoption-container"></div>
+      </div>
+    </div>
+
+    <!-- Tool Health Table -->
+    <div class="section-box">
+      <div class="section-title">Tool Health</div>
+      <table id="health-table">
+        <thead>
+          <tr>
+            <th onclick="sortHealth('tool_name')">Tool</th>
+            <th onclick="sortHealth('calls')">Calls</th>
+            <th onclick="sortHealth('errors')">Errors</th>
+            <th onclick="sortHealth('error_rate')">Error Rate</th>
+            <th onclick="sortHealth('avg_latency_ms')">Avg Latency</th>
+            <th onclick="sortHealth('max_latency_ms')">Max Latency</th>
+            <th onclick="sortHealth('last_called_at')">Last Called</th>
+          </tr>
+        </thead>
+        <tbody id="health-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ======== OPS VIEW ======== -->
+  <div class="view" id="view-ops">
+    <div class="ops-grid">
+
+      <!-- Left: Users panel -->
+      <div class="section-box">
+        <div class="section-title">Users</div>
+        <div id="users-table-wrap">
+          <table id="users-table">
+            <thead>
+              <tr>
+                <th>User ID</th>
+                <th>Key</th>
+                <th>Calls</th>
+                <th>Last Active</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="users-tbody"></tbody>
+          </table>
+        </div>
+        <div class="add-user-form">
+          <input type="text" id="new-user-input" placeholder="user@example.com" />
+          <button class="btn btn-green" onclick="addUser()">Add User</button>
+        </div>
+        <div id="new-key-box">
+          <div class="key-label">New API Key — Copy now</div>
+          <div id="new-key-value"></div>
+          <div class="key-countdown" id="new-key-countdown"></div>
+        </div>
+      </div>
+
+      <!-- Right: Permissions panel -->
+      <div class="section-box">
+        <div class="section-title">Permissions</div>
+        <div id="perms-placeholder">Select a user to manage permissions.</div>
+        <div id="perms-content" style="display:none;">
+          <div id="perms-user-header"></div>
+          <div id="perms-list"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</main>
+
+<script>
+  // ----------------------------------------------------------------
+  // Utilities
+  // ----------------------------------------------------------------
+  function escHtml(s) {
+    if (s == null) return '';
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function getToken() {
+    return new URLSearchParams(window.location.search).get('token') || '';
+  }
+
+  function apiUrl(path) {
+    const token = getToken();
+    const sep = path.includes('?') ? '&' : '?';
+    return path + sep + 'token=' + encodeURIComponent(token);
+  }
+
+  function updateTimestamp() {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    document.getElementById('timestamp').textContent = 'Updated ' + hh + ':' + mm + ':' + ss;
+  }
+
+  function fmtMs(v) {
+    if (v == null) return '—';
+    return Math.round(Number(v)) + ' ms';
+  }
+
+  function fmtDate(s) {
+    if (!s) return '—';
+    try {
+      const d = new Date(s);
+      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    } catch { return s; }
+  }
+
+  // ----------------------------------------------------------------
+  // Tab switching
+  // ----------------------------------------------------------------
+  let currentTab = 'exec';
+
+  function switchTab(tab) {
+    currentTab = tab;
+    document.getElementById('tab-exec').classList.toggle('active', tab === 'exec');
+    document.getElementById('tab-ops').classList.toggle('active', tab === 'ops');
+    document.getElementById('view-exec').classList.toggle('active', tab === 'exec');
+    document.getElementById('view-ops').classList.toggle('active', tab === 'ops');
+    if (tab === 'exec') loadExec();
+    else loadOps();
+  }
+
+  function refreshCurrent() {
+    if (currentTab === 'exec') loadExec();
+    else loadOps();
+  }
+
+  // ----------------------------------------------------------------
+  // Executive: load stats + sessions
+  // ----------------------------------------------------------------
+  let _healthData = [];
+  let _sortKey = 'calls';
+  let _sortAsc = false;
+
+  async function loadExec() {
+    try {
+      const [statsRes, sessRes] = await Promise.all([
+        fetch(apiUrl('/api/stats')),
+        fetch(apiUrl('/api/sessions')),
+      ]);
+      const stats = await statsRes.json();
+      const sess = await sessRes.json();
+
+      renderCards(stats);
+      renderSankey(sess.sankey || {nodes: [], links: []});
+      renderAdoption(sess.user_breakdown || {});
+      _healthData = stats.tools || [];
+      renderHealthTable();
+      updateTimestamp();
+    } catch (e) {
+      console.error('loadExec error:', e);
+    }
+  }
+
+  // --- Cards ---
+  function renderCards(stats) {
+    const tools = stats.tools || [];
+    const summary = stats.summary || {};
+
+    const totalCalls = tools.reduce((s, t) => s + (t.calls || 0), 0);
+    const toolsTracked = tools.length;
+    const highError = (summary.high_error_rate || []);
+    const avgLatency = tools.length
+      ? tools.reduce((s, t) => s + (t.avg_latency_ms || 0), 0) / tools.length
+      : null;
+
+    document.getElementById('card-total-calls').textContent = totalCalls.toLocaleString();
+    document.getElementById('card-tools-tracked').textContent = toolsTracked.toLocaleString();
+
+    const errEl = document.getElementById('card-high-error');
+    errEl.textContent = highError.length;
+    errEl.className = 'card-value' + (highError.length > 0 ? ' alert' : '');
+
+    document.getElementById('card-avg-latency').textContent = avgLatency != null ? fmtMs(avgLatency) : '—';
+  }
+
+  // --- Sankey ---
+  function renderSankey(sankey) {
+    const container = document.getElementById('sankey-container');
+    container.innerHTML = '';
+
+    const nodes = sankey.nodes || [];
+    const links = sankey.links || [];
+
+    if (nodes.length < 2 || links.length === 0) {
+      container.innerHTML = '<p class="muted-msg">Not enough flow data yet.</p>';
+      return;
+    }
+
+    const W = container.clientWidth || 480;
+    const H = 300;
+
+    const svg = d3.select(container)
+      .append('svg')
+      .attr('viewBox', '0 0 ' + W + ' ' + H)
+      .attr('preserveAspectRatio', 'xMidYMid meet');
+
+    const sankey = d3.sankey()
+      .nodeId(d => d.id)
+      .nodeWidth(14)
+      .nodePadding(12)
+      .extent([[8, 8], [W - 8, H - 8]]);
+
+    // d3-sankey mutates the node/link objects so we clone
+    const graph = sankey({
+      nodes: nodes.map(d => Object.assign({}, d)),
+      links: links.map(d => Object.assign({}, d)),
+    });
+
+    // Links
+    svg.append('g')
+      .selectAll('path')
+      .data(graph.links)
+      .join('path')
+        .attr('d', d3.sankeyLinkHorizontal())
+        .attr('stroke', '#c8501a')
+        .attr('stroke-width', d => Math.max(1, d.width))
+        .attr('fill', 'none')
+        .attr('opacity', 0.35);
+
+    // Nodes
+    svg.append('g')
+      .selectAll('rect')
+      .data(graph.nodes)
+      .join('rect')
+        .attr('x', d => d.x0)
+        .attr('y', d => d.y0)
+        .attr('width', d => d.x1 - d.x0)
+        .attr('height', d => Math.max(1, d.y1 - d.y0))
+        .attr('fill', '#2d5a27');
+
+    // Labels
+    svg.append('g')
+      .selectAll('text')
+      .data(graph.nodes)
+      .join('text')
+        .attr('x', d => d.x0 < W / 2 ? d.x1 + 5 : d.x0 - 5)
+        .attr('y', d => (d.y0 + d.y1) / 2)
+        .attr('dy', '0.35em')
+        .attr('text-anchor', d => d.x0 < W / 2 ? 'start' : 'end')
+        .attr('font-size', '10px')
+        .attr('font-family', 'system-ui, sans-serif')
+        .attr('fill', '#6b6b50')
+        .text(d => d.name);
+  }
+
+  // --- User Adoption ---
+  function renderAdoption(breakdown) {
+    const container = document.getElementById('adoption-container');
+    container.innerHTML = '';
+
+    const entries = Object.entries(breakdown).sort((a, b) => b[1] - a[1]);
+    if (entries.length === 0) {
+      container.innerHTML = '<p class="muted-msg">Not enough data yet.</p>';
+      return;
+    }
+
+    const max = entries[0][1] || 1;
+    entries.slice(0, 15).forEach(([uid, count]) => {
+      const pct = Math.round((count / max) * 100);
+      const row = document.createElement('div');
+      row.className = 'bar-row';
+      row.innerHTML = `
+        <span class="bar-label" title="${escHtml(uid)}">${escHtml(uid)}</span>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+        <span class="bar-count">${escHtml(count)}</span>
+      `;
+      container.appendChild(row);
+    });
+  }
+
+  // --- Tool Health Table ---
+  function sortHealth(key) {
+    if (_sortKey === key) _sortAsc = !_sortAsc;
+    else { _sortKey = key; _sortAsc = false; }
+    renderHealthTable();
+  }
+
+  function renderHealthTable() {
+    const tbody = document.getElementById('health-tbody');
+    const data = [..._healthData].sort((a, b) => {
+      let av = a[_sortKey], bv = b[_sortKey];
+      if (av == null) av = _sortAsc ? Infinity : -Infinity;
+      if (bv == null) bv = _sortAsc ? Infinity : -Infinity;
+      if (typeof av === 'string') return _sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+      return _sortAsc ? av - bv : bv - av;
+    });
+
+    tbody.innerHTML = data.map(t => {
+      const calls = t.calls || 0;
+      const errors = t.errors || 0;
+      const rate = calls > 0 ? (errors / calls) : 0;
+      const ratePct = (rate * 100).toFixed(1);
+      let badgeCls = 'badge-green';
+      if (rate >= 0.05) badgeCls = 'badge-orange';
+      else if (rate >= 0.01) badgeCls = 'badge-amber';
+
+      return `<tr>
+        <td>${escHtml(t.tool_name)}</td>
+        <td>${escHtml(calls)}</td>
+        <td>${escHtml(errors)}</td>
+        <td><span class="badge ${badgeCls}">${ratePct}%</span></td>
+        <td>${fmtMs(t.avg_latency_ms)}</td>
+        <td>${fmtMs(t.max_latency_ms)}</td>
+        <td>${fmtDate(t.last_called_at)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ----------------------------------------------------------------
+  // Ops: Users + Permissions
+  // ----------------------------------------------------------------
+  let _selectedUser = null;
+
+  async function loadOps() {
+    await loadUsers();
+    updateTimestamp();
+  }
+
+  async function loadUsers() {
+    try {
+      const res = await fetch(apiUrl('/api/users'));
+      const users = await res.json();
+      renderUsersTable(users);
+    } catch (e) {
+      console.error('loadUsers error:', e);
+    }
+  }
+
+  function renderUsersTable(users) {
+    const tbody = document.getElementById('users-tbody');
+    if (!users.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);font-style:italic;text-align:center;">No users yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = users.map(u => {
+      const truncKey = u.key ? escHtml(u.key.slice(0, 14)) + '…' : '—';
+      const selected = _selectedUser === u.user_id ? ' selected' : '';
+      return `<tr class="${selected}" onclick="selectUser('${escHtml(u.user_id)}')">
+        <td>${escHtml(u.user_id)}</td>
+        <td style="font-family:'Courier New',monospace;font-size:0.75rem;">${truncKey}</td>
+        <td>${escHtml(u.call_count ?? '—')}</td>
+        <td style="font-size:0.75rem;">${fmtDate(u.last_active)}</td>
+        <td><button class="btn btn-orange" onclick="event.stopPropagation();revokeUser('${escHtml(u.user_id)}')">Revoke</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function addUser() {
+    const input = document.getElementById('new-user-input');
+    const userId = input.value.trim();
+    if (!userId) return;
+
+    try {
+      const res = await fetch(apiUrl('/api/users'), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({user_id: userId}),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert('Error: ' + (err.error || res.status));
+        return;
+      }
+      const data = await res.json();
+      input.value = '';
+      await loadUsers();
+      showNewKey(data.key);
+    } catch (e) {
+      console.error('addUser error:', e);
+    }
+  }
+
+  function showNewKey(key) {
+    const box = document.getElementById('new-key-box');
+    document.getElementById('new-key-value').textContent = key;
+    box.style.display = 'block';
+    let secs = 30;
+    const countdown = document.getElementById('new-key-countdown');
+    countdown.textContent = 'Hidden in ' + secs + 's';
+    const interval = setInterval(() => {
+      secs--;
+      if (secs <= 0) {
+        clearInterval(interval);
+        box.style.display = 'none';
+      } else {
+        countdown.textContent = 'Hidden in ' + secs + 's';
+      }
+    }, 1000);
+  }
+
+  async function revokeUser(userId) {
+    if (!confirm('Revoke access for ' + userId + '?')) return;
+    try {
+      const res = await fetch(apiUrl('/api/users/' + encodeURIComponent(userId)), {method: 'DELETE'});
+      if (!res.ok) {
+        const err = await res.json();
+        alert('Error: ' + (err.error || res.status));
+        return;
+      }
+      if (_selectedUser === userId) {
+        _selectedUser = null;
+        document.getElementById('perms-placeholder').style.display = '';
+        document.getElementById('perms-content').style.display = 'none';
+      }
+      await loadUsers();
+    } catch (e) {
+      console.error('revokeUser error:', e);
+    }
+  }
+
+  async function selectUser(userId) {
+    _selectedUser = userId;
+    // Re-render to show selection highlight
+    const rows = document.querySelectorAll('#users-tbody tr');
+    rows.forEach(r => {
+      const firstCell = r.querySelector('td');
+      if (firstCell) {
+        r.classList.toggle('selected', firstCell.textContent === userId);
+      }
+    });
+    await loadPermissions(userId);
+  }
+
+  async function loadPermissions(userId) {
+    try {
+      const res = await fetch(apiUrl('/api/permissions/' + encodeURIComponent(userId)));
+      const data = await res.json();
+      renderPermissions(userId, data.permissions || []);
+    } catch (e) {
+      console.error('loadPermissions error:', e);
+    }
+  }
+
+  function renderPermissions(userId, permissions) {
+    document.getElementById('perms-placeholder').style.display = 'none';
+    const content = document.getElementById('perms-content');
+    content.style.display = 'block';
+
+    document.getElementById('perms-user-header').textContent = userId;
+
+    const list = document.getElementById('perms-list');
+    if (!permissions.length) {
+      list.innerHTML = '<p class="muted-msg">No explicit permissions set.</p>';
+      return;
+    }
+
+    list.innerHTML = permissions.map(p => {
+      const checked = p.enabled ? 'checked' : '';
+      const tid = 'toggle-' + escHtml(p.tool_name).replace(/[^a-z0-9]/gi, '_');
+      return `<div class="perm-row">
+        <span class="perm-tool-name">${escHtml(p.tool_name)}</span>
+        <label class="toggle-wrap" title="${p.enabled ? 'Enabled' : 'Disabled'}">
+          <input type="checkbox" id="${escHtml(tid)}" ${checked}
+            onchange="setPermission('${escHtml(userId)}','${escHtml(p.tool_name)}',this.checked)" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>`;
+    }).join('');
+  }
+
+  async function setPermission(userId, toolName, enabled) {
+    try {
+      await fetch(apiUrl('/api/permissions/' + encodeURIComponent(userId) + '/' + encodeURIComponent(toolName)), {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({enabled}),
+      });
+    } catch (e) {
+      console.error('setPermission error:', e);
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // Init
+  // ----------------------------------------------------------------
+  loadExec();
+</script>
+</body>
+</html>
