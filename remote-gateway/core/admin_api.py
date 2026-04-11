@@ -169,6 +169,8 @@ def _build_sankey(common_flows: list[dict]) -> dict:
     """Convert user_flow_analysis common_flows into D3-sankey nodes/links format.
 
     Only includes pair-level flows (sequence with exactly one "->").
+    Bidirectional pairs (A→B and B→A) are resolved by keeping the dominant
+    direction (higher count); this prevents d3-sankey circular-link errors.
 
     Args:
         common_flows: List of {"sequence": "tool_a -> tool_b", "count": N} dicts.
@@ -176,8 +178,8 @@ def _build_sankey(common_flows: list[dict]) -> dict:
     Returns:
         Dict with "nodes" (list of {id, name}) and "links" (list of {source, target, value}).
     """
-    node_set: set[str] = set()
-    links: list[dict] = []
+    # Accumulate counts per directed pair, collapsing duplicates.
+    pair_counts: dict[tuple[str, str], int] = {}
 
     for item in common_flows:
         parts = item["sequence"].split(" -> ")
@@ -186,9 +188,27 @@ def _build_sankey(common_flows: list[dict]) -> dict:
         src, tgt = parts
         if src == tgt:
             continue  # skip self-loops — d3-sankey rejects circular links
+        key = (src, tgt)
+        pair_counts[key] = pair_counts.get(key, 0) + item["count"]
+
+    # Resolve bidirectional pairs: keep only the dominant direction.
+    resolved: dict[tuple[str, str], int] = {}
+    for (src, tgt), count in pair_counts.items():
+        reverse = (tgt, src)
+        if reverse in resolved:
+            # Reverse already won — skip this direction.
+            continue
+        rev_count = pair_counts.get(reverse, 0)
+        if count >= rev_count:
+            resolved[(src, tgt)] = count
+        # else: reverse will be picked up when its key is iterated
+
+    node_set: set[str] = set()
+    links: list[dict] = []
+    for (src, tgt), count in resolved.items():
         node_set.add(src)
         node_set.add(tgt)
-        links.append({"source": src, "target": tgt, "value": item["count"]})
+        links.append({"source": src, "target": tgt, "value": count})
 
     nodes = [{"id": name, "name": name} for name in sorted(node_set)]
     return {"nodes": nodes, "links": links}
