@@ -23,10 +23,9 @@ def _import_mcp_server():
     Returns (module, recorded_calls) where recorded_calls is a list that
     telemetry.record() appends to — inspect it to verify telemetry behavior.
     """
-    import importlib.util
-
     # Stub mcp packages (FastMCP + lowlevel)
     import contextvars
+    import importlib.util
 
     for mod_name in (
         "mcp", "mcp.server", "mcp.server.fastmcp",

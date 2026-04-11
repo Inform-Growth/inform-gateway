@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any
 
 from anthropic import Anthropic
-
 from connections import create_connection
 
 EVALUATION_PROMPT = """You are an AI assistant with access to tools.
@@ -37,9 +36,11 @@ Summary Requirements:
 Feedback Requirements:
 - In your <feedback> tags, provide constructive feedback on the tools:
   - Comment on tool names: Are they clear and descriptive?
-  - Comment on input parameters: Are they well-documented? Are required vs optional parameters clear?
+  - Comment on input parameters: Are they well-documented?
+    Are required vs optional parameters clear?
   - Comment on descriptions: Do they accurately describe what the tool does?
-  - Comment on any errors encountered during tool usage: Did the tool fail to execute? Did the tool return too many tokens?
+  - Comment on any errors encountered during tool usage:
+    Did the tool fail to execute? Did the tool return too many tokens?
   - Identify specific areas for improvement and explain WHY they would help
   - Be specific and actionable in your suggestions
 
@@ -114,7 +115,11 @@ async def agent_loop(
         tool_start_ts = time.time()
         try:
             tool_result = await connection.call_tool(tool_name, tool_input)
-            tool_response = json.dumps(tool_result) if isinstance(tool_result, (dict, list)) else str(tool_result)
+            tool_response = (
+                json.dumps(tool_result)
+                if isinstance(tool_result, (dict, list))
+                else str(tool_result)
+            )
         except Exception as e:
             tool_response = f"Error executing tool {tool_name}: {str(e)}\n"
             tool_response += traceback.format_exc()
@@ -266,7 +271,7 @@ async def run_evaluation(
             summary=result["summary"] or "N/A",
             feedback=result["feedback"] or "N/A",
         )
-        for i, (qa_pair, result) in enumerate(zip(qa_pairs, results))
+        for i, (qa_pair, result) in enumerate(zip(qa_pairs, results, strict=False))
     ])
 
     return report
@@ -320,19 +325,30 @@ Examples:
     )
 
     parser.add_argument("eval_file", type=Path, help="Path to evaluation XML file")
-    parser.add_argument("-t", "--transport", choices=["stdio", "sse", "http"], default="stdio", help="Transport type (default: stdio)")
-    parser.add_argument("-m", "--model", default="claude-3-7-sonnet-20250219", help="Claude model to use (default: claude-3-7-sonnet-20250219)")
+    parser.add_argument(  # noqa: E501
+        "-t", "--transport", choices=["stdio", "sse", "http"], default="stdio",
+        help="Transport type (default: stdio)")
+    parser.add_argument(  # noqa: E501
+        "-m", "--model", default="claude-3-7-sonnet-20250219",
+        help="Claude model to use (default: claude-3-7-sonnet-20250219)")
 
     stdio_group = parser.add_argument_group("stdio options")
     stdio_group.add_argument("-c", "--command", help="Command to run MCP server (stdio only)")
-    stdio_group.add_argument("-a", "--args", nargs="+", help="Arguments for the command (stdio only)")
-    stdio_group.add_argument("-e", "--env", nargs="+", help="Environment variables in KEY=VALUE format (stdio only)")
+    stdio_group.add_argument(  # noqa: E501
+        "-a", "--args", nargs="+", help="Arguments for the command (stdio only)")
+    stdio_group.add_argument(  # noqa: E501
+        "-e", "--env", nargs="+",
+        help="Environment variables in KEY=VALUE format (stdio only)")
 
     remote_group = parser.add_argument_group("sse/http options")
     remote_group.add_argument("-u", "--url", help="MCP server URL (sse/http only)")
-    remote_group.add_argument("-H", "--header", nargs="+", dest="headers", help="HTTP headers in 'Key: Value' format (sse/http only)")
+    remote_group.add_argument(  # noqa: E501
+        "-H", "--header", nargs="+", dest="headers",
+        help="HTTP headers in 'Key: Value' format (sse/http only)")
 
-    parser.add_argument("-o", "--output", type=Path, help="Output file for evaluation report (default: stdout)")
+    parser.add_argument(  # noqa: E501
+        "-o", "--output", type=Path,
+        help="Output file for evaluation report (default: stdout)")
 
     args = parser.parse_args()
 

@@ -31,7 +31,9 @@ def run():
     created = write_issue(test_slug, content, "test: create issue")
     print(created)
     expected_action = "created" if is_first_run else "updated"
-    assert created["action"] == expected_action, f"Expected '{expected_action}', got {created['action']}"
+    assert created["action"] == expected_action, (
+        f"Expected '{expected_action}', got {created['action']}"
+    )
     assert "issues/" in created["path"], f"Expected issues/ in path, got {created['path']}"
     print()
 

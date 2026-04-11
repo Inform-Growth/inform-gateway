@@ -1,12 +1,10 @@
 {
   "mcpServers": {
-    "remote-gateway": {
-      "url": "http://localhost:8000/sse"
-    },
-    "exa": {
-      "command": "npx",
-      "args": ["-y", "exa-mcp-server"],
-      "env": { "EXA_API_KEY": "${EXA_API_KEY}" }
+    "inform-gateway": {
+      "url": "https://your-gateway.railway.app/sse",
+      "headers": {
+        "Authorization": "Bearer ${GATEWAY_USER_API_KEY}"
+      }
     }
   }
 }

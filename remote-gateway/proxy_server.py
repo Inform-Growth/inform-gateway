@@ -23,9 +23,7 @@ import asyncio
 import json
 import os
 import sys
-from typing import Any
 
-import httpx
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 
@@ -90,7 +88,6 @@ async def run_proxy():
 
 
 if __name__ == "__main__":
-    try:
+    import contextlib
+    with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(run_proxy())
-    except KeyboardInterrupt:
-        pass

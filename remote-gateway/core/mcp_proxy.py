@@ -441,16 +441,28 @@ async def _run_stdio_proxy(
                 registered_prompts += 1
 
             total_tools = len(tools_response.tools)
-            suffix = f" ({total_tools - registered_tools} filtered)" if registered_tools != total_tools else ""
+            suffix = (
+                f" ({total_tools - registered_tools} filtered)"
+                if registered_tools != total_tools else ""
+            )
             prompt_suffix = f", {registered_prompts} prompt(s)" if registered_prompts else ""
-            print(f"  [proxy] '{name}' connected — {registered_tools} tool(s){prompt_suffix} registered{suffix}")
+            print(
+                f"  [proxy] '{name}' connected — "
+                f"{registered_tools} tool(s){prompt_suffix} registered{suffix}"
+            )
             ready.set()
 
             # Hold the connection open for the gateway's lifetime.
             await asyncio.Event().wait()
 
     except Exception as exc:  # noqa: BLE001
-        print(f"  [proxy] '{name}' failed to connect: {exc}")
+        # Unwrap ExceptionGroup (raised by asyncio.TaskGroup / stdio_client) to
+        # surface the real sub-exception rather than the generic outer message.
+        if isinstance(exc, BaseExceptionGroup):
+            causes = "; ".join(repr(e) for e in exc.exceptions)
+            print(f"  [proxy] '{name}' failed to connect: {causes}")
+        else:
+            print(f"  [proxy] '{name}' failed to connect: {exc}")
         ready.set()  # Unblock startup so the gateway still comes up
 
 
@@ -533,7 +545,9 @@ async def _run_http_proxy(
                         if registered_tools != total_tools
                         else ""
                     )
-                    prompt_suffix = f", {registered_prompts} prompt(s)" if registered_prompts else ""
+                    prompt_suffix = (
+                        f", {registered_prompts} prompt(s)" if registered_prompts else ""
+                    )
                     print(
                         f"  [proxy] '{name}' connected — "
                         f"{registered_tools} tool(s){prompt_suffix} registered{suffix}"
@@ -646,9 +660,15 @@ async def _run_streamable_http_proxy(
             registered_prompts += 1
 
         total_tools = len(tools_response.tools)
-        suffix = f" ({total_tools - registered_tools} filtered)" if registered_tools != total_tools else ""
+        suffix = (
+            f" ({total_tools - registered_tools} filtered)"
+            if registered_tools != total_tools else ""
+        )
         prompt_suffix = f", {registered_prompts} prompt(s)" if registered_prompts else ""
-        print(f"  [proxy] '{name}' connected — {registered_tools} tool(s){prompt_suffix} registered{suffix}")
+        print(
+            f"  [proxy] '{name}' connected — "
+            f"{registered_tools} tool(s){prompt_suffix} registered{suffix}"
+        )
         ready.set()
 
     except Exception as exc:  # noqa: BLE001
@@ -727,10 +747,7 @@ def _is_rate_limit_error(result: Any) -> bool:
 
     # Check for 429 status or common strings in error messages
     error_msg = str(result.get("error", "")).lower()
-    if any(s in error_msg for s in ("429", "rate limit", "too many requests", "throttled")):
-        return True
-
-    return False
+    return any(s in error_msg for s in ("429", "rate limit", "too many requests", "throttled"))
 
 
 async def _call_with_retry(
@@ -871,7 +888,10 @@ def _register_proxy_prompt(
 
     proxy_fn.__name__ = gateway_name
     proxy_fn.__doc__ = description
-    mcp_server.add_prompt(proxy_fn, name=gateway_name, description=description)
+    from mcp.server.fastmcp.prompts import Prompt as _Prompt
+    mcp_server.add_prompt(
+        _Prompt.from_function(proxy_fn, name=gateway_name, description=description)
+    )
 
 
 def _register_streamable_http_proxy_tool(
@@ -987,7 +1007,10 @@ def _register_streamable_http_proxy_prompt(
 
     proxy_fn.__name__ = gateway_name
     proxy_fn.__doc__ = description
-    mcp_server.add_prompt(proxy_fn, name=gateway_name, description=description)
+    from mcp.server.fastmcp.prompts import Prompt as _Prompt
+    mcp_server.add_prompt(
+        _Prompt.from_function(proxy_fn, name=gateway_name, description=description)
+    )
 
 
 # ---------------------------------------------------------------------------

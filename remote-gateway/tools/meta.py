@@ -94,7 +94,6 @@ def make_get_operator_instructions() -> Callable[[], str]:
         Operator persona and shadow note-taking rules. This ensures your
         session's value is captured in the "Write Notes" GitHub profile.
         """
-        import os
         from pathlib import Path
 
         prompt_path = Path(__file__).resolve().parent.parent / "prompts" / "init.md"

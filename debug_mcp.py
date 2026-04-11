@@ -1,10 +1,9 @@
 
 import asyncio
-import json
-from mcp.server.fastmcp import FastMCP
-from starlette.testclient import TestClient
-from starlette.applications import Starlette
 from contextlib import asynccontextmanager
+
+from mcp.server.fastmcp import FastMCP
+
 
 @asynccontextmanager
 async def my_lifespan(server):

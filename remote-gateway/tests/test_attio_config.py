@@ -35,17 +35,11 @@ def test_attio_uses_stdio_transport():
     )
 
 
-def test_attio_command_is_npx():
+def test_attio_command_is_attio_mcp():
     attio = _load_attio()
-    assert attio.get("command") == "npx", (
-        f"Expected command 'npx', got '{attio.get('command')}'"
-    )
-
-
-def test_attio_args_include_attio_mcp():
-    attio = _load_attio()
-    assert "attio-mcp" in attio.get("args", []), (
-        f"Expected 'attio-mcp' in args, got: {attio.get('args')}"
+    assert attio.get("command") == "attio-mcp", (
+        f"Expected command 'attio-mcp', got '{attio.get('command')}'. "
+        "attio-mcp is vendored in remote-gateway/vendor/node_modules/.bin/"
     )
 
 

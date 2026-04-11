@@ -17,7 +17,7 @@ from starlette.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 
-from admin_api import create_admin_app, _DEFAULT_TOKEN
+from admin_api import _DEFAULT_TOKEN, create_admin_app
 from telemetry import TelemetryStore
 
 TOKEN = _DEFAULT_TOKEN

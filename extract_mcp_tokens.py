@@ -27,7 +27,10 @@ def get_credentials() -> dict:
 
 
 def main() -> None:
-    filter_name = sys.argv[1].lower() if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else None
+    filter_name = (
+        sys.argv[1].lower()
+        if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else None
+    )
     env_mode = "--env" in sys.argv
 
     data = get_credentials()

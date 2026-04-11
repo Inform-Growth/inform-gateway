@@ -18,8 +18,8 @@ from unittest.mock import MagicMock
 
 def _import_server_with_permission_mock(has_permission_return: bool):
     """Import mcp_server with all deps stubbed and has_permission returning the given value."""
-    import importlib.util
     import contextvars
+    import importlib.util
 
     mod_name = f"_mcp_server_perm_{has_permission_return}"
     if mod_name in sys.modules:
