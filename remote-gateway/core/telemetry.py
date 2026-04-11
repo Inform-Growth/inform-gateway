@@ -252,7 +252,8 @@ class TelemetryStore:
         try:
             conn = self._connect()
             rows = conn.execute(
-                "SELECT tool_name, enabled FROM tool_permissions WHERE user_id = ? ORDER BY tool_name",
+                "SELECT tool_name, enabled FROM tool_permissions"
+                " WHERE user_id = ? ORDER BY tool_name",
                 (user_id,),
             ).fetchall()
             conn.close()
@@ -329,7 +330,8 @@ class TelemetryStore:
             conn = self._connect()
             conn.execute(
                 "INSERT INTO tool_calls"
-                " (tool_name, called_at, duration_ms, success, error_type, user_id, request_id, response_size)"
+                " (tool_name, called_at, duration_ms, success,"
+                "  error_type, user_id, request_id, response_size)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     tool_name, time.time(), duration_ms, int(success),
@@ -441,7 +443,8 @@ class TelemetryStore:
             limit: Maximum number of recent calls to analyze.
 
         Returns:
-            Dict with 'recent_sequences' (call sequences) and 'user_breakdown' (total calls per user).
+            Dict with 'recent_sequences' (call sequences) and
+            'user_breakdown' (total calls per user).
         """
         if not self._enabled:
             return {"error": "telemetry disabled"}
@@ -481,7 +484,9 @@ class TelemetryStore:
             if uid not in user_history:
                 user_history[uid] = []
             
-            ts = datetime.datetime.fromtimestamp(row["called_at"], tz=datetime.UTC).strftime("%H:%M:%S")
+            ts = datetime.datetime.fromtimestamp(
+                row["called_at"], tz=datetime.UTC
+            ).strftime("%H:%M:%S")
             user_history[uid].append({
                 "tool": row["tool_name"],
                 "time": ts,
@@ -575,6 +580,43 @@ class TelemetryStore:
                 for seq, count in sorted_sequences[:20]
             ]
         }
+
+
+    def daily_activity(self, days: int = 30) -> list[dict[str, Any]]:
+        """Return per-day call and unique-user counts for the last N calendar days.
+
+        Args:
+            days: How many days back to include (default: 30).
+
+        Returns:
+            List of dicts with 'day' (YYYY-MM-DD), 'calls', 'users', ordered
+            ascending. Days with zero activity are omitted.
+        """
+        if not self._enabled:
+            return []
+        try:
+            conn = self._connect()
+            cutoff = time.time() - days * 86400
+            rows = conn.execute(
+                """
+                SELECT
+                    date(called_at, 'unixepoch') AS day,
+                    COUNT(*)                     AS calls,
+                    COUNT(DISTINCT user_id)      AS users
+                FROM tool_calls
+                WHERE called_at >= ?
+                GROUP BY day
+                ORDER BY day ASC
+                """,
+                (cutoff,),
+            ).fetchall()
+            conn.close()
+        except Exception:
+            return []
+        return [
+            {"day": row["day"], "calls": row["calls"], "users": row["users"]}
+            for row in rows
+        ]
 
 
 # Module-level singleton — imported by mcp_server.py

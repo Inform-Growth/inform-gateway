@@ -423,6 +423,7 @@
 <div class="tab-bar">
   <div class="tab active" id="tab-exec" onclick="switchTab('exec')">Executive</div>
   <div class="tab" id="tab-ops" onclick="switchTab('ops')">Ops</div>
+  <div class="tab" id="tab-tools" onclick="switchTab('tools')">Tools</div>
 </div>
 
 <main>
@@ -460,6 +461,12 @@
         <div class="chart-title">User Adoption</div>
         <div id="adoption-container"></div>
       </div>
+    </div>
+
+    <!-- Activity Timeline -->
+    <div class="section-box">
+      <div class="section-title">Activity — Last 30 Days</div>
+      <div id="timeline-container"></div>
     </div>
 
     <!-- Tool Health Table -->
@@ -527,6 +534,25 @@
     </div>
   </div>
 
+  <!-- ======== TOOLS VIEW ======== -->
+  <div class="view" id="view-tools">
+    <div class="section-box">
+      <div class="section-title">Registered Tools</div>
+      <table id="tools-table">
+        <thead>
+          <tr>
+            <th onclick="sortTools('name')">Tool</th>
+            <th>Description</th>
+            <th onclick="sortTools('call_count')">Calls</th>
+            <th onclick="sortTools('status')">Status</th>
+            <th onclick="sortTools('last_called')">Last Called</th>
+          </tr>
+        </thead>
+        <tbody id="tools-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
 </main>
 
 <script>
@@ -550,7 +576,10 @@
   function apiUrl(path) {
     const token = getToken();
     const sep = path.includes('?') ? '&' : '?';
-    return path + sep + 'token=' + encodeURIComponent(token);
+    // Derive admin base from current page path (e.g. "/admin/" → "/admin")
+    // so API calls resolve to /admin/api/... regardless of where the app is mounted.
+    const base = window.location.pathname.replace(/\/$/, '');
+    return base + path + sep + 'token=' + encodeURIComponent(token);
   }
 
   function updateTimestamp() {
@@ -578,15 +607,17 @@
   // Tab switching
   // ----------------------------------------------------------------
   let currentTab = 'exec';
+  let _pendingUserSelect = null;
 
   function switchTab(tab) {
     currentTab = tab;
-    document.getElementById('tab-exec').classList.toggle('active', tab === 'exec');
-    document.getElementById('tab-ops').classList.toggle('active', tab === 'ops');
-    document.getElementById('view-exec').classList.toggle('active', tab === 'exec');
-    document.getElementById('view-ops').classList.toggle('active', tab === 'ops');
+    ['exec', 'ops', 'tools'].forEach(t => {
+      document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+      document.getElementById('view-' + t).classList.toggle('active', t === tab);
+    });
     if (tab === 'exec') loadExec();
-    else loadOps();
+    else if (tab === 'ops') loadOps();
+    else loadTools();
   }
 
   function refreshCurrent() {
@@ -603,22 +634,87 @@
 
   async function loadExec() {
     try {
-      const [statsRes, sessRes] = await Promise.all([
+      const [statsRes, sessRes, timelineRes] = await Promise.all([
         fetch(apiUrl('/api/stats')),
         fetch(apiUrl('/api/sessions')),
+        fetch(apiUrl('/api/timeline')),
       ]);
       const stats = await statsRes.json();
       const sess = await sessRes.json();
+      const timeline = await timelineRes.json();
 
       renderCards(stats);
       renderSankey(sess.sankey || {nodes: [], links: []});
       renderAdoption(sess.user_breakdown || {});
       _healthData = stats.tools || [];
       renderHealthTable();
+      renderTimeline(Array.isArray(timeline) ? timeline : []);
       updateTimestamp();
     } catch (e) {
       console.error('loadExec error:', e);
     }
+  }
+
+  // --- Activity Timeline ---
+  function renderTimeline(data) {
+    const container = document.getElementById('timeline-container');
+    container.innerHTML = '';
+
+    if (!data || data.length === 0) {
+      container.innerHTML = '<p class="muted-msg">No activity in the last 30 days.</p>';
+      return;
+    }
+
+    const W = container.clientWidth || 800;
+    const H = 160;
+    const margin = {top: 8, right: 16, bottom: 36, left: 40};
+    const iW = W - margin.left - margin.right;
+    const iH = H - margin.top - margin.bottom;
+
+    const svg = d3.select(container)
+      .append('svg')
+      .attr('viewBox', '0 0 ' + W + ' ' + H)
+      .attr('preserveAspectRatio', 'xMidYMid meet');
+
+    const g = svg.append('g')
+      .attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
+
+    const x = d3.scaleBand()
+      .domain(data.map(d => d.day))
+      .range([0, iW])
+      .padding(0.15);
+
+    const y = d3.scaleLinear()
+      .domain([0, d3.max(data, d => d.calls) || 1])
+      .nice()
+      .range([iH, 0]);
+
+    g.selectAll('rect')
+      .data(data)
+      .join('rect')
+        .attr('x', d => x(d.day))
+        .attr('y', d => y(d.calls))
+        .attr('width', x.bandwidth())
+        .attr('height', d => iH - y(d.calls))
+        .attr('fill', '#2d5a27')
+        .append('title')
+          .text(d => d.day + ': ' + d.calls + ' calls, ' + d.users + ' user(s)');
+
+    const n = Math.ceil(data.length / 8);
+    g.append('g')
+      .attr('transform', 'translate(0,' + iH + ')')
+      .call(d3.axisBottom(x)
+        .tickValues(data.filter((_, i) => i % n === 0).map(d => d.day))
+        .tickFormat(d => d.slice(5)))
+      .call(a => a.select('.domain').attr('stroke', '#c4b492'))
+      .call(a => a.selectAll('.tick line').attr('stroke', '#c4b492'))
+      .call(a => a.selectAll('text').attr('font-size', '9px').attr('fill', '#6b6b50'));
+
+    g.append('g')
+      .call(d3.axisLeft(y).ticks(4).tickFormat(d3.format('d')))
+      .call(a => a.select('.domain').attr('stroke', '#c4b492'))
+      .call(a => a.selectAll('.tick line').attr('stroke', '#c4b492'))
+      .call(a => a.selectAll('text').attr('font-size', '9px').attr('fill', '#6b6b50'));
   }
 
   // --- Cards ---
@@ -644,12 +740,12 @@
   }
 
   // --- Sankey ---
-  function renderSankey(sankey) {
+  function renderSankey(sankeyData) {
     const container = document.getElementById('sankey-container');
     container.innerHTML = '';
 
-    const nodes = sankey.nodes || [];
-    const links = sankey.links || [];
+    const nodes = sankeyData.nodes || [];
+    const links = sankeyData.links || [];
 
     if (nodes.length < 2 || links.length === 0) {
       container.innerHTML = '<p class="muted-msg">Not enough flow data yet.</p>';
@@ -670,11 +766,18 @@
       .nodePadding(12)
       .extent([[8, 8], [W - 8, H - 8]]);
 
-    // d3-sankey mutates the node/link objects so we clone
-    const graph = sankey({
-      nodes: nodes.map(d => Object.assign({}, d)),
-      links: links.map(d => Object.assign({}, d)),
-    });
+    // d3-sankey mutates the node/link objects so we clone.
+    // Wrap in try/catch — bidirectional pairs (A→B and B→A) cause "circular link".
+    let graph;
+    try {
+      graph = sankey({
+        nodes: nodes.map(d => Object.assign({}, d)),
+        links: links.map(d => Object.assign({}, d)),
+      });
+    } catch (e) {
+      container.innerHTML = '<p class="muted-msg">Flow graph has cycles — not enough linear data yet.</p>';
+      return;
+    }
 
     // Links
     svg.append('g')
@@ -729,11 +832,14 @@
       const pct = Math.round((count / max) * 100);
       const row = document.createElement('div');
       row.className = 'bar-row';
+      row.style.cursor = 'pointer';
+      row.title = 'View ' + uid + ' in Ops';
       row.innerHTML = `
         <span class="bar-label" title="${escHtml(uid)}">${escHtml(uid)}</span>
         <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
         <span class="bar-count">${escHtml(count)}</span>
       `;
+      row.onclick = () => { _pendingUserSelect = uid; switchTab('ops'); };
       container.appendChild(row);
     });
   }
@@ -783,6 +889,11 @@
 
   async function loadOps() {
     await loadUsers();
+    if (_pendingUserSelect) {
+      const uid = _pendingUserSelect;
+      _pendingUserSelect = null;
+      await selectUser(uid);
+    }
     updateTimestamp();
   }
 
@@ -938,6 +1049,83 @@
     } catch (e) {
       console.error('setPermission error:', e);
     }
+  }
+
+  // ----------------------------------------------------------------
+  // Tools view
+  // ----------------------------------------------------------------
+  let _toolsData = [];
+  let _toolsSortKey = 'name';
+  let _toolsSortAsc = true;
+
+  async function loadTools() {
+    try {
+      // Fetch tool registry; fetch stats if not yet loaded
+      const fetches = [fetch(apiUrl('/api/tools'))];
+      if (!_healthData.length) fetches.push(fetch(apiUrl('/api/stats')));
+      const results = await Promise.all(fetches);
+      _toolsData = await results[0].json();
+      if (results[1]) {
+        const stats = await results[1].json();
+        _healthData = stats.tools || [];
+      }
+      renderToolsTable();
+      updateTimestamp();
+    } catch (e) {
+      console.error('loadTools error:', e);
+    }
+  }
+
+  function sortTools(key) {
+    if (_toolsSortKey === key) _toolsSortAsc = !_toolsSortAsc;
+    else { _toolsSortKey = key; _toolsSortAsc = true; }
+    renderToolsTable();
+  }
+
+  function renderToolsTable() {
+    const tbody = document.getElementById('tools-tbody');
+    if (!_toolsData || !_toolsData.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);font-style:italic;text-align:center;">No tools registered.</td></tr>';
+      return;
+    }
+
+    // Build stats lookup
+    const statsMap = {};
+    _healthData.forEach(t => { statsMap[t.name] = t; });
+
+    // Enrich with stats
+    const rows = _toolsData.map(t => {
+      const s = statsMap[t.name] || {};
+      return {
+        name: t.name,
+        description: t.description || '',
+        call_count: s.call_count || 0,
+        last_called: s.last_called || null,
+        status: s.call_count > 0 ? 'active' : 'never',
+      };
+    });
+
+    // Sort
+    rows.sort((a, b) => {
+      let av = a[_toolsSortKey], bv = b[_toolsSortKey];
+      if (av == null) av = _toolsSortAsc ? '\uFFFF' : '';
+      if (bv == null) bv = _toolsSortAsc ? '\uFFFF' : '';
+      if (typeof av === 'string') return _toolsSortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+      return _toolsSortAsc ? av - bv : bv - av;
+    });
+
+    tbody.innerHTML = rows.map(r => {
+      const badge = r.status === 'active'
+        ? '<span class="badge badge-green">Active</span>'
+        : '<span class="badge" style="background:var(--cream-dark);color:var(--text-muted);">Never called</span>';
+      return `<tr>
+        <td>${escHtml(r.name)}</td>
+        <td style="font-size:0.78rem;color:var(--text-muted);font-family:'Arial',sans-serif;max-width:320px;">${escHtml(r.description)}</td>
+        <td>${escHtml(r.call_count)}</td>
+        <td>${badge}</td>
+        <td>${fmtDate(r.last_called)}</td>
+      </tr>`;
+    }).join('');
   }
 
   // ----------------------------------------------------------------

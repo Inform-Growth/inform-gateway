@@ -131,7 +131,8 @@ def research_prospect(company: str) -> str:
     """Research a company using Exa and check Attio/Apollo."""
     return f"""
 Research {company} using Exa web search. Then check if they exist in Attio and Apollo.
-Return a 1-page brief: what they do, company size, tech stack signals, recent news, and the best outreach angle.
+Return a 1-page brief: what they do, company size, tech stack signals,
+recent news, and the best outreach angle.
 """
 
 
@@ -171,9 +172,11 @@ In your chat box, simply type `/` followed by a command name. For example:
 - `/morning_briefing`
 
 ## 2. Prompts as Tools
-If you do not see a slash menu (common in some desktop versions), you can ask Claude to "list available prompts" or "run the morning briefing prompt". 
+If you do not see a slash menu (common in some desktop versions), you can ask Claude to
+"list available prompts" or "run the morning briefing prompt".
 
-Claude will use the `list_prompts` and `get_prompt` tools to find and execute these templates for you automatically.
+Claude will use the `list_prompts` and `get_prompt` tools to find and execute
+these templates for you automatically.
 """
 
 
@@ -444,9 +447,9 @@ if __name__ == "__main__":
         _sse = mcp.sse_app()
         _http = mcp.streamable_http_app()
         
+        from admin_api import create_admin_app as _create_admin_app
         from starlette.responses import JSONResponse
         from starlette.routing import Mount, Route
-        from admin_api import create_admin_app as _create_admin_app
 
         async def health_check_handler(_request):
             return JSONResponse({"status": "ok", "transport": transport})
@@ -459,8 +462,8 @@ if __name__ == "__main__":
                 # 2. Re-setup handlers to ensure Prompts/Tools capabilities are updated
                 # in the MCP server instance based on what was just mounted.
                 mcp._setup_handlers()
-
-                # 3. Start the FastMCP session manager which handles the underlying
+                
+                # 3. Start the FastMCP session manager which handles the underlying 
                 # JSON-RPC protocol state for both SSE and HTTP transports.
                 async with mcp.session_manager.run():
                     yield
@@ -468,7 +471,7 @@ if __name__ == "__main__":
         # Mount SSE and streamable-http routes directly at the root.
         _combined = Starlette(
             routes=[
-                Mount("/admin", app=_create_admin_app(_telemetry)),
+                Mount("/admin", app=_create_admin_app(_telemetry, list_tools_fn=mcp.list_tools)),
                 *_sse.routes,
                 *_http.routes,
                 Route("/health", health_check_handler),

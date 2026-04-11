@@ -43,11 +43,14 @@ def _forbidden() -> Response:
     return JSONResponse({"error": "forbidden — invalid admin token"}, status_code=403)
 
 
-def create_admin_app(telemetry: Any) -> Starlette:
+def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
     """Return a Starlette sub-app with all admin routes bound to telemetry.
 
     Args:
         telemetry: A TelemetryStore instance.
+        list_tools_fn: Optional async callable that returns a list of registered
+            tools (each with .name and .description). Used by GET /api/tools.
+            When omitted, that endpoint returns 503.
     """
 
     async def dashboard(request: Request) -> Response:
@@ -111,6 +114,26 @@ def create_admin_app(telemetry: Any) -> Starlette:
         perms = telemetry.get_tool_permissions(user_id)
         return JSONResponse({"user_id": user_id, "permissions": perms})
 
+    async def api_timeline(request: Request) -> Response:
+        if not _is_authorized(request):
+            return _forbidden()
+        try:
+            days = int(request.query_params.get("days", "30"))
+        except ValueError:
+            days = 30
+        return JSONResponse(telemetry.daily_activity(days=days))
+
+    async def api_tools(request: Request) -> Response:
+        if not _is_authorized(request):
+            return _forbidden()
+        if list_tools_fn is None:
+            return JSONResponse({"error": "tool listing not configured"}, status_code=503)
+        tools = await list_tools_fn()
+        return JSONResponse([
+            {"name": t.name, "description": t.description or ""}
+            for t in tools
+        ])
+
     async def api_permissions_set(request: Request) -> Response:
         if not _is_authorized(request):
             return _forbidden()
@@ -135,6 +158,8 @@ def create_admin_app(telemetry: Any) -> Starlette:
         Route("/api/users/{user_id}", api_users_delete, methods=["DELETE"]),
         Route("/api/permissions/{user_id}", api_permissions_get, methods=["GET"]),
         Route("/api/permissions/{user_id}/{tool_name:path}", api_permissions_set, methods=["PUT"]),
+        Route("/api/timeline", api_timeline),
+        Route("/api/tools", api_tools),
     ]
 
     return Starlette(routes=routes)
@@ -159,6 +184,8 @@ def _build_sankey(common_flows: list[dict]) -> dict:
         if len(parts) != 2:
             continue  # skip triplets to avoid double-counting
         src, tgt = parts
+        if src == tgt:
+            continue  # skip self-loops — d3-sankey rejects circular links
         node_set.add(src)
         node_set.add(tgt)
         links.append({"source": src, "target": tgt, "value": item["count"]})
