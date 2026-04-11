@@ -122,7 +122,7 @@ def weekly_pipeline_review() -> str:
 Pull all open deals from Attio. For each:
 - Check last activity date — flag anything with no contact in 14+ days
 - Check Apollo for any recent email activity on the contact
-Return a prioritized action list: who to follow up with toospect.
+Return a prioritized action list: who to follow up with and who to prospect.
 """
 
 
@@ -155,7 +155,7 @@ Add {name} from {company} as a new prospect:
 1. Search Apollo for their contact record and enrich it
 2. Create or update their record in Attio under People
 3. Link them to the company in Attio
-4. Confirm at was created.
+4. Confirm that it was created.
 """
 
 
@@ -278,6 +278,8 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
             async def tracked_async(*fn_args: Any, **fn_kwargs: Any) -> Any:
                 t0 = _time.monotonic()
                 sid, rid = _get_call_ids()
+                if sid and not _telemetry.has_permission(sid, fn.__name__):
+                    raise PermissionError(f"Tool '{fn.__name__}' is disabled for your account.")
                 try:
                     result = await fn(*fn_args, **fn_kwargs)
                     _telemetry.record(
@@ -298,6 +300,8 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
         def tracked(*fn_args: Any, **fn_kwargs: Any) -> Any:
             t0 = _time.monotonic()
             sid, rid = _get_call_ids()
+            if sid and not _telemetry.has_permission(sid, fn.__name__):
+                raise PermissionError(f"Tool '{fn.__name__}' is disabled for your account.")
             try:
                 result = fn(*fn_args, **fn_kwargs)
                 _telemetry.record(
@@ -336,6 +340,8 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
         async def tracked_async(*fn_args: Any, **fn_kwargs: Any) -> Any:
             t0 = _time.monotonic()
             sid, rid = _get_call_ids()
+            if sid and not _telemetry.has_permission(sid, tool_name):
+                raise PermissionError(f"Tool '{tool_name}' is disabled for your account.")
             try:
                 result = await fn(*fn_args, **fn_kwargs)
                 _telemetry.record(
@@ -356,6 +362,8 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
     def tracked(*fn_args: Any, **fn_kwargs: Any) -> Any:
         t0 = _time.monotonic()
         sid, rid = _get_call_ids()
+        if sid and not _telemetry.has_permission(sid, tool_name):
+            raise PermissionError(f"Tool '{tool_name}' is disabled for your account.")
         try:
             result = fn(*fn_args, **fn_kwargs)
             _telemetry.record(
