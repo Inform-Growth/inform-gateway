@@ -1,0 +1,96 @@
+"""
+Tests for TelemetryStore permission methods.
+
+Run with:
+    pytest remote-gateway/tests/test_telemetry_permissions.py -v
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
+
+from telemetry import TelemetryStore
+
+
+@pytest.fixture()
+def store(tmp_path):
+    return TelemetryStore(db_path=tmp_path / "test.db")
+
+
+def test_has_permission_default_true(store):
+    """No row in tool_permissions means the user is allowed."""
+    assert store.has_permission("alice", "some_tool") is True
+
+
+def test_has_permission_disabled(store):
+    store.add_api_key("alice", "sk-alice")
+    store.set_tool_permission("alice", "some_tool", False)
+    assert store.has_permission("alice", "some_tool") is False
+
+
+def test_has_permission_re_enabled(store):
+    store.set_tool_permission("alice", "some_tool", False)
+    store.set_tool_permission("alice", "some_tool", True)
+    assert store.has_permission("alice", "some_tool") is True
+
+
+def test_has_permission_other_user_unaffected(store):
+    store.set_tool_permission("alice", "some_tool", False)
+    assert store.has_permission("bob", "some_tool") is True
+
+
+def test_list_users_returns_created_users(store):
+    store.add_api_key("alice@company.com", "sk-alice")
+    store.add_api_key("bob@company.com", "sk-bob")
+    users = store.list_users()
+    user_ids = [u["user_id"] for u in users]
+    assert "alice@company.com" in user_ids
+    assert "bob@company.com" in user_ids
+
+
+def test_list_users_includes_call_count(store):
+    store.add_api_key("alice@company.com", "sk-alice")
+    store.record("health_check", 10, True, user_id="alice@company.com")
+    store.record("health_check", 12, True, user_id="alice@company.com")
+    users = store.list_users()
+    alice = next(u for u in users if u["user_id"] == "alice@company.com")
+    assert alice["call_count"] == 2
+
+
+def test_list_users_empty(store):
+    assert store.list_users() == []
+
+
+def test_delete_user_removes_key(store):
+    store.add_api_key("alice@company.com", "sk-alice")
+    count = store.delete_user("alice@company.com")
+    assert count == 1
+    assert store.lookup_user("sk-alice") is None
+
+
+def test_delete_user_removes_permissions(store):
+    store.add_api_key("alice@company.com", "sk-alice")
+    store.set_tool_permission("alice@company.com", "some_tool", False)
+    store.delete_user("alice@company.com")
+    assert store.has_permission("alice@company.com", "some_tool") is True
+
+
+def test_delete_user_unknown_returns_zero(store):
+    assert store.delete_user("nobody@company.com") == 0
+
+
+def test_get_tool_permissions_returns_explicit_settings(store):
+    store.set_tool_permission("alice", "tool_a", False)
+    store.set_tool_permission("alice", "tool_b", True)
+    perms = store.get_tool_permissions("alice")
+    by_tool = {p["tool_name"]: p["enabled"] for p in perms}
+    assert by_tool["tool_a"] is False
+    assert by_tool["tool_b"] is True
+
+
+def test_get_tool_permissions_empty_for_new_user(store):
+    assert store.get_tool_permissions("nobody") == []

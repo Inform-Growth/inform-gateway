@@ -61,6 +61,13 @@ CREATE TABLE IF NOT EXISTS tool_calls (
     request_id    TEXT,
     response_size INTEGER
 );
+
+CREATE TABLE IF NOT EXISTS tool_permissions (
+    user_id   TEXT    NOT NULL,
+    tool_name TEXT    NOT NULL,
+    enabled   INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (user_id, tool_name)
+);
 """
 
 # Indexes are created after migrations so that columns added via ALTER TABLE
@@ -161,6 +168,109 @@ class TelemetryStore:
         try:
             conn = self._connect()
             conn.execute("DELETE FROM api_keys WHERE key = ?", (key,))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+    def list_users(self) -> list[dict]:
+        """Return all API key records with per-user call counts."""
+        if not self._enabled:
+            return []
+        try:
+            conn = self._connect()
+            rows = conn.execute(
+                """
+                SELECT
+                    ak.user_id,
+                    ak.key,
+                    ak.created_at,
+                    COUNT(tc.id)      AS call_count,
+                    MAX(tc.called_at) AS last_active
+                FROM api_keys ak
+                LEFT JOIN tool_calls tc ON ak.user_id = tc.user_id
+                GROUP BY ak.user_id, ak.key
+                ORDER BY ak.created_at DESC
+                """
+            ).fetchall()
+            conn.close()
+        except Exception:
+            return []
+        return [
+            {
+                "user_id": row["user_id"],
+                "key": row["key"],
+                "created_at": datetime.datetime.fromtimestamp(
+                    row["created_at"], tz=datetime.UTC
+                ).strftime("%Y-%m-%dT%H:%MZ"),
+                "call_count": row["call_count"] or 0,
+                "last_active": (
+                    datetime.datetime.fromtimestamp(
+                        row["last_active"], tz=datetime.UTC
+                    ).strftime("%Y-%m-%dT%H:%MZ")
+                    if row["last_active"]
+                    else None
+                ),
+            }
+            for row in rows
+        ]
+
+    def delete_user(self, user_id: str) -> int:
+        """Delete all API keys and permissions for user_id. Returns rows deleted."""
+        if not self._enabled:
+            return 0
+        try:
+            conn = self._connect()
+            cursor = conn.execute("DELETE FROM api_keys WHERE user_id = ?", (user_id,))
+            deleted = cursor.rowcount
+            conn.execute("DELETE FROM tool_permissions WHERE user_id = ?", (user_id,))
+            conn.commit()
+            conn.close()
+            return deleted
+        except Exception:
+            return 0
+
+    def has_permission(self, user_id: str, tool_name: str) -> bool:
+        """Return True if user may call tool_name (default True when no row)."""
+        if not self._enabled:
+            return True
+        try:
+            conn = self._connect()
+            row = conn.execute(
+                "SELECT enabled FROM tool_permissions WHERE user_id = ? AND tool_name = ?",
+                (user_id, tool_name),
+            ).fetchone()
+            conn.close()
+            return row is None or bool(row["enabled"])
+        except Exception:
+            return True  # never block on DB failure
+
+    def get_tool_permissions(self, user_id: str) -> list[dict]:
+        """Return explicit permission rows for a user."""
+        if not self._enabled:
+            return []
+        try:
+            conn = self._connect()
+            rows = conn.execute(
+                "SELECT tool_name, enabled FROM tool_permissions WHERE user_id = ? ORDER BY tool_name",
+                (user_id,),
+            ).fetchall()
+            conn.close()
+        except Exception:
+            return []
+        return [{"tool_name": row["tool_name"], "enabled": bool(row["enabled"])} for row in rows]
+
+    def set_tool_permission(self, user_id: str, tool_name: str, enabled: bool) -> None:
+        """Insert or update a tool permission for a user."""
+        if not self._enabled:
+            return
+        try:
+            conn = self._connect()
+            conn.execute(
+                "INSERT INTO tool_permissions (user_id, tool_name, enabled) VALUES (?, ?, ?)"
+                " ON CONFLICT(user_id, tool_name) DO UPDATE SET enabled = excluded.enabled",
+                (user_id, tool_name, int(enabled)),
+            )
             conn.commit()
             conn.close()
         except Exception:
