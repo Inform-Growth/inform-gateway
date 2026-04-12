@@ -148,6 +148,54 @@ def test_set_permission_missing_enabled(client):
 
 
 # ---------------------------------------------------------------------------
+# Permissions — merged with tool list
+# ---------------------------------------------------------------------------
+
+class _FakeTool:
+    def __init__(self, name):
+        self.name = name
+        self.description = ""
+
+
+@pytest.fixture()
+def client_with_tools(store):
+    async def _list_tools():
+        return [_FakeTool("health_check"), _FakeTool("get_tool_stats"), _FakeTool("write_note")]
+
+    app = create_admin_app(store, list_tools_fn=_list_tools)
+    return TestClient(app, raise_server_exceptions=True), store
+
+
+def test_permissions_shows_all_tools_when_no_explicit_rows(client_with_tools):
+    """All tools appear with enabled=True when no explicit permissions exist."""
+    c, _ = client_with_tools
+    resp = c.get(f"/api/permissions/alice@example.com?token={TOKEN}")
+    assert resp.status_code == 200
+    perms = {p["tool_name"]: p["enabled"] for p in resp.json()["permissions"]}
+    assert set(perms.keys()) == {"health_check", "get_tool_stats", "write_note"}
+    assert all(v is True for v in perms.values())
+
+
+def test_permissions_merges_explicit_row_with_tool_list(client_with_tools):
+    """An explicit disabled row overrides the default enabled=True."""
+    c, store = client_with_tools
+    store.set_tool_permission("alice@example.com", "health_check", False)
+    resp = c.get(f"/api/permissions/alice@example.com?token={TOKEN}")
+    perms = {p["tool_name"]: p["enabled"] for p in resp.json()["permissions"]}
+    assert perms["health_check"] is False
+    assert perms["get_tool_stats"] is True
+
+
+def test_permissions_falls_back_to_explicit_rows_when_no_list_fn(client):
+    """Without list_tools_fn, only explicit rows are returned (existing behavior)."""
+    c, store = client
+    store.set_tool_permission("alice@example.com", "write_note", False)
+    resp = c.get(f"/api/permissions/alice@example.com?token={TOKEN}")
+    perms = {p["tool_name"]: p["enabled"] for p in resp.json()["permissions"]}
+    assert list(perms.keys()) == ["write_note"]
+
+
+# ---------------------------------------------------------------------------
 # Sessions / Sankey
 # ---------------------------------------------------------------------------
 

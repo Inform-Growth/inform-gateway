@@ -111,8 +111,25 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         if not _is_authorized(request):
             return _forbidden()
         user_id = request.path_params["user_id"]
-        perms = telemetry.get_tool_permissions(user_id)
-        return JSONResponse({"user_id": user_id, "permissions": perms})
+        explicit = {
+            row["tool_name"]: row["enabled"]
+            for row in telemetry.get_tool_permissions(user_id)
+        }
+
+        if list_tools_fn is not None:
+            try:
+                tools = await list_tools_fn()
+                tool_names = sorted(t.name for t in tools)
+            except Exception:
+                tool_names = sorted(explicit.keys())
+        else:
+            tool_names = sorted(explicit.keys())
+
+        permissions = [
+            {"tool_name": name, "enabled": explicit.get(name, True)}
+            for name in tool_names
+        ]
+        return JSONResponse({"user_id": user_id, "permissions": permissions})
 
     async def api_timeline(request: Request) -> Response:
         if not _is_authorized(request):
