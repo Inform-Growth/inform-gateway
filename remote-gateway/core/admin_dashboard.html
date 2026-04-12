@@ -370,6 +370,19 @@
       color: var(--text);
     }
 
+    .perms-search {
+      width: 100%;
+      padding: 0.35rem 0.6rem;
+      margin-bottom: 0.75rem;
+      border: 1px solid var(--border);
+      background: var(--cream);
+      font-family: 'Arial', sans-serif;
+      font-size: 0.82rem;
+      color: var(--text);
+      outline: none;
+    }
+    .perms-search:focus { border-color: var(--green); }
+
     /* Toggle switch */
     .toggle-wrap {
       position: relative;
@@ -527,6 +540,13 @@
         <div id="perms-placeholder">Select a user to manage permissions.</div>
         <div id="perms-content" style="display:none;">
           <div id="perms-user-header"></div>
+          <input
+            type="text"
+            class="perms-search"
+            id="perms-search"
+            placeholder="Filter tools…"
+            oninput="filterPerms(this.value)"
+          />
           <div id="perms-list"></div>
         </div>
       </div>
@@ -885,6 +905,7 @@
   // ----------------------------------------------------------------
   // Ops: Users + Permissions
   // ----------------------------------------------------------------
+  let _allPerms = [];
   let _selectedUser = null;
 
   async function loadOps() {
@@ -1016,15 +1037,27 @@
     document.getElementById('perms-placeholder').style.display = 'none';
     const content = document.getElementById('perms-content');
     content.style.display = 'block';
-
     document.getElementById('perms-user-header').textContent = userId;
+    document.getElementById('perms-search').value = '';
+    _allPerms = permissions;
+    _renderPermRows(permissions, userId);
+  }
 
+  function filterPerms(query) {
+    const q = query.toLowerCase();
+    const filtered = q
+      ? _allPerms.filter(p => p.tool_name.toLowerCase().includes(q))
+      : _allPerms;
+    const userId = document.getElementById('perms-user-header').textContent;
+    _renderPermRows(filtered, userId);
+  }
+
+  function _renderPermRows(permissions, userId) {
     const list = document.getElementById('perms-list');
-    if (!permissions.length) {
-      list.innerHTML = '<p class="muted-msg">No explicit permissions set.</p>';
+    if (permissions.length === 0) {
+      list.innerHTML = '<p class="muted-msg">No tools match.</p>';
       return;
     }
-
     list.innerHTML = permissions.map(p => {
       const checked = p.enabled ? 'checked' : '';
       const tid = 'toggle-' + escHtml(p.tool_name).replace(/[^a-z0-9]/gi, '_');
