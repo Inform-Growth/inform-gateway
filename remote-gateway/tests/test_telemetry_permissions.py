@@ -97,3 +97,47 @@ def test_get_tool_permissions_returns_explicit_settings(store):
 
 def test_get_tool_permissions_empty_for_new_user(store):
     assert store.get_tool_permissions("nobody") == []
+
+
+def test_record_stores_input_body(store):
+    store.record("health_check", 10, True, input_body='{"q": "hello"}')
+    logs = store.raw_logs(limit=1)
+    assert logs[0]["input_body"] == '{"q": "hello"}'
+
+
+def test_stats_includes_avg_input_size(store):
+    store.record("health_check", 10, True, input_body='{"q": "hello"}')
+    stats = store.stats()
+    tool = next(t for t in stats["tools"] if t["name"] == "health_check")
+    assert "avg_input_size" in tool
+    assert tool["avg_input_size"] > 0
+
+
+def test_raw_logs_returns_recent_calls(store):
+    store.record("tool_a", 10, True, user_id="alice", input_body='{"x": 1}')
+    store.record("tool_b", 20, False, user_id="alice", error_type="ValueError")
+    logs = store.raw_logs(limit=10)
+    assert len(logs) == 2
+    names = {l["tool_name"] for l in logs}
+    assert names == {"tool_a", "tool_b"}
+
+
+def test_raw_logs_filters_by_tool(store):
+    store.record("tool_a", 10, True)
+    store.record("tool_b", 20, True)
+    logs = store.raw_logs(tool_name="tool_a")
+    assert all(l["tool_name"] == "tool_a" for l in logs)
+
+
+def test_raw_logs_filters_by_user(store):
+    store.record("health_check", 10, True, user_id="alice")
+    store.record("health_check", 10, True, user_id="bob")
+    logs = store.raw_logs(user_id="alice")
+    assert all(l["user_id"] == "alice" for l in logs)
+
+
+def test_raw_logs_filters_errors_only(store):
+    store.record("health_check", 10, True)
+    store.record("health_check", 10, False, error_type="ValueError")
+    logs = store.raw_logs(success=False)
+    assert all(not l["success"] for l in logs)

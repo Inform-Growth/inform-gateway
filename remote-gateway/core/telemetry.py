@@ -59,7 +59,8 @@ CREATE TABLE IF NOT EXISTS tool_calls (
     error_type    TEXT,
     user_id       TEXT,
     request_id    TEXT,
-    response_size INTEGER
+    response_size INTEGER,
+    input_body    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS tool_permissions (
@@ -83,6 +84,7 @@ _MIGRATIONS = [
     ("tool_calls", "user_id",       "TEXT"),
     ("tool_calls", "request_id",    "TEXT"),
     ("tool_calls", "response_size", "INTEGER"),
+    ("tool_calls", "input_body",    "TEXT"),
 ]
 
 
@@ -311,6 +313,7 @@ class TelemetryStore:
         user_id: str | None = None,
         request_id: str | None = None,
         response_size: int | None = None,
+        input_body: str | None = None,
     ) -> None:
         """Record a single tool invocation. Silent no-op if disabled.
 
@@ -323,6 +326,7 @@ class TelemetryStore:
                 None for unauthenticated calls.
             request_id: Unique MCP request ID for this invocation.
             response_size: Size of the response in characters/bytes.
+            input_body: JSON-serialized tool arguments captured at call time.
         """
         if not self._enabled:
             return
@@ -331,11 +335,11 @@ class TelemetryStore:
             conn.execute(
                 "INSERT INTO tool_calls"
                 " (tool_name, called_at, duration_ms, success,"
-                "  error_type, user_id, request_id, response_size)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "  error_type, user_id, request_id, response_size, input_body)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     tool_name, time.time(), duration_ms, int(success),
-                    error_type, user_id, request_id, response_size,
+                    error_type, user_id, request_id, response_size, input_body,
                 ),
             )
             conn.commit()
@@ -382,7 +386,9 @@ class TelemetryStore:
                     AVG(duration_ms)                               AS avg_ms,
                     MAX(duration_ms)                               AS max_ms,
                     AVG(response_size)                             AS avg_size,
-                    MAX(response_size)                             AS max_size
+                    MAX(response_size)                             AS max_size,
+                    AVG(LENGTH(input_body))                        AS avg_input_size,
+                    MAX(LENGTH(input_body))                        AS max_input_size
                 FROM tool_calls
                 {where}
                 GROUP BY tool_name
@@ -421,6 +427,8 @@ class TelemetryStore:
                     "max_duration_ms": row["max_ms"] or 0,
                     "avg_response_size": round(row["avg_size"] or 0),
                     "max_response_size": row["max_size"] or 0,
+                    "avg_input_size": round(row["avg_input_size"] or 0),
+                    "max_input_size": row["max_input_size"] or 0,
                 }
             )
 
@@ -617,6 +625,86 @@ class TelemetryStore:
             {"day": row["day"], "calls": row["calls"], "users": row["users"]}
             for row in rows
         ]
+
+
+    def raw_logs(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        tool_name: str | None = None,
+        user_id: str | None = None,
+        success: bool | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return recent raw tool call rows, newest first.
+
+        Args:
+            limit: Max rows to return.
+            offset: Rows to skip for pagination.
+            tool_name: Filter to an exact tool name.
+            user_id: Filter to an exact user_id.
+            success: If True, only successful calls; if False, only errors.
+
+        Returns:
+            List of dicts with id, tool_name, called_at, duration_ms, success,
+            error_type, user_id, request_id, response_size, input_size, input_body.
+        """
+        if not self._enabled:
+            return []
+        try:
+            conn = self._connect()
+            filters: list[str] = []
+            params: list[Any] = []
+            if tool_name is not None:
+                filters.append("tool_name = ?")
+                params.append(tool_name)
+            if user_id is not None:
+                filters.append("user_id = ?")
+                params.append(user_id)
+            if success is not None:
+                filters.append("success = ?")
+                params.append(int(success))
+            where = ("WHERE " + " AND ".join(filters)) if filters else ""
+            params.extend([limit, offset])
+            rows = conn.execute(
+                f"""
+                SELECT id, tool_name, called_at, duration_ms, success,
+                       error_type, user_id, request_id, response_size, input_body
+                FROM tool_calls
+                {where}
+                ORDER BY called_at DESC
+                LIMIT ? OFFSET ?
+                """,
+                params,
+            ).fetchall()
+            conn.close()
+        except Exception:
+            return []
+        result = []
+        for row in rows:
+            ts = row["called_at"]
+            called_at_str = (
+                datetime.datetime.fromtimestamp(ts, tz=datetime.UTC).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                )
+                if ts
+                else None
+            )
+            result.append(
+                {
+                    "id": row["id"],
+                    "tool_name": row["tool_name"],
+                    "called_at": called_at_str,
+                    "duration_ms": row["duration_ms"],
+                    "success": bool(row["success"]),
+                    "error_type": row["error_type"],
+                    "user_id": row["user_id"],
+                    "request_id": row["request_id"],
+                    "response_size": row["response_size"],
+                    "input_size": len(row["input_body"]) if row["input_body"] else None,
+                    "input_body": row["input_body"],
+                }
+            )
+        return result
 
 
 # Module-level singleton — imported by mcp_server.py
