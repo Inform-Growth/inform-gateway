@@ -588,6 +588,10 @@
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
   }
+  function escJs(s) {
+    if (s == null) return '';
+    return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  }
 
   function getToken() {
     return new URLSearchParams(window.location.search).get('token') || '';
@@ -937,12 +941,12 @@
     tbody.innerHTML = users.map(u => {
       const truncKey = u.key ? escHtml(u.key.slice(0, 14)) + '…' : '—';
       const selected = _selectedUser === u.user_id ? ' selected' : '';
-      return `<tr class="${selected}" onclick="selectUser('${escHtml(u.user_id)}')">
+      return `<tr class="${selected}" onclick="selectUser('${escJs(escHtml(u.user_id))}')">
         <td>${escHtml(u.user_id)}</td>
         <td style="font-family:'Courier New',monospace;font-size:0.75rem;">${truncKey}</td>
         <td>${escHtml(u.call_count ?? '—')}</td>
         <td style="font-size:0.75rem;">${fmtDate(u.last_active)}</td>
-        <td><button class="btn btn-orange" onclick="event.stopPropagation();revokeUser('${escHtml(u.user_id)}')">Revoke</button></td>
+        <td><button class="btn btn-orange" onclick="event.stopPropagation();revokeUser('${escJs(escHtml(u.user_id))}')">Revoke</button></td>
       </tr>`;
     }).join('');
   }
@@ -1001,6 +1005,7 @@
       }
       if (_selectedUser === userId) {
         _selectedUser = null;
+        _allPerms = [];
         document.getElementById('perms-placeholder').style.display = '';
         document.getElementById('perms-content').style.display = 'none';
       }
@@ -1065,7 +1070,7 @@
         <span class="perm-tool-name">${escHtml(p.tool_name)}</span>
         <label class="toggle-wrap" title="${p.enabled ? 'Enabled' : 'Disabled'}">
           <input type="checkbox" id="${escHtml(tid)}" ${checked}
-            onchange="setPermission('${escHtml(userId)}','${escHtml(p.tool_name)}',this.checked)" />
+            onchange="setPermission('${escJs(escHtml(userId))}','${escJs(escHtml(p.tool_name))}',this.checked)" />
           <span class="toggle-slider"></span>
         </label>
       </div>`;
