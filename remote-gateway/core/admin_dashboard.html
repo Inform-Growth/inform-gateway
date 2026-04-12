@@ -437,6 +437,7 @@
   <div class="tab active" id="tab-exec" onclick="switchTab('exec')">Executive</div>
   <div class="tab" id="tab-ops" onclick="switchTab('ops')">Ops</div>
   <div class="tab" id="tab-tools" onclick="switchTab('tools')">Tools</div>
+  <div class="tab" id="tab-logs" onclick="switchTab('logs')">Logs</div>
 </div>
 
 <main>
@@ -494,6 +495,8 @@
             <th onclick="sortHealth('error_rate')">Error Rate</th>
             <th onclick="sortHealth('avg_latency_ms')">Avg Latency</th>
             <th onclick="sortHealth('max_latency_ms')">Max Latency</th>
+            <th onclick="sortHealth('avg_input_size')">Avg Input</th>
+            <th onclick="sortHealth('avg_response_size')">Avg Output</th>
             <th onclick="sortHealth('last_called_at')">Last Called</th>
           </tr>
         </thead>
@@ -573,6 +576,48 @@
     </div>
   </div>
 
+  <!-- ======== LOGS VIEW ======== -->
+  <div class="view" id="view-logs">
+    <div class="section-box">
+      <div class="section-title">Raw Tool Logs</div>
+      <div style="display:flex;gap:0.6rem;margin-bottom:1rem;flex-wrap:wrap;">
+        <input type="text" id="logs-filter-tool" placeholder="Filter by tool…"
+          style="padding:0.35rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;flex:1;min-width:160px;"
+          oninput="loadLogs()" />
+        <input type="text" id="logs-filter-user" placeholder="Filter by user…"
+          style="padding:0.35rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;flex:1;min-width:160px;"
+          oninput="loadLogs()" />
+        <select id="logs-filter-success"
+          style="padding:0.35rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-size:0.82rem;"
+          onchange="loadLogs()">
+          <option value="">All</option>
+          <option value="true">Success only</option>
+          <option value="false">Errors only</option>
+        </select>
+      </div>
+      <div style="overflow-x:auto;">
+        <table id="logs-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Tool</th>
+              <th>User</th>
+              <th>Duration</th>
+              <th>In Size</th>
+              <th>Out Size</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="logs-tbody"></tbody>
+        </table>
+      </div>
+      <div id="logs-body-panel" style="display:none;margin-top:1rem;padding:0.8rem 1rem;background:var(--cream-dark);border:1px solid var(--border);">
+        <div style="font-family:'Arial',sans-serif;font-size:0.68rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:0.4rem;">Input Body</div>
+        <pre id="logs-body-content" style="font-family:'Courier New',monospace;font-size:0.78rem;white-space:pre-wrap;word-break:break-word;color:var(--text);max-height:300px;overflow-y:auto;margin:0;"></pre>
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <script>
@@ -619,6 +664,14 @@
     return Math.round(Number(v)) + ' ms';
   }
 
+  function fmtBytes(v) {
+    if (v == null || v === 0) return '—';
+    const n = Number(v);
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
   function fmtDate(s) {
     if (!s) return '—';
     try {
@@ -635,18 +688,21 @@
 
   function switchTab(tab) {
     currentTab = tab;
-    ['exec', 'ops', 'tools'].forEach(t => {
+    ['exec', 'ops', 'tools', 'logs'].forEach(t => {
       document.getElementById('tab-' + t).classList.toggle('active', t === tab);
       document.getElementById('view-' + t).classList.toggle('active', t === tab);
     });
     if (tab === 'exec') loadExec();
     else if (tab === 'ops') loadOps();
+    else if (tab === 'logs') loadLogs();
     else loadTools();
   }
 
   function refreshCurrent() {
     if (currentTab === 'exec') loadExec();
-    else loadOps();
+    else if (currentTab === 'ops') loadOps();
+    else if (currentTab === 'logs') loadLogs();
+    else loadTools();
   }
 
   // ----------------------------------------------------------------
@@ -901,6 +957,8 @@
         <td><span class="badge ${badgeCls}">${ratePct}%</span></td>
         <td>${fmtMs(t.avg_duration_ms)}</td>
         <td>${fmtMs(t.max_duration_ms)}</td>
+        <td>${fmtBytes(t.avg_input_size)}</td>
+        <td>${fmtBytes(t.avg_response_size)}</td>
         <td>${fmtDate(t.last_called)}</td>
       </tr>`;
     }).join('');
@@ -1164,6 +1222,82 @@
         <td>${fmtDate(r.last_called)}</td>
       </tr>`;
     }).join('');
+  }
+
+  // ----------------------------------------------------------------
+  // Logs view
+  // ----------------------------------------------------------------
+  let _logsBodyMap = {};
+  let _selectedLogId = null;
+
+  async function loadLogs() {
+    const tool = (document.getElementById('logs-filter-tool').value || '').trim();
+    const user = (document.getElementById('logs-filter-user').value || '').trim();
+    const success = document.getElementById('logs-filter-success').value;
+    let url = apiUrl('/api/logs') + '&limit=200';
+    if (tool) url += '&tool=' + encodeURIComponent(tool);
+    if (user) url += '&user=' + encodeURIComponent(user);
+    if (success) url += '&success=' + encodeURIComponent(success);
+    try {
+      const res = await fetch(url);
+      const logs = await res.json();
+      renderLogsTable(Array.isArray(logs) ? logs : []);
+      updateTimestamp();
+    } catch (e) {
+      console.error('loadLogs error:', e);
+    }
+  }
+
+  function renderLogsTable(logs) {
+    _logsBodyMap = {};
+    _selectedLogId = null;
+    document.getElementById('logs-body-panel').style.display = 'none';
+    const tbody = document.getElementById('logs-tbody');
+
+    if (!logs.length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="color:var(--text-muted);font-style:italic;text-align:center;">No log entries match.</td></tr>';
+      return;
+    }
+
+    logs.forEach(row => {
+      if (row.input_body != null) _logsBodyMap[row.id] = row.input_body;
+    });
+
+    tbody.innerHTML = logs.map(row => {
+      const statusBadge = row.success
+        ? '<span class="badge badge-green">OK</span>'
+        : '<span class="badge badge-orange" title="' + escHtml(row.error_type || '') + '">' + escHtml(row.error_type || 'ERR') + '</span>';
+      const hasBody = row.input_body != null;
+      const rowStyle = hasBody ? 'cursor:pointer;' : '';
+      const onclick = hasBody ? ' onclick="showLogBody(' + row.id + ')"' : '';
+      return '<tr style="' + rowStyle + '"' + onclick + '>'
+        + '<td style="white-space:nowrap;font-size:0.75rem;">' + escHtml(row.called_at || '—') + '</td>'
+        + '<td>' + escHtml(row.tool_name) + '</td>'
+        + '<td style="font-size:0.78rem;">' + escHtml(row.user_id || '—') + '</td>'
+        + '<td>' + fmtMs(row.duration_ms) + '</td>'
+        + '<td>' + fmtBytes(row.input_size) + '</td>'
+        + '<td>' + fmtBytes(row.response_size) + '</td>'
+        + '<td>' + statusBadge + '</td>'
+        + '</tr>';
+    }).join('');
+  }
+
+  function showLogBody(id) {
+    const panel = document.getElementById('logs-body-panel');
+    const content = document.getElementById('logs-body-content');
+    if (_selectedLogId === id) {
+      panel.style.display = 'none';
+      _selectedLogId = null;
+      return;
+    }
+    _selectedLogId = id;
+    const body = _logsBodyMap[id] || '';
+    try {
+      content.textContent = JSON.stringify(JSON.parse(body), null, 2);
+    } catch (_) {
+      content.textContent = body;
+    }
+    panel.style.display = 'block';
   }
 
   // ----------------------------------------------------------------
