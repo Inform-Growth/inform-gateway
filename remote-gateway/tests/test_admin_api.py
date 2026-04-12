@@ -209,3 +209,45 @@ def test_sessions_returns_sankey_key(client):
     assert "sankey" in body
     assert "nodes" in body["sankey"]
     assert "links" in body["sankey"]
+
+
+# ---------------------------------------------------------------------------
+# Logs
+# ---------------------------------------------------------------------------
+
+def test_logs_forbidden_without_token(client):
+    c, _ = client
+    resp = c.get("/api/logs")
+    assert resp.status_code == 403
+
+
+def test_logs_returns_list(client):
+    c, store = client
+    store.record("health_check", 10, True, user_id="alice", input_body='{"x": 1}')
+    resp = c.get(f"/api/logs?token={TOKEN}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert isinstance(body, list)
+    assert body[0]["tool_name"] == "health_check"
+    assert "input_body" in body[0]
+    assert "input_size" in body[0]
+
+
+def test_logs_filters_by_tool(client):
+    c, store = client
+    store.record("tool_a", 10, True)
+    store.record("tool_b", 10, True)
+    resp = c.get(f"/api/logs?token={TOKEN}&tool=tool_a")
+    assert resp.status_code == 200
+    assert all(row["tool_name"] == "tool_a" for row in resp.json())
+
+
+def test_logs_filters_errors_only(client):
+    c, store = client
+    store.record("health_check", 10, True)
+    store.record("health_check", 10, False, error_type="ValueError")
+    resp = c.get(f"/api/logs?token={TOKEN}&success=false")
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert len(rows) == 1
+    assert rows[0]["success"] is False

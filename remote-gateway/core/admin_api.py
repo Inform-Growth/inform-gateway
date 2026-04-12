@@ -158,6 +158,32 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
             for t in tools
         ])
 
+    async def api_logs(request: Request) -> Response:
+        if not _is_authorized(request):
+            return _forbidden()
+        try:
+            limit = int(request.query_params.get("limit", "100"))
+            offset = int(request.query_params.get("offset", "0"))
+        except ValueError:
+            limit, offset = 100, 0
+        tool = request.query_params.get("tool") or None
+        user = request.query_params.get("user") or None
+        success_param = request.query_params.get("success")
+        success: bool | None = None
+        if success_param == "true":
+            success = True
+        elif success_param == "false":
+            success = False
+        return JSONResponse(
+            telemetry.raw_logs(
+                limit=limit,
+                offset=offset,
+                tool_name=tool,
+                user_id=user,
+                success=success,
+            )
+        )
+
     async def api_permissions_set(request: Request) -> Response:
         if not _is_authorized(request):
             return _forbidden()
@@ -184,6 +210,7 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         Route("/api/permissions/{user_id}/{tool_name:path}", api_permissions_set, methods=["PUT"]),
         Route("/api/timeline", api_timeline),
         Route("/api/tools", api_tools),
+        Route("/api/logs", api_logs),
     ]
 
     return Starlette(routes=routes)
