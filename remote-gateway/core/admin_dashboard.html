@@ -1269,7 +1269,7 @@
         : '<span class="badge badge-orange" title="' + escHtml(row.error_type || '') + '">' + escHtml(row.error_type || 'ERR') + '</span>';
       const hasBody = row.input_body != null;
       const rowStyle = hasBody ? 'cursor:pointer;' : '';
-      const onclick = hasBody ? ' onclick="showLogBody(' + row.id + ')"' : '';
+      const onclick = hasBody ? ' onclick="showLogBody(' + escJs(String(row.id)) + ')"' : '';
       return '<tr style="' + rowStyle + '"' + onclick + '>'
         + '<td style="white-space:nowrap;font-size:0.75rem;">' + escHtml(row.called_at || '—') + '</td>'
         + '<td>' + escHtml(row.tool_name) + '</td>'
