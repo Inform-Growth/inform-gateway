@@ -11,6 +11,7 @@ Mount in mcp_server.py:
 """
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,8 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, Response
 from starlette.routing import Route
+
+_logger = logging.getLogger(__name__)
 
 _DASHBOARD_HTML = Path(__file__).parent / "admin_dashboard.html"
 _DEFAULT_TOKEN = "inform-admin-2026"
@@ -119,8 +122,12 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         if list_tools_fn is not None:
             try:
                 tools = await list_tools_fn()
-                tool_names = sorted(t.name for t in tools)
-            except Exception:
+                tool_names = sorted(set(t.name for t in tools) | explicit.keys())
+            except Exception as exc:
+                _logger.warning(
+                    "list_tools_fn failed in api_permissions_get, falling back to explicit rows: %s",
+                    exc,
+                )
                 tool_names = sorted(explicit.keys())
         else:
             tool_names = sorted(explicit.keys())
