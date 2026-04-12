@@ -361,7 +361,8 @@ class TelemetryStore:
             Dict with:
               - tools: list of per-tool stat dicts (call_count, error_count,
                 error_rate, last_called, avg_duration_ms, max_duration_ms,
-                avg_response_size, max_response_size)
+                avg_response_size, max_response_size,
+                avg_input_size, max_input_size)
               - summary: total_calls, total_tools_seen, high_error_rate list
                 (tools with ≥5% error rate across ≥10 calls)
         """

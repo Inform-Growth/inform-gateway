@@ -118,7 +118,7 @@ def test_raw_logs_returns_recent_calls(store):
     store.record("tool_b", 20, False, user_id="alice", error_type="ValueError")
     logs = store.raw_logs(limit=10)
     assert len(logs) == 2
-    names = {l["tool_name"] for l in logs}
+    names = {log["tool_name"] for log in logs}
     assert names == {"tool_a", "tool_b"}
 
 
@@ -126,18 +126,18 @@ def test_raw_logs_filters_by_tool(store):
     store.record("tool_a", 10, True)
     store.record("tool_b", 20, True)
     logs = store.raw_logs(tool_name="tool_a")
-    assert all(l["tool_name"] == "tool_a" for l in logs)
+    assert all(log["tool_name"] == "tool_a" for log in logs)
 
 
 def test_raw_logs_filters_by_user(store):
     store.record("health_check", 10, True, user_id="alice")
     store.record("health_check", 10, True, user_id="bob")
     logs = store.raw_logs(user_id="alice")
-    assert all(l["user_id"] == "alice" for l in logs)
+    assert all(log["user_id"] == "alice" for log in logs)
 
 
 def test_raw_logs_filters_errors_only(store):
     store.record("health_check", 10, True)
     store.record("health_check", 10, False, error_type="ValueError")
     logs = store.raw_logs(success=False)
-    assert all(not l["success"] for l in logs)
+    assert all(not log["success"] for log in logs)
