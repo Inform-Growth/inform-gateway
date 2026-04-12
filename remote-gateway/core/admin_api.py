@@ -125,7 +125,8 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
                 tool_names = sorted(set(t.name for t in tools) | explicit.keys())
             except Exception as exc:
                 _logger.warning(
-                    "list_tools_fn failed in api_permissions_get, falling back to explicit rows: %s",
+                    "list_tools_fn failed in api_permissions_get, "
+                    "falling back to explicit rows: %s",
                     exc,
                 )
                 tool_names = sorted(explicit.keys())
@@ -162,8 +163,8 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         if not _is_authorized(request):
             return _forbidden()
         try:
-            limit = int(request.query_params.get("limit", "100"))
-            offset = int(request.query_params.get("offset", "0"))
+            limit = max(1, min(int(request.query_params.get("limit", "100")), 1000))
+            offset = max(0, int(request.query_params.get("offset", "0")))
         except ValueError:
             limit, offset = 100, 0
         tool = request.query_params.get("tool") or None

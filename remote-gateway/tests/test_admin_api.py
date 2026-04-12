@@ -251,3 +251,29 @@ def test_logs_filters_errors_only(client):
     rows = resp.json()
     assert len(rows) == 1
     assert rows[0]["success"] is False
+
+
+def test_logs_invalid_limit_uses_default(client):
+    c, store = client
+    store.record("health_check", 10, True)
+    resp = c.get(f"/api/logs?token={TOKEN}&limit=abc&offset=xyz")
+    assert resp.status_code == 200
+    assert isinstance(resp.json(), list)
+
+
+def test_logs_filters_by_user(client):
+    c, store = client
+    store.record("health_check", 10, True, user_id="alice")
+    store.record("health_check", 10, True, user_id="bob")
+    resp = c.get(f"/api/logs?token={TOKEN}&user=alice")
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert all(row["user_id"] == "alice" for row in rows)
+
+
+def test_logs_negative_limit_clamped(client):
+    c, store = client
+    store.record("health_check", 10, True)
+    resp = c.get(f"/api/logs?token={TOKEN}&limit=-1")
+    assert resp.status_code == 200
+    assert isinstance(resp.json(), list)
