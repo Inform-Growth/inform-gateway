@@ -62,7 +62,7 @@ def _import_mcp_server():
     recorded: list[dict] = []
     mod_tel = types.ModuleType("telemetry")
     mock_tel = MagicMock()
-    mock_tel.record = lambda name, duration_ms, success, exc_type=None, user_id=None, request_id=None, response_size=None: recorded.append(  # noqa: E501
+    mock_tel.record = lambda name, duration_ms, success, exc_type=None, user_id=None, request_id=None, response_size=None, input_body=None: recorded.append(  # noqa: E501
         {"name": name, "duration_ms": duration_ms, "success": success, "exc_type": exc_type,
          "user_id": user_id, "request_id": request_id}
     )
