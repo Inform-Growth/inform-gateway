@@ -43,9 +43,48 @@ from mcp_proxy import mount_all_proxies  # noqa: E402
 from telemetry import telemetry as _telemetry  # noqa: E402
 
 
+def _bootstrap_gmail_credentials() -> None:
+    """Write Gmail OAuth credentials from env vars to temp files.
+
+    Reads two env vars that hold the raw JSON content of the credential files:
+
+    - ``GMAIL_OAUTH_KEYS_JSON``  → gcp-oauth.keys.json (GCP OAuth client secret)
+    - ``GMAIL_CREDENTIALS_JSON`` → credentials.json (user access/refresh token)
+
+    Writes each to a temp directory and sets ``GMAIL_OAUTH_PATH`` /
+    ``GMAIL_CREDENTIALS_PATH`` so the Gmail MCP subprocess can find them.
+    Skips silently if the var is absent (useful for local dev where the files
+    already exist at their default locations).
+    """
+    import tempfile
+
+    tmpdir: Path | None = None
+
+    oauth_json = os.environ.get("GMAIL_OAUTH_KEYS_JSON")
+    creds_json = os.environ.get("GMAIL_CREDENTIALS_JSON")
+
+    if not (oauth_json or creds_json):
+        return
+
+    tmpdir = Path(tempfile.mkdtemp(prefix="gmail-mcp-"))
+
+    if oauth_json and not os.environ.get("GMAIL_OAUTH_PATH"):
+        p = tmpdir / "gcp-oauth.keys.json"
+        p.write_text(oauth_json)
+        os.environ["GMAIL_OAUTH_PATH"] = str(p)
+        print(f"  [gmail] OAuth keys written to {p}")
+
+    if creds_json and not os.environ.get("GMAIL_CREDENTIALS_PATH"):
+        p = tmpdir / "credentials.json"
+        p.write_text(creds_json)
+        os.environ["GMAIL_CREDENTIALS_PATH"] = str(p)
+        print(f"  [gmail] Credentials written to {p}")
+
+
 @asynccontextmanager
 async def lifespan(server: FastMCP):
     """Start upstream MCP proxy connections on startup; clean up on shutdown."""
+    _bootstrap_gmail_credentials()
     proxy_tasks = await mount_all_proxies(server)
     yield
     for task in proxy_tasks:

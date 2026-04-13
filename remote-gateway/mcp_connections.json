@@ -58,6 +58,15 @@
           "list_issues"
         ]
       }
+    },
+    "gmail": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@gongrzhe/server-gmail-autoauth-mcp"],
+      "env": {
+        "GMAIL_OAUTH_PATH": "${GMAIL_OAUTH_PATH}",
+        "GMAIL_CREDENTIALS_PATH": "${GMAIL_CREDENTIALS_PATH}"
+      }
     }
   }
 }
