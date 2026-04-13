@@ -635,6 +635,7 @@ class TelemetryStore:
         tool_name: str | None = None,
         user_id: str | None = None,
         success: bool | None = None,
+        error_type: str | None = None,
     ) -> list[dict[str, Any]]:
         """Return recent raw tool call rows, newest first.
 
@@ -644,6 +645,7 @@ class TelemetryStore:
             tool_name: Filter to an exact tool name.
             user_id: Filter to an exact user_id.
             success: If True, only successful calls; if False, only errors.
+            error_type: Filter to an exact error_type (e.g. "PermissionError").
 
         Returns:
             List of dicts with id, tool_name, called_at, duration_ms, success,
@@ -664,6 +666,9 @@ class TelemetryStore:
             if success is not None:
                 filters.append("success = ?")
                 params.append(int(success))
+            if error_type is not None:
+                filters.append("error_type = ?")
+                params.append(error_type)
             where = ("WHERE " + " AND ".join(filters)) if filters else ""
             params.extend([limit, offset])
             rows = conn.execute(

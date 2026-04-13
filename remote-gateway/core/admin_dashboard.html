@@ -263,6 +263,7 @@
       letter-spacing: 0.06em;
     }
     .badge-green  { background: var(--green-light); color: #fff; }
+    .badge-red    { background: #b91c1c; color: #fff; }
     .badge-amber  { background: #b89020; color: #fff; }
     .badge-orange { background: var(--orange); color: #fff; }
 
@@ -593,6 +594,7 @@
           <option value="">All</option>
           <option value="true">Success only</option>
           <option value="false">Errors only</option>
+          <option value="blocked">Blocked only</option>
         </select>
       </div>
       <div style="overflow-x:auto;">
@@ -1233,11 +1235,15 @@
   async function loadLogs() {
     const tool = (document.getElementById('logs-filter-tool').value || '').trim();
     const user = (document.getElementById('logs-filter-user').value || '').trim();
-    const success = document.getElementById('logs-filter-success').value;
+    const successVal = document.getElementById('logs-filter-success').value;
     let url = apiUrl('/api/logs') + '&limit=200';
     if (tool) url += '&tool=' + encodeURIComponent(tool);
     if (user) url += '&user=' + encodeURIComponent(user);
-    if (success) url += '&success=' + encodeURIComponent(success);
+    if (successVal === 'blocked') {
+      url += '&success=false&error_type=PermissionError';
+    } else if (successVal) {
+      url += '&success=' + encodeURIComponent(successVal);
+    }
     try {
       const res = await fetch(url);
       const logs = await res.json();
@@ -1266,7 +1272,9 @@
     tbody.innerHTML = logs.map(row => {
       const statusBadge = row.success
         ? '<span class="badge badge-green">OK</span>'
-        : '<span class="badge badge-orange" title="' + escHtml(row.error_type || '') + '">' + escHtml(row.error_type || 'ERR') + '</span>';
+        : row.error_type === 'PermissionError'
+          ? '<span class="badge badge-red" title="Tool blocked by permissions">BLOCKED</span>'
+          : '<span class="badge badge-orange" title="' + escHtml(row.error_type || '') + '">' + escHtml(row.error_type || 'ERR') + '</span>';
       const hasBody = row.input_body != null;
       const rowStyle = hasBody ? 'cursor:pointer;' : '';
       const onclick = hasBody ? ' onclick="showLogBody(' + escJs(String(row.id)) + ')"' : '';

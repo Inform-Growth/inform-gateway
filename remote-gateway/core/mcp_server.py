@@ -323,6 +323,11 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                 sid, rid = _get_call_ids()
                 input_body = json.dumps(fn_kwargs, default=str)
                 if sid and not _telemetry.has_permission(sid, fn.__name__):
+                    _telemetry.record(
+                        fn.__name__, int((_time.monotonic() - t0) * 1000), False,
+                        "PermissionError", user_id=sid, request_id=rid,
+                        input_body=input_body,
+                    )
                     raise PermissionError(f"Tool '{fn.__name__}' is disabled for your account.")
                 try:
                     result = await fn(*fn_args, **fn_kwargs)
@@ -349,6 +354,11 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
             sid, rid = _get_call_ids()
             input_body = json.dumps(fn_kwargs, default=str)
             if sid and not _telemetry.has_permission(sid, fn.__name__):
+                _telemetry.record(
+                    fn.__name__, int((_time.monotonic() - t0) * 1000), False,
+                    "PermissionError", user_id=sid, request_id=rid,
+                    input_body=input_body,
+                )
                 raise PermissionError(f"Tool '{fn.__name__}' is disabled for your account.")
             try:
                 result = fn(*fn_args, **fn_kwargs)
@@ -393,6 +403,11 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
             sid, rid = _get_call_ids()
             input_body = json.dumps(fn_kwargs, default=str)
             if sid and not _telemetry.has_permission(sid, tool_name):
+                _telemetry.record(
+                    tool_name, int((_time.monotonic() - t0) * 1000), False,
+                    "PermissionError", user_id=sid, request_id=rid,
+                    input_body=input_body,
+                )
                 raise PermissionError(f"Tool '{tool_name}' is disabled for your account.")
             try:
                 result = await fn(*fn_args, **fn_kwargs)
@@ -419,6 +434,11 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
         sid, rid = _get_call_ids()
         input_body = json.dumps(fn_kwargs, default=str)
         if sid and not _telemetry.has_permission(sid, tool_name):
+            _telemetry.record(
+                tool_name, int((_time.monotonic() - t0) * 1000), False,
+                "PermissionError", user_id=sid, request_id=rid,
+                input_body=input_body,
+            )
             raise PermissionError(f"Tool '{tool_name}' is disabled for your account.")
         try:
             result = fn(*fn_args, **fn_kwargs)
