@@ -730,28 +730,35 @@
       renderAdoption(sess.user_breakdown || {});
       _healthData = stats.tools || [];
       renderHealthTable();
-      renderTimeline(Array.isArray(timeline) ? timeline : []);
+      renderTimeline(timeline && typeof timeline === 'object' ? timeline : {users: [], days: []});
       updateTimestamp();
     } catch (e) {
       console.error('loadExec error:', e);
     }
   }
 
-  // --- Activity Timeline ---
+  // --- Activity Timeline (stacked by user) ---
   function renderTimeline(data) {
     const container = document.getElementById('timeline-container');
     container.innerHTML = '';
 
-    if (!data || data.length === 0) {
+    const users = data.users || [];
+    const days  = data.days  || [];
+
+    if (!days.length || !users.length) {
       container.innerHTML = '<p class="muted-msg">No activity in the last 30 days.</p>';
       return;
     }
 
-    const W = container.clientWidth || 800;
-    const H = 160;
-    const margin = {top: 8, right: 16, bottom: 36, left: 40};
-    const iW = W - margin.left - margin.right;
-    const iH = H - margin.top - margin.bottom;
+    const W      = container.clientWidth || 800;
+    const H      = 300;
+    const margin = {top: 12, right: 16, bottom: 36, left: 40};
+    const iW     = W - margin.left - margin.right;
+    const iH     = H - margin.top - margin.bottom;
+
+    // Earthy palette — consistent with the existing green/tan aesthetic
+    const PALETTE = ['#2d5a27','#6b8f47','#a3b18a','#c4865a','#8b6914','#4a7c7e','#7a4f3a','#3d6b6b'];
+    const colorOf = uid => PALETTE[users.indexOf(uid) % PALETTE.length];
 
     const svg = d3.select(container)
       .append('svg')
@@ -761,42 +768,81 @@
     const g = svg.append('g')
       .attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
 
+    // Stack
+    const series = d3.stack().keys(users)(days);
+
     const x = d3.scaleBand()
-      .domain(data.map(d => d.day))
+      .domain(days.map(d => d.day))
       .range([0, iW])
       .padding(0.15);
 
     const y = d3.scaleLinear()
-      .domain([0, d3.max(data, d => d.calls) || 1])
+      .domain([0, d3.max(series, layer => d3.max(layer, d => d[1])) || 1])
       .nice()
       .range([iH, 0]);
 
-    g.selectAll('rect')
-      .data(data)
-      .join('rect')
-        .attr('x', d => x(d.day))
-        .attr('y', d => y(d.calls))
-        .attr('width', x.bandwidth())
-        .attr('height', d => iH - y(d.calls))
-        .attr('fill', '#2d5a27')
-        .append('title')
-          .text(d => d.day + ': ' + d.calls + ' calls, ' + d.users + ' user(s)');
+    // Stacked bars — one <g> layer per user
+    g.selectAll('g.layer')
+      .data(series)
+      .join('g')
+        .attr('class', 'layer')
+        .attr('fill', d => colorOf(d.key))
+        .each(function(layerData) {
+          d3.select(this).selectAll('rect')
+            .data(layerData)
+            .join('rect')
+              .attr('x', d => x(d.data.day))
+              .attr('y', d => y(d[1]))
+              .attr('width', x.bandwidth())
+              .attr('height', d => Math.max(0, y(d[0]) - y(d[1])))
+              .append('title')
+                .text(d => d.data.day + ' — ' + layerData.key + ': ' + (d[1] - d[0]) + ' calls');
+        });
 
-    const n = Math.ceil(data.length / 8);
+    // X axis — show ~8 evenly-spaced ticks
+    const n = Math.ceil(days.length / 8);
     g.append('g')
       .attr('transform', 'translate(0,' + iH + ')')
       .call(d3.axisBottom(x)
-        .tickValues(data.filter((_, i) => i % n === 0).map(d => d.day))
+        .tickValues(days.filter((_, i) => i % n === 0).map(d => d.day))
         .tickFormat(d => d.slice(5)))
       .call(a => a.select('.domain').attr('stroke', '#c4b492'))
       .call(a => a.selectAll('.tick line').attr('stroke', '#c4b492'))
       .call(a => a.selectAll('text').attr('font-size', '9px').attr('fill', '#6b6b50'));
 
+    // Y axis
     g.append('g')
       .call(d3.axisLeft(y).ticks(4).tickFormat(d3.format('d')))
       .call(a => a.select('.domain').attr('stroke', '#c4b492'))
       .call(a => a.selectAll('.tick line').attr('stroke', '#c4b492'))
       .call(a => a.selectAll('text').attr('font-size', '9px').attr('fill', '#6b6b50'));
+
+    // Legend
+    const legend = d3.select(container)
+      .append('div')
+      .style('display', 'flex')
+      .style('flex-wrap', 'wrap')
+      .style('gap', '0.3rem 0.9rem')
+      .style('margin-top', '0.5rem')
+      .style('font-size', '0.78rem')
+      .style('font-family', 'Arial, sans-serif');
+
+    users.forEach(uid => {
+      const item = legend.append('div')
+        .style('display', 'flex')
+        .style('align-items', 'center')
+        .style('gap', '0.3rem');
+      item.append('span')
+        .style('display', 'inline-block')
+        .style('width', '10px')
+        .style('height', '10px')
+        .style('background', colorOf(uid))
+        .style('border-radius', '2px')
+        .style('flex-shrink', '0');
+      item.append('span')
+        .style('color', '#6b6b50')
+        .text(uid);
+    });
   }
 
   // --- Cards ---
