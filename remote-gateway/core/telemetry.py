@@ -627,6 +627,62 @@ class TelemetryStore:
             for row in rows
         ]
 
+    def daily_activity_by_user(self, days: int = 30) -> dict[str, Any]:
+        """Return per-user, per-day call counts for the last N calendar days.
+
+        Args:
+            days: How many days back to include (default: 30).
+
+        Returns:
+            Dict with:
+              - ``users``: sorted list of distinct user_id strings seen in the period
+              - ``days``: list of dicts ordered ascending by date, each with a
+                ``'day'`` key (YYYY-MM-DD) and one key per user_id containing that
+                user's call count (0 for users absent on that day).
+            Days with zero activity across ALL users are omitted.
+        """
+        if not self._enabled:
+            return {"users": [], "days": []}
+        try:
+            conn = self._connect()
+            cutoff = time.time() - days * 86400
+            rows = conn.execute(
+                """
+                SELECT
+                    date(called_at, 'unixepoch') AS day,
+                    COALESCE(user_id, 'unknown') AS user_id,
+                    COUNT(*)                     AS calls
+                FROM tool_calls
+                WHERE called_at >= ?
+                GROUP BY day, user_id
+                ORDER BY day ASC
+                """,
+                (cutoff,),
+            ).fetchall()
+            conn.close()
+        except Exception:
+            return {"users": [], "days": []}
+
+        # Pivot rows into {day -> {user_id -> calls}}
+        days_map: dict[str, dict[str, int]] = {}
+        users_seen: set[str] = set()
+        for row in rows:
+            day = row["day"]
+            uid = row["user_id"]
+            users_seen.add(uid)
+            if day not in days_map:
+                days_map[day] = {}
+            days_map[day][uid] = row["calls"]
+
+        users = sorted(users_seen)
+        day_records = []
+        for day in sorted(days_map):
+            record: dict[str, Any] = {"day": day}
+            for uid in users:
+                record[uid] = days_map[day].get(uid, 0)
+            day_records.append(record)
+
+        return {"users": users, "days": day_records}
 
     def raw_logs(
         self,

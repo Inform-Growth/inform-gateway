@@ -141,3 +141,58 @@ def test_raw_logs_filters_errors_only(store):
     store.record("health_check", 10, False, error_type="ValueError")
     logs = store.raw_logs(success=False)
     assert all(not log["success"] for log in logs)
+
+
+# ---------------------------------------------------------------------------
+# daily_activity_by_user
+# ---------------------------------------------------------------------------
+
+def test_daily_activity_by_user_empty(tmp_path):
+    store = TelemetryStore(db_path=tmp_path / "test.db")
+    result = store.daily_activity_by_user(days=30)
+    assert result == {"users": [], "days": []}
+
+
+def test_daily_activity_by_user_single_user(tmp_path):
+    store = TelemetryStore(db_path=tmp_path / "test.db")
+    store.record("health_check", 10, True, user_id="alice@example.com")
+    store.record("health_check", 20, True, user_id="alice@example.com")
+    result = store.daily_activity_by_user(days=30)
+    assert result["users"] == ["alice@example.com"]
+    assert len(result["days"]) == 1
+    day = result["days"][0]
+    assert day["alice@example.com"] == 2
+
+
+def test_daily_activity_by_user_multiple_users_same_day(tmp_path):
+    store = TelemetryStore(db_path=tmp_path / "test.db")
+    store.record("health_check", 10, True, user_id="alice@example.com")
+    store.record("health_check", 10, True, user_id="bob@example.com")
+    store.record("health_check", 10, True, user_id="bob@example.com")
+    result = store.daily_activity_by_user(days=30)
+    assert sorted(result["users"]) == ["alice@example.com", "bob@example.com"]
+    assert len(result["days"]) == 1
+    day = result["days"][0]
+    assert day["alice@example.com"] == 1
+    assert day["bob@example.com"] == 2
+
+
+def test_daily_activity_by_user_absent_user_gets_zero(tmp_path):
+    """A user who had no calls on a given day gets 0, not a missing key."""
+    store = TelemetryStore(db_path=tmp_path / "test.db")
+    store.record("health_check", 10, True, user_id="alice@example.com")
+    store.record("health_check", 10, True, user_id="bob@example.com")
+    result = store.daily_activity_by_user(days=30)
+    # Both users appear in every day record
+    for day in result["days"]:
+        assert "alice@example.com" in day
+        assert "bob@example.com" in day
+
+
+def test_daily_activity_by_user_null_user_id_becomes_unknown(tmp_path):
+    """Calls with no user_id are grouped under 'unknown'."""
+    store = TelemetryStore(db_path=tmp_path / "test.db")
+    store.record("health_check", 10, True)   # user_id=None
+    result = store.daily_activity_by_user(days=30)
+    assert "unknown" in result["users"]
+    assert result["days"][0]["unknown"] == 1
