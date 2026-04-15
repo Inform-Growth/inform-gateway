@@ -129,13 +129,13 @@ Show the draft to Jaron and ask: "Good to send?"
 
 ### Step 8: Send
 
-Only after Jaron confirms. Before calling Gmail, normalize the email body to remove hard line breaks:
+Before sending, convert the draft to HTML to prevent Gmail's SMTP line-wrapping:
 
-1. Call `normalize_email_body` with the draft body text. Use the returned `body` value for the send call.
+1. Call `normalize_email_body` with the raw draft body. It returns an HTML string in the `body` field — `<p>` tags per paragraph, no line breaks within paragraphs.
 2. Call `gmail__send_email`:
    - **To:** Pass as an array: `["email@example.com"]`, not a plain string.
    - **Subject:** `"Follow up from ALL IN Talks West"` — default. Override with Jaron's direction if he specifies a different subject.
-   - **Body:** the normalized body from step 1
+   - **Body:** the HTML string returned from `normalize_email_body` (the `body` field).
 
 ---
 
