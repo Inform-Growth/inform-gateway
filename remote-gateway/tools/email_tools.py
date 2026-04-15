@@ -8,6 +8,7 @@ intentional paragraph breaks (double newlines).
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 
@@ -33,8 +34,6 @@ def normalize_email_body(body: str) -> dict[str, Any]:
         Input:  "Hey Sarah,\\n\\nYour work on RevOps tooling\\ncaught my attention."
         Output: "Hey Sarah,\\n\\nYour work on RevOps tooling caught my attention."
     """
-    import re
-
     # Normalize line endings
     body = body.replace("\r\n", "\n").replace("\r", "\n")
     # Split into paragraphs on double (or more) newlines
