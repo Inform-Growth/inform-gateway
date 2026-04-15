@@ -62,9 +62,9 @@ def _import_mcp_server():
     recorded: list[dict] = []
     mod_tel = types.ModuleType("telemetry")
     mock_tel = MagicMock()
-    mock_tel.record = lambda name, duration_ms, success, exc_type=None, user_id=None, request_id=None, response_size=None, input_body=None: recorded.append(  # noqa: E501
+    mock_tel.record = lambda name, duration_ms, success, exc_type=None, user_id=None, request_id=None, response_size=None, input_body=None, error_message=None: recorded.append(  # noqa: E501
         {"name": name, "duration_ms": duration_ms, "success": success, "exc_type": exc_type,
-         "user_id": user_id, "request_id": request_id}
+         "user_id": user_id, "request_id": request_id, "error_message": error_message}
     )
     mock_tel.lookup_user = MagicMock(return_value=None)
     mod_tel.telemetry = mock_tel
@@ -174,3 +174,21 @@ def test_sync_tool_still_works_after_async_branch_added():
     assert len(_recorded) == 1
     assert _recorded[0]["name"] == "sync_tool"
     assert _recorded[0]["success"] is True
+
+
+def test_error_message_captured_on_failure():
+    """Telemetry wrapper must pass error_message=str(exc) when a tool raises."""
+    async def broken_tool(x: int) -> str:
+        raise ValueError("bad input: x must be positive")
+
+    tracked = _server._tracked_mcp_tool()(broken_tool)
+
+    try:
+        asyncio.run(tracked(x=-1))
+    except ValueError:
+        pass
+
+    assert len(_recorded) == 1
+    call = _recorded[0]
+    assert call["exc_type"] == "ValueError"
+    assert call["error_message"] == "bad input: x must be positive"
