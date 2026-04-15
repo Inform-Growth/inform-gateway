@@ -330,7 +330,8 @@ class TelemetryStore:
             request_id: Unique MCP request ID for this invocation.
             response_size: Size of the response in characters/bytes.
             input_body: JSON-serialized tool arguments captured at call time.
-            error_message: str(exc) on failure, otherwise None.
+            error_message: Full exception message string on failure (e.g. str(exc)),
+                complementing error_type which holds only the class name. None on success.
         """
         if not self._enabled:
             return

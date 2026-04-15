@@ -201,6 +201,7 @@ def test_daily_activity_by_user_null_user_id_becomes_unknown(tmp_path):
 def test_record_stores_error_message(store):
     store.record("my_tool", 10, False, error_type="ValueError", error_message="bad value: foo")
     logs = store.raw_logs(limit=1)
+    assert logs[0]["error_type"] == "ValueError"
     assert logs[0]["error_message"] == "bad value: foo"
 
 
