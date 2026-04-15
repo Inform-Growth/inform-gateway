@@ -103,6 +103,9 @@ mcp = FastMCP(
     lifespan=lifespan,
     host=os.environ.get("MCP_SERVER_HOST", "0.0.0.0"),
     port=int(os.environ.get("MCP_SERVER_PORT", "8000")),
+    warn_on_duplicate_tools=False,
+    warn_on_duplicate_prompts=False,
+    warn_on_duplicate_resources=False,
 )
 
 
