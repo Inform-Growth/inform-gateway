@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS tool_calls (
     duration_ms   INTEGER NOT NULL,
     success       INTEGER NOT NULL,
     error_type    TEXT,
+    error_message TEXT,
     user_id       TEXT,
     request_id    TEXT,
     response_size INTEGER,
@@ -81,10 +82,11 @@ CREATE INDEX IF NOT EXISTS idx_user_id   ON tool_calls (user_id);
 
 # Columns added after initial release — applied via ALTER TABLE migration.
 _MIGRATIONS = [
-    ("tool_calls", "user_id",       "TEXT"),
-    ("tool_calls", "request_id",    "TEXT"),
-    ("tool_calls", "response_size", "INTEGER"),
-    ("tool_calls", "input_body",    "TEXT"),
+    ("tool_calls", "user_id",        "TEXT"),
+    ("tool_calls", "request_id",     "TEXT"),
+    ("tool_calls", "response_size",  "INTEGER"),
+    ("tool_calls", "input_body",     "TEXT"),
+    ("tool_calls", "error_message",  "TEXT"),
 ]
 
 
@@ -314,6 +316,7 @@ class TelemetryStore:
         request_id: str | None = None,
         response_size: int | None = None,
         input_body: str | None = None,
+        error_message: str | None = None,
     ) -> None:
         """Record a single tool invocation. Silent no-op if disabled.
 
@@ -327,6 +330,8 @@ class TelemetryStore:
             request_id: Unique MCP request ID for this invocation.
             response_size: Size of the response in characters/bytes.
             input_body: JSON-serialized tool arguments captured at call time.
+            error_message: Full exception message string on failure (e.g. str(exc)),
+                complementing error_type which holds only the class name. None on success.
         """
         if not self._enabled:
             return
@@ -335,11 +340,11 @@ class TelemetryStore:
             conn.execute(
                 "INSERT INTO tool_calls"
                 " (tool_name, called_at, duration_ms, success,"
-                "  error_type, user_id, request_id, response_size, input_body)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "  error_type, error_message, user_id, request_id, response_size, input_body)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     tool_name, time.time(), duration_ms, int(success),
-                    error_type, user_id, request_id, response_size, input_body,
+                    error_type, error_message, user_id, request_id, response_size, input_body,
                 ),
             )
             conn.commit()
@@ -627,6 +632,62 @@ class TelemetryStore:
             for row in rows
         ]
 
+    def daily_activity_by_user(self, days: int = 30) -> dict[str, Any]:
+        """Return per-user, per-day call counts for the last N calendar days.
+
+        Args:
+            days: How many days back to include (default: 30).
+
+        Returns:
+            Dict with:
+              - ``users``: sorted list of distinct user_id strings seen in the period
+              - ``days``: list of dicts ordered ascending by date, each with a
+                ``'day'`` key (YYYY-MM-DD) and one key per user_id containing that
+                user's call count (0 for users absent on that day).
+            Days with zero activity across ALL users are omitted.
+        """
+        if not self._enabled:
+            return {"users": [], "days": []}
+        try:
+            conn = self._connect()
+            cutoff = time.time() - days * 86400
+            rows = conn.execute(
+                """
+                SELECT
+                    date(called_at, 'unixepoch') AS day,
+                    COALESCE(user_id, 'unknown') AS user_id,
+                    COUNT(*)                     AS calls
+                FROM tool_calls
+                WHERE called_at >= ?
+                GROUP BY day, user_id
+                ORDER BY day ASC
+                """,
+                (cutoff,),
+            ).fetchall()
+            conn.close()
+        except Exception:
+            return {"users": [], "days": []}
+
+        # Pivot rows into {day -> {user_id -> calls}}
+        days_map: dict[str, dict[str, int]] = {}
+        users_seen: set[str] = set()
+        for row in rows:
+            day = row["day"]
+            uid = row["user_id"]
+            users_seen.add(uid)
+            if day not in days_map:
+                days_map[day] = {}
+            days_map[day][uid] = row["calls"]
+
+        users = sorted(users_seen)
+        day_records = []
+        for day in sorted(days_map):
+            record: dict[str, Any] = {"day": day}
+            for uid in users:
+                record[uid] = days_map[day].get(uid, 0)
+            day_records.append(record)
+
+        return {"users": users, "days": day_records}
 
     def raw_logs(
         self,
@@ -649,7 +710,7 @@ class TelemetryStore:
 
         Returns:
             List of dicts with id, tool_name, called_at, duration_ms, success,
-            error_type, user_id, request_id, response_size, input_size, input_body.
+            error_type, error_message, user_id, request_id, response_size, input_size, input_body.
         """
         if not self._enabled:
             return []
@@ -674,7 +735,7 @@ class TelemetryStore:
             rows = conn.execute(
                 f"""
                 SELECT id, tool_name, called_at, duration_ms, success,
-                       error_type, user_id, request_id, response_size, input_body
+                       error_type, error_message, user_id, request_id, response_size, input_body
                 FROM tool_calls
                 {where}
                 ORDER BY called_at DESC
@@ -703,6 +764,7 @@ class TelemetryStore:
                     "duration_ms": row["duration_ms"],
                     "success": bool(row["success"]),
                     "error_type": row["error_type"],
+                    "error_message": row["error_message"],
                     "user_id": row["user_id"],
                     "request_id": row["request_id"],
                     "response_size": row["response_size"],

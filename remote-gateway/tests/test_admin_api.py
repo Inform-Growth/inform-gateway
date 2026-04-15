@@ -253,6 +253,28 @@ def test_logs_filters_errors_only(client):
     assert rows[0]["success"] is False
 
 
+def test_logs_includes_error_message(client):
+    c, store = client
+    store.record(
+        "attio__create_note", 50, False,
+        error_type="Exception",
+        error_message="Missing required parameter: resource_type",
+    )
+    resp = c.get(f"/api/logs?token={TOKEN}")
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert rows[0]["error_message"] == "Missing required parameter: resource_type"
+
+
+def test_logs_error_message_none_on_success(client):
+    c, store = client
+    store.record("health_check", 10, True)
+    resp = c.get(f"/api/logs?token={TOKEN}")
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert rows[0]["error_message"] is None
+
+
 def test_logs_invalid_limit_uses_default(client):
     c, store = client
     store.record("health_check", 10, True)
@@ -277,3 +299,36 @@ def test_logs_negative_limit_clamped(client):
     resp = c.get(f"/api/logs?token={TOKEN}&limit=-1")
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
+
+
+# ---------------------------------------------------------------------------
+# Timeline
+# ---------------------------------------------------------------------------
+
+def test_timeline_empty(client):
+    c, _ = client
+    resp = c.get(f"/api/timeline?token={TOKEN}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body == {"users": [], "days": []}
+
+
+def test_timeline_returns_per_user_breakdown(client):
+    c, store = client
+    store.record("health_check", 10, True, user_id="alice@example.com")
+    store.record("health_check", 10, True, user_id="bob@example.com")
+    store.record("health_check", 10, True, user_id="alice@example.com")
+    resp = c.get(f"/api/timeline?token={TOKEN}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert sorted(body["users"]) == ["alice@example.com", "bob@example.com"]
+    assert len(body["days"]) == 1
+    day = body["days"][0]
+    assert day["alice@example.com"] == 2
+    assert day["bob@example.com"] == 1
+
+
+def test_timeline_forbidden_without_token(client):
+    c, _ = client
+    resp = c.get("/api/timeline")
+    assert resp.status_code == 403

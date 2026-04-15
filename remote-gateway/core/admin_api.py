@@ -146,7 +146,7 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
             days = int(request.query_params.get("days", "30"))
         except ValueError:
             days = 30
-        return JSONResponse(telemetry.daily_activity(days=days))
+        return JSONResponse(telemetry.daily_activity_by_user(days=days))
 
     async def api_tools(request: Request) -> Response:
         if not _is_authorized(request):

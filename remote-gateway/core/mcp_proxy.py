@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import json
 import os
 import re
@@ -401,7 +402,8 @@ async def _run_stdio_proxy(
                 f"{var_name.group(1) if var_name else key} is not set — "
                 f"tools will fail at call time"
             )
-    merged_env = {**os.environ, **env_overrides}
+    # Silence Node.js deprecation warnings (e.g. punycode) from stdio subprocesses.
+    merged_env = {**os.environ, **env_overrides, "NODE_NO_WARNINGS": "1"}
 
     server_params = StdioServerParameters(
         command=_resolve_command(config["command"], merged_env),
@@ -409,13 +411,15 @@ async def _run_stdio_proxy(
         env=merged_env,
     )
 
+    _errlog = open(os.devnull, "w")  # noqa: SIM115
     try:
-        async with (
-            stdio_client(server_params) as (read, write),
-            ClientSession(read, write) as session,
-        ):
+        async with contextlib.AsyncExitStack() as _stack:
+            read, write = await _stack.enter_async_context(
+                stdio_client(server_params, errlog=_errlog)
+            )
+            session = await _stack.enter_async_context(ClientSession(read, write))
             await session.initialize()
-            
+
             try:
                 tools_response = await session.list_tools()
             except Exception:
@@ -464,6 +468,8 @@ async def _run_stdio_proxy(
         else:
             print(f"  [proxy] '{name}' failed to connect: {exc}")
         ready.set()  # Unblock startup so the gateway still comes up
+    finally:
+        _errlog.close()
 
 
 async def _run_http_proxy(
