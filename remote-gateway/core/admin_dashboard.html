@@ -614,8 +614,14 @@
         </table>
       </div>
       <div id="logs-body-panel" style="display:none;margin-top:1rem;padding:0.8rem 1rem;background:var(--cream-dark);border:1px solid var(--border);">
-        <div style="font-family:'Arial',sans-serif;font-size:0.68rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:0.4rem;">Input Body</div>
-        <pre id="logs-body-content" style="font-family:'Courier New',monospace;font-size:0.78rem;white-space:pre-wrap;word-break:break-word;color:var(--text);max-height:300px;overflow-y:auto;margin:0;"></pre>
+        <div id="logs-error-section" style="display:none;margin-bottom:0.8rem;">
+          <div style="font-family:'Arial',sans-serif;font-size:0.68rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--orange);margin-bottom:0.4rem;">Error</div>
+          <pre id="logs-error-content" style="font-family:'Courier New',monospace;font-size:0.78rem;white-space:pre-wrap;word-break:break-word;color:var(--orange);max-height:200px;overflow-y:auto;margin:0;"></pre>
+        </div>
+        <div id="logs-request-section" style="display:none;">
+          <div style="font-family:'Arial',sans-serif;font-size:0.68rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:0.4rem;">Request</div>
+          <pre id="logs-body-content" style="font-family:'Courier New',monospace;font-size:0.78rem;white-space:pre-wrap;word-break:break-word;color:var(--text);max-height:300px;overflow-y:auto;margin:0;"></pre>
+        </div>
       </div>
     </div>
   </div>
@@ -1276,6 +1282,7 @@
   // Logs view
   // ----------------------------------------------------------------
   let _logsBodyMap = {};
+  let _logsErrorMap = {};
   let _selectedLogId = null;
 
   async function loadLogs() {
@@ -1302,8 +1309,11 @@
 
   function renderLogsTable(logs) {
     _logsBodyMap = {};
+    _logsErrorMap = {};
     _selectedLogId = null;
     document.getElementById('logs-body-panel').style.display = 'none';
+    document.getElementById('logs-error-section').style.display = 'none';
+    document.getElementById('logs-request-section').style.display = 'none';
     const tbody = document.getElementById('logs-tbody');
 
     if (!logs.length) {
@@ -1313,6 +1323,7 @@
 
     logs.forEach(row => {
       if (row.input_body != null) _logsBodyMap[row.id] = row.input_body;
+      if (row.error_message != null) _logsErrorMap[row.id] = row.error_message;
     });
 
     tbody.innerHTML = logs.map(row => {
@@ -1321,9 +1332,9 @@
         : row.error_type === 'PermissionError'
           ? '<span class="badge badge-red" title="Tool blocked by permissions">BLOCKED</span>'
           : '<span class="badge badge-orange" title="' + escHtml(row.error_type || '') + '">' + escHtml(row.error_type || 'ERR') + '</span>';
-      const hasBody = row.input_body != null;
-      const rowStyle = hasBody ? 'cursor:pointer;' : '';
-      const onclick = hasBody ? ' onclick="showLogBody(' + escJs(String(row.id)) + ')"' : '';
+      const hasDetail = row.input_body != null || row.error_message != null;
+      const rowStyle = hasDetail ? 'cursor:pointer;' : '';
+      const onclick = hasDetail ? ' onclick="showLogBody(' + escJs(String(row.id)) + ')"' : '';
       return '<tr style="' + rowStyle + '"' + onclick + '>'
         + '<td style="white-space:nowrap;font-size:0.75rem;">' + escHtml(row.called_at || '—') + '</td>'
         + '<td>' + escHtml(row.tool_name) + '</td>'
@@ -1338,19 +1349,38 @@
 
   function showLogBody(id) {
     const panel = document.getElementById('logs-body-panel');
-    const content = document.getElementById('logs-body-content');
     if (_selectedLogId === id) {
       panel.style.display = 'none';
       _selectedLogId = null;
       return;
     }
     _selectedLogId = id;
-    const body = _logsBodyMap[id] || '';
-    try {
-      content.textContent = JSON.stringify(JSON.parse(body), null, 2);
-    } catch (_) {
-      content.textContent = body;
+
+    const errorSection = document.getElementById('logs-error-section');
+    const errorContent = document.getElementById('logs-error-content');
+    const requestSection = document.getElementById('logs-request-section');
+    const requestContent = document.getElementById('logs-body-content');
+
+    const errorMsg = _logsErrorMap[id];
+    if (errorMsg) {
+      errorContent.textContent = errorMsg;
+      errorSection.style.display = 'block';
+    } else {
+      errorSection.style.display = 'none';
     }
+
+    const body = _logsBodyMap[id];
+    if (body) {
+      try {
+        requestContent.textContent = JSON.stringify(JSON.parse(body), null, 2);
+      } catch (_) {
+        requestContent.textContent = body;
+      }
+      requestSection.style.display = 'block';
+    } else {
+      requestSection.style.display = 'none';
+    }
+
     panel.style.display = 'block';
   }
 
