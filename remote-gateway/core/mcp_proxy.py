@@ -411,7 +411,7 @@ async def _run_stdio_proxy(
         env=merged_env,
     )
 
-    _errlog = open(os.devnull, "w")  # noqa: WPS515
+    _errlog = open(os.devnull, "w")  # noqa: SIM115
     try:
         async with contextlib.AsyncExitStack() as _stack:
             read, write = await _stack.enter_async_context(

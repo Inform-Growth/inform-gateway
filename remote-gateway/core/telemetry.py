@@ -710,7 +710,7 @@ class TelemetryStore:
 
         Returns:
             List of dicts with id, tool_name, called_at, duration_ms, success,
-            error_type, user_id, request_id, response_size, input_size, input_body.
+            error_type, error_message, user_id, request_id, response_size, input_size, input_body.
         """
         if not self._enabled:
             return []
