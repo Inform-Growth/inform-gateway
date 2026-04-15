@@ -196,3 +196,23 @@ def test_daily_activity_by_user_null_user_id_becomes_unknown(tmp_path):
     result = store.daily_activity_by_user(days=30)
     assert "unknown" in result["users"]
     assert result["days"][0]["unknown"] == 1
+
+
+def test_record_stores_error_message(store):
+    store.record("my_tool", 10, False, error_type="ValueError", error_message="bad value: foo")
+    logs = store.raw_logs(limit=1)
+    assert logs[0]["error_message"] == "bad value: foo"
+
+
+def test_record_error_message_none_on_success(store):
+    store.record("my_tool", 10, True)
+    logs = store.raw_logs(limit=1)
+    assert logs[0]["error_message"] is None
+
+
+def test_record_error_message_missing_param_defaults_none(store):
+    # Calling record() without error_message (old callers) must still work.
+    store.record("my_tool", 10, False, error_type="Exception")
+    logs = store.raw_logs(limit=1)
+    assert "error_message" in logs[0]
+    assert logs[0]["error_message"] is None

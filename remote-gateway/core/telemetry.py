@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS tool_calls (
     duration_ms   INTEGER NOT NULL,
     success       INTEGER NOT NULL,
     error_type    TEXT,
+    error_message TEXT,
     user_id       TEXT,
     request_id    TEXT,
     response_size INTEGER,
@@ -81,10 +82,11 @@ CREATE INDEX IF NOT EXISTS idx_user_id   ON tool_calls (user_id);
 
 # Columns added after initial release — applied via ALTER TABLE migration.
 _MIGRATIONS = [
-    ("tool_calls", "user_id",       "TEXT"),
-    ("tool_calls", "request_id",    "TEXT"),
-    ("tool_calls", "response_size", "INTEGER"),
-    ("tool_calls", "input_body",    "TEXT"),
+    ("tool_calls", "user_id",        "TEXT"),
+    ("tool_calls", "request_id",     "TEXT"),
+    ("tool_calls", "response_size",  "INTEGER"),
+    ("tool_calls", "input_body",     "TEXT"),
+    ("tool_calls", "error_message",  "TEXT"),
 ]
 
 
@@ -314,6 +316,7 @@ class TelemetryStore:
         request_id: str | None = None,
         response_size: int | None = None,
         input_body: str | None = None,
+        error_message: str | None = None,
     ) -> None:
         """Record a single tool invocation. Silent no-op if disabled.
 
@@ -327,6 +330,7 @@ class TelemetryStore:
             request_id: Unique MCP request ID for this invocation.
             response_size: Size of the response in characters/bytes.
             input_body: JSON-serialized tool arguments captured at call time.
+            error_message: str(exc) on failure, otherwise None.
         """
         if not self._enabled:
             return
@@ -335,11 +339,11 @@ class TelemetryStore:
             conn.execute(
                 "INSERT INTO tool_calls"
                 " (tool_name, called_at, duration_ms, success,"
-                "  error_type, user_id, request_id, response_size, input_body)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "  error_type, error_message, user_id, request_id, response_size, input_body)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     tool_name, time.time(), duration_ms, int(success),
-                    error_type, user_id, request_id, response_size, input_body,
+                    error_type, error_message, user_id, request_id, response_size, input_body,
                 ),
             )
             conn.commit()
@@ -730,7 +734,7 @@ class TelemetryStore:
             rows = conn.execute(
                 f"""
                 SELECT id, tool_name, called_at, duration_ms, success,
-                       error_type, user_id, request_id, response_size, input_body
+                       error_type, error_message, user_id, request_id, response_size, input_body
                 FROM tool_calls
                 {where}
                 ORDER BY called_at DESC
@@ -759,6 +763,7 @@ class TelemetryStore:
                     "duration_ms": row["duration_ms"],
                     "success": bool(row["success"]),
                     "error_type": row["error_type"],
+                    "error_message": row["error_message"],
                     "user_id": row["user_id"],
                     "request_id": row["request_id"],
                     "response_size": row["response_size"],
