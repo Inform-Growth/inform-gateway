@@ -488,6 +488,7 @@ import sys as _sys  # noqa: E402
 _sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools import attio as _attio_tools  # noqa: E402
+from tools import email as _email_tools  # noqa: E402
 from tools import meta as _meta_tools  # noqa: E402
 from tools import notes as _notes_tools  # noqa: E402
 from tools import registry as _registry_tools  # noqa: E402
@@ -496,6 +497,7 @@ _meta_tools.register(mcp, lambda: mcp.name, _telemetry)
 _notes_tools.register(mcp)
 _registry_tools.register(mcp, registry)
 _attio_tools.register(mcp)  # must register after telemetry patch is applied
+_email_tools.register(mcp)
 
 
 # ---------------------------------------------------------------------------
