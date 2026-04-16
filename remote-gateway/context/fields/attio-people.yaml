@@ -2,7 +2,7 @@ integration: "attio"
 object: "people"
 source_url: "https://developers.attio.com/reference/get_v2-objects-people-attributes"
 discovered_at: "2026-04-03"
-last_drift_check: "2026-04-03"
+last_drift_check: "2026-04-16"
 
 fields:
   record_id:
@@ -11,20 +11,29 @@ fields:
     type: "id"
     notes: "System-generated. Read-only. Use this to reference the person in API calls."
     nullable: false
+    writable: false
+    required_for_create: false
+    write_format: null
 
   name:
     display_name: "Name"
     description: "Full name of the person (first + last)."
     type: "string"
-    notes: "Attio personal-name type — stores first/last separately but returns combined."
+    notes: "Attio personal-name type — stores first/last separately but returns combined. All three subfields (first_name, last_name, full_name) must be provided together."
     nullable: true
+    writable: true
+    required_for_create: false
+    write_format: '[{"first_name": "Jane", "last_name": "Doe", "full_name": "Jane Doe"}]'
 
   email_addresses:
     display_name: "Email Addresses"
     description: "One or more email addresses for this person. First entry is the primary."
     type: "string"
-    notes: "Multiselect. Unique across workspace — duplicate emails will be merged."
+    notes: "Multiselect. Unique across workspace — duplicate emails will be merged into an existing record."
     nullable: true
+    writable: true
+    required_for_create: false
+    write_format: '[{"email_address": "jane@acme.com"}]'
 
   description:
     display_name: "Description"
@@ -32,13 +41,19 @@ fields:
     type: "string"
     notes: "Writable. Not shown by default in list views."
     nullable: true
+    writable: true
+    required_for_create: false
+    write_format: '[{"value": "Bio or background notes about this person."}]'
 
   company:
     display_name: "Company"
     description: "The company this person is affiliated with (links to companies object)."
     type: "id"
-    notes: "Record reference → companies. Single value."
+    notes: "Record reference → companies. Single value. Requires an existing Attio company record_id."
     nullable: true
+    writable: true
+    required_for_create: false
+    write_format: '[{"target_object": "companies", "target_record_id": "<company_record_id>"}]'
 
   job_title:
     display_name: "Job Title"
@@ -46,6 +61,9 @@ fields:
     type: "string"
     notes: "Free-text. Writable."
     nullable: true
+    writable: true
+    required_for_create: false
+    write_format: '[{"value": "Head of Sales"}]'
 
   avatar_url:
     display_name: "Avatar URL"
@@ -53,6 +71,9 @@ fields:
     type: "string"
     notes: "Read-only. Set by Attio enrichment, not manually."
     nullable: true
+    writable: false
+    required_for_create: false
+    write_format: null
 
   phone_numbers:
     display_name: "Phone Numbers"
@@ -60,13 +81,19 @@ fields:
     type: "string"
     notes: "Multiselect. Stores country code + number."
     nullable: true
+    writable: true
+    required_for_create: false
+    write_format: '[{"phone_number": "+1-555-555-5555"}]'
 
   primary_location:
     display_name: "Primary Location"
     description: "Geographic location where this person is based."
     type: "string"
-    notes: "Attio location type — includes city, state, country."
+    notes: "Attio location type — includes city, state, country. All subfields are optional."
     nullable: true
+    writable: true
+    required_for_create: false
+    write_format: '[{"locality": "San Francisco", "region": "CA", "country_code": "US"}]'
 
   angellist:
     display_name: "AngelList"
@@ -74,6 +101,9 @@ fields:
     type: "string"
     notes: "Writable. Free-text URL."
     nullable: true
+    writable: true
+    required_for_create: false
+    write_format: '[{"value": "https://angel.co/u/handle"}]'
 
   facebook:
     display_name: "Facebook"
@@ -81,6 +111,9 @@ fields:
     type: "string"
     notes: "Writable. Free-text URL."
     nullable: true
+    writable: true
+    required_for_create: false
+    write_format: '[{"value": "https://facebook.com/handle"}]'
 
   instagram:
     display_name: "Instagram"
@@ -88,13 +121,19 @@ fields:
     type: "string"
     notes: "Writable. Free-text URL."
     nullable: true
+    writable: true
+    required_for_create: false
+    write_format: '[{"value": "https://instagram.com/handle"}]'
 
   linkedin:
     display_name: "LinkedIn"
     description: "LinkedIn profile URL for this person."
     type: "string"
-    notes: "Writable. Often auto-populated by enrichment."
+    notes: "Writable. Often auto-populated by enrichment. Field name is 'linkedin', not 'linkedin_url'."
     nullable: true
+    writable: true
+    required_for_create: false
+    write_format: '[{"value": "https://linkedin.com/in/handle"}]'
 
   twitter:
     display_name: "Twitter"
@@ -102,6 +141,9 @@ fields:
     type: "string"
     notes: "Writable. Free-text."
     nullable: true
+    writable: true
+    required_for_create: false
+    write_format: '[{"value": "https://twitter.com/handle"}]'
 
   twitter_follower_count:
     display_name: "Twitter Follower Count"
@@ -109,6 +151,9 @@ fields:
     type: "number"
     notes: "Read-only. Auto-populated by Attio enrichment."
     nullable: true
+    writable: false
+    required_for_create: false
+    write_format: null
 
   first_calendar_interaction:
     display_name: "First Calendar Interaction"
@@ -116,6 +161,9 @@ fields:
     type: "timestamp"
     notes: "Read-only. Computed from connected calendar."
     nullable: true
+    writable: false
+    required_for_create: false
+    write_format: null
 
   last_calendar_interaction:
     display_name: "Last Calendar Interaction"
@@ -123,6 +171,9 @@ fields:
     type: "timestamp"
     notes: "Read-only. Computed from connected calendar."
     nullable: true
+    writable: false
+    required_for_create: false
+    write_format: null
 
   next_calendar_interaction:
     display_name: "Next Calendar Interaction"
@@ -130,6 +181,9 @@ fields:
     type: "timestamp"
     notes: "Read-only. Computed from connected calendar."
     nullable: true
+    writable: false
+    required_for_create: false
+    write_format: null
 
   first_email_interaction:
     display_name: "First Email Interaction"
@@ -137,6 +191,9 @@ fields:
     type: "timestamp"
     notes: "Read-only. Computed from connected email."
     nullable: true
+    writable: false
+    required_for_create: false
+    write_format: null
 
   last_email_interaction:
     display_name: "Last Email Interaction"
@@ -144,6 +201,9 @@ fields:
     type: "timestamp"
     notes: "Read-only. Computed from connected email."
     nullable: true
+    writable: false
+    required_for_create: false
+    write_format: null
 
   first_interaction:
     display_name: "First Interaction"
@@ -151,6 +211,9 @@ fields:
     type: "timestamp"
     notes: "Read-only. Aggregated across email and calendar."
     nullable: true
+    writable: false
+    required_for_create: false
+    write_format: null
 
   last_interaction:
     display_name: "Last Interaction"
@@ -158,6 +221,9 @@ fields:
     type: "timestamp"
     notes: "Read-only. Useful for relationship health checks."
     nullable: true
+    writable: false
+    required_for_create: false
+    write_format: null
 
   next_interaction:
     display_name: "Next Interaction"
@@ -165,6 +231,9 @@ fields:
     type: "timestamp"
     notes: "Read-only. Derived from calendar."
     nullable: true
+    writable: false
+    required_for_create: false
+    write_format: null
 
   strongest_connection_strength:
     display_name: "Connection Strength"
@@ -172,6 +241,9 @@ fields:
     type: "string"
     notes: "Read-only enum: Very weak, Weak, Good, Strong, Very strong. Computed by Attio."
     nullable: true
+    writable: false
+    required_for_create: false
+    write_format: null
 
   strongest_connection_user:
     display_name: "Strongest Connection"
@@ -179,20 +251,29 @@ fields:
     type: "id"
     notes: "Read-only. Actor reference to a workspace member."
     nullable: true
+    writable: false
+    required_for_create: false
+    write_format: null
 
   associated_deals:
     display_name: "Associated Deals"
     description: "Deals linked to this person."
     type: "id"
-    notes: "Multiselect record reference → deals."
+    notes: "Multiselect record reference → deals. Read-only on create; managed via deal records."
     nullable: true
+    writable: false
+    required_for_create: false
+    write_format: null
 
   associated_users:
     display_name: "Associated Users"
     description: "Product users linked to this person record."
     type: "id"
-    notes: "Multiselect record reference → users object."
+    notes: "Multiselect record reference → users object. Read-only on create."
     nullable: true
+    writable: false
+    required_for_create: false
+    write_format: null
 
   created_at:
     display_name: "Created At"
@@ -200,6 +281,9 @@ fields:
     type: "timestamp"
     notes: "Read-only. UTC."
     nullable: false
+    writable: false
+    required_for_create: false
+    write_format: null
 
   created_by:
     display_name: "Created By"
@@ -207,3 +291,6 @@ fields:
     type: "id"
     notes: "Read-only. Actor reference."
     nullable: true
+    writable: false
+    required_for_create: false
+    write_format: null
