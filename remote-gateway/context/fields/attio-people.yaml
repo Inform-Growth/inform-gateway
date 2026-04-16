@@ -19,7 +19,7 @@ fields:
     display_name: "Name"
     description: "Full name of the person (first + last)."
     type: "string"
-    notes: "Attio personal-name type — stores first/last separately but returns combined. All three subfields (first_name, last_name, full_name) must be provided together."
+    notes: "Attio personal-name type — stores first/last separately but returns combined. Providing all three subfields (first_name, last_name, full_name) together is recommended for consistency."
     nullable: true
     writable: true
     required_for_create: false
