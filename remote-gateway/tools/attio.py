@@ -19,6 +19,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from core.field_registry import registry
+
 _ATTIO_BASE = "https://api.attio.com/v2"
 
 
@@ -86,13 +88,22 @@ def attio__create_record(
     """Create a new record in Attio.
 
     Creates a company or person record with the given attribute values using
-    the Attio v2 records endpoint.
+    the Attio v2 records endpoint. Field names are validated against the field
+    registry before any HTTP call is made — unknown or read-only fields return
+    a structured error with the list of valid writable fields and a hint.
+
+    Call get_field_definitions("attio-people") or get_field_definitions("attio-companies")
+    to see all valid field names, their write_format examples, and which are required.
+
+    Values format for people:
+        {"name": [{"first_name": "Jane", "last_name": "Doe", "full_name": "Jane Doe"}]}
+        {"email_addresses": [{"email_address": "jane@acme.com"}]}
+        {"job_title": [{"value": "Head of Sales"}]}
+        {"linkedin": [{"value": "https://linkedin.com/in/janedoe"}]}
+        {"phone_numbers": [{"phone_number": "+1-555-555-5555"}]}
 
     Values format for companies:
         {"name": [{"value": "Acme Inc"}], "domains": [{"domain": "acme.io"}]}
-
-    Values format for people — ALL THREE name subfields required:
-        {"name": [{"first_name": "Jane", "last_name": "Doe", "full_name": "Jane Doe"}]}
 
     Company reference fields require target_object alongside target_record_id:
         {"company": [{"target_object": "companies", "target_record_id": "<id>"}]}
@@ -104,8 +115,27 @@ def attio__create_record(
 
     Returns:
         Dict with 'record_id', 'object_type', and 'data' (the created record).
+        On validation failure, returns 'error', 'valid_writable_fields', and 'hint'.
     """
     import httpx
+
+    # Pre-flight: validate field names against the registry
+    integration = f"attio-{object_type}"
+    field_defs = registry.get_all(integration)
+
+    if field_defs:
+        writable_fields = {k for k, v in field_defs.items() if v.get("writable", True)}
+        invalid = [k for k in values if k not in writable_fields]
+
+        if invalid:
+            return {
+                "error": f"Invalid or read-only field(s) for {object_type}: {invalid}",
+                "valid_writable_fields": sorted(writable_fields),
+                "hint": (
+                    f"Call get_field_definitions('{integration}') to see correct field "
+                    "names and write_format examples."
+                ),
+            }
 
     url = f"{_ATTIO_BASE}/objects/{object_type}/records"
     body: dict[str, Any] = {"data": {"values": values}}
