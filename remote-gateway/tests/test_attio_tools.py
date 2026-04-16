@@ -160,9 +160,11 @@ def test_search_records_empty_result(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_create_record_returns_record_id(monkeypatch):
+def test_create_record_returns_record_id(monkeypatch, tmp_path):
     """create_record returns record_id from Attio create response."""
     monkeypatch.setenv("ATTIO_API_KEY", "test-key-abc")
+    import tools.attio as attio_module
+    monkeypatch.setattr(attio_module, "registry", FieldRegistry(fields_dir=tmp_path), raising=False)
 
     mock_client = _mock_client(
         post_responses=[
@@ -179,9 +181,11 @@ def test_create_record_returns_record_id(monkeypatch):
     assert result["data"]["id"]["record_id"] == "rec-new-456"
 
 
-def test_create_record_posts_correct_payload(monkeypatch):
+def test_create_record_posts_correct_payload(monkeypatch, tmp_path):
     """create_record wraps values in {"data": {"values": ...}} as Attio API requires."""
     monkeypatch.setenv("ATTIO_API_KEY", "test-key-abc")
+    import tools.attio as attio_module
+    monkeypatch.setattr(attio_module, "registry", FieldRegistry(fields_dir=tmp_path), raising=False)
 
     mock_client = _mock_client(
         post_responses=[_mock_response({"data": {"id": {"record_id": "r"}, "values": {}}})]
@@ -199,9 +203,11 @@ def test_create_record_posts_correct_payload(monkeypatch):
     assert posted_body == {"data": {"values": values}}
 
 
-def test_create_record_uses_api_key_header(monkeypatch):
+def test_create_record_uses_api_key_header(monkeypatch, tmp_path):
     """create_record sends ATTIO_API_KEY as Bearer token."""
     monkeypatch.setenv("ATTIO_API_KEY", "create-key-999")
+    import tools.attio as attio_module
+    monkeypatch.setattr(attio_module, "registry", FieldRegistry(fields_dir=tmp_path), raising=False)
 
     mock_client = _mock_client(
         post_responses=[_mock_response({"data": {"id": {"record_id": "r"}, "values": {}}})]
@@ -224,7 +230,7 @@ def test_create_record_rejects_unknown_field(monkeypatch, tmp_path):
     monkeypatch.setenv("ATTIO_API_KEY", "test-key")
 
     import tools.attio as attio_module
-    monkeypatch.setattr(attio_module, "registry", _make_test_registry(tmp_path))
+    monkeypatch.setattr(attio_module, "registry", _make_test_registry(tmp_path), raising=False)
 
     mock_client = _mock_client(
         post_responses=[_mock_response({"data": {"id": {"record_id": "r"}, "values": {}}})]
@@ -239,6 +245,8 @@ def test_create_record_rejects_unknown_field(monkeypatch, tmp_path):
     assert "error" in result
     assert "linkedin_url" in result["error"]
     assert "linkedin" in result["valid_writable_fields"]
+    assert "hint" in result
+    assert "get_field_definitions" in result["hint"]
     # No HTTP call should have been made
     mock_client.post.assert_not_called()
 
@@ -248,7 +256,7 @@ def test_create_record_rejects_readonly_field(monkeypatch, tmp_path):
     monkeypatch.setenv("ATTIO_API_KEY", "test-key")
 
     import tools.attio as attio_module
-    monkeypatch.setattr(attio_module, "registry", _make_test_registry(tmp_path))
+    monkeypatch.setattr(attio_module, "registry", _make_test_registry(tmp_path), raising=False)
 
     mock_client = _mock_client(
         post_responses=[_mock_response({"data": {"id": {"record_id": "r"}, "values": {}}})]
@@ -263,6 +271,8 @@ def test_create_record_rejects_readonly_field(monkeypatch, tmp_path):
     assert "error" in result
     assert "avatar_url" in result["error"]
     assert "avatar_url" not in result["valid_writable_fields"]
+    assert "hint" in result
+    assert "get_field_definitions" in result["hint"]
     mock_client.post.assert_not_called()
 
 
@@ -271,7 +281,7 @@ def test_create_record_valid_people_payload(monkeypatch, tmp_path):
     monkeypatch.setenv("ATTIO_API_KEY", "test-key")
 
     import tools.attio as attio_module
-    monkeypatch.setattr(attio_module, "registry", _make_test_registry(tmp_path))
+    monkeypatch.setattr(attio_module, "registry", _make_test_registry(tmp_path), raising=False)
 
     mock_client = _mock_client(
         post_responses=[
@@ -290,6 +300,7 @@ def test_create_record_valid_people_payload(monkeypatch, tmp_path):
         result = attio_module.attio__create_record("people", values)
 
     assert result["record_id"] == "rec-valid-123"
+    assert result["object_type"] == "people"
     mock_client.post.assert_called_once()
 
 
@@ -299,7 +310,7 @@ def test_create_record_skips_validation_when_no_yaml(monkeypatch, tmp_path):
 
     import tools.attio as attio_module
     # tmp_path has no YAML files — registry will return empty defs
-    monkeypatch.setattr(attio_module, "registry", FieldRegistry(fields_dir=tmp_path))
+    monkeypatch.setattr(attio_module, "registry", FieldRegistry(fields_dir=tmp_path), raising=False)
 
     mock_client = _mock_client(
         post_responses=[
