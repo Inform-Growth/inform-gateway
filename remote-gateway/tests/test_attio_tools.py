@@ -14,10 +14,8 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tools.attio import attio__create_record, attio__search_records
-
 from core.field_registry import FieldRegistry
-
+from tools.attio import attio__create_record, attio__search_records
 
 # ---------------------------------------------------------------------------
 # Helpers for pre-flight validation tests
