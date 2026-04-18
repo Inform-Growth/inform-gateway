@@ -735,13 +735,13 @@ class Throttler:
                 break  # under rate limit — proceed
 
             # Over rate limit: release the slot so others can use it while we wait
-            wait_time = 60.0 - (now - self._history[0])
+            wait_time = max(60.0 - (now - self._history[0]), 0.0)
             self.semaphore.release()
             if wait_time > 0:
                 print(
                     f"  [proxy] '{self.name}' rate limit reached — waiting {wait_time:.1f}s"
                 )
-                await asyncio.sleep(wait_time)
+            await asyncio.sleep(wait_time)  # always yield, even if wait_time == 0
             # Re-acquire and re-check (another caller may have used capacity)
             await self.semaphore.acquire()
 
