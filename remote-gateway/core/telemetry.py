@@ -96,7 +96,9 @@ class TelemetryStore:
     def __init__(self, db_path: Path = _DB_PATH) -> None:
         self._path = db_path
         self._enabled = False
+        self._disabled_cache: dict[str, set[str]] = {}
         self._setup()
+        self._load_disabled_cache()
 
     def _setup(self) -> None:
         """Create the database file and schema. Disables itself on any failure."""
@@ -130,6 +132,26 @@ class TelemetryStore:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         return conn
+
+    def _load_disabled_cache(self) -> None:
+        """Populate _disabled_cache from all enabled=0 rows in tool_permissions.
+
+        Called once at startup. After this, set_tool_permission keeps the cache
+        consistent — no further DB reads are needed for list-time filtering.
+        Silent no-op if the DB is unavailable.
+        """
+        if not self._enabled:
+            return
+        try:
+            conn = self._connect()
+            rows = conn.execute(
+                "SELECT user_id, tool_name FROM tool_permissions WHERE enabled = 0"
+            ).fetchall()
+            conn.close()
+            for row in rows:
+                self._disabled_cache.setdefault(row["user_id"], set()).add(row["tool_name"])
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # API key management
@@ -235,7 +257,22 @@ class TelemetryStore:
             return 0
 
     def has_permission(self, user_id: str, tool_name: str) -> bool:
-        """Return True if user may call tool_name (default True when no row)."""
+        """Return True if user may call tool_name (default True when no row).
+
+        Checks the global '*' sentinel via the in-memory cache first — no DB
+        query for globally disabled tools. Falls back to the per-user DB row.
+
+        Args:
+            user_id: The authenticated user's identifier.
+            tool_name: The tool being called.
+
+        Returns:
+            False if the tool is globally disabled or explicitly disabled for
+            this user. True otherwise (including on DB failure).
+        """
+        # Global disable takes priority — cache lookup, no DB query
+        if tool_name in self._disabled_cache.get("*", set()):
+            return False
         if not self._enabled:
             return True
         try:
@@ -248,6 +285,27 @@ class TelemetryStore:
             return row is None or bool(row["enabled"])
         except Exception:
             return True  # never block on DB failure
+
+    def filter_visible_tools(self, user_id: str | None, tool_names: list[str]) -> set[str]:
+        """Return the subset of tool_names the user is permitted to see.
+
+        Reads only the in-memory _disabled_cache — no DB query. Globally disabled
+        tools (user_id='*') are hidden from all callers including unauthenticated
+        ones. Per-user disabled tools are hidden for that user only.
+
+        Fails open: if telemetry is disabled, returns all tool_names as a set.
+
+        Args:
+            user_id: Authenticated user, or None for unauthenticated requests.
+            tool_names: Full list of registered tool names to filter.
+
+        Returns:
+            Set of tool names the user is allowed to see.
+        """
+        globally_disabled = self._disabled_cache.get("*", set())
+        user_disabled = self._disabled_cache.get(user_id, set()) if user_id else set()
+        hidden = globally_disabled | user_disabled
+        return {name for name in tool_names if name not in hidden}
 
     def get_tool_permissions(self, user_id: str) -> list[dict]:
         """Return explicit permission rows for a user."""
@@ -266,7 +324,16 @@ class TelemetryStore:
         return [{"tool_name": row["tool_name"], "enabled": bool(row["enabled"])} for row in rows]
 
     def set_tool_permission(self, user_id: str, tool_name: str, enabled: bool) -> None:
-        """Insert or update a tool permission for a user."""
+        """Insert or update a tool permission for a user.
+
+        Use user_id='*' to set a global toggle affecting all users — the tool
+        will be hidden from tools/list and blocked at call time for everyone.
+
+        Args:
+            user_id: The user to configure, or '*' for a global toggle.
+            tool_name: The tool name as registered on the gateway.
+            enabled: True to allow, False to disable.
+        """
         if not self._enabled:
             return
         try:
@@ -280,6 +347,12 @@ class TelemetryStore:
             conn.close()
         except Exception:
             pass
+        # Keep cache consistent regardless of DB success/failure
+        if enabled:
+            if user_id in self._disabled_cache:
+                self._disabled_cache[user_id].discard(tool_name)
+        else:
+            self._disabled_cache.setdefault(user_id, set()).add(tool_name)
 
     def lookup_user(self, key: str) -> str | None:
         """Return the user_id for an API key, or None if the key is invalid.
