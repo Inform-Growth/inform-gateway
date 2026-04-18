@@ -232,3 +232,52 @@ def test_streamable_http_proxy_fn_surfaces_mcp_error():
         result = asyncio.run(proxy_fn())
 
     assert result == {"error": "Rate limit exceeded", "is_mcp_error": True}
+
+
+# ---------------------------------------------------------------------------
+# Throttler — semaphore released during rate-limit sleep
+# ---------------------------------------------------------------------------
+
+def test_throttler_semaphore_not_held_during_rate_limit_wait():
+    """When rate-limited, the semaphore must be released before sleeping.
+
+    Strategy: set rpm=1, pre-fill history so the next call is rate-limited,
+    then verify the semaphore value rises back to its initial value during
+    the mocked sleep (meaning the slot was released before sleeping).
+    """
+    import asyncio
+    import time as _time
+    import unittest.mock as mock
+
+    throttler = _proxy.Throttler("test_integration", rpm=1, concurrency=1)
+    semaphore_value_during_sleep = []
+
+    async def _run():
+        # Saturate the 1-rpm window so the next acquire() triggers a sleep
+        throttler._history.append(_time.time())
+
+        async def fake_sleep(seconds):
+            semaphore_value_during_sleep.append(throttler.semaphore._value)
+
+        with mock.patch("asyncio.sleep", side_effect=fake_sleep):
+            await throttler.acquire()
+        throttler.release()
+
+    asyncio.run(_run())
+
+    # The semaphore (concurrency=1, so starts at 1) must have been at 1
+    # during the sleep, meaning it was released before the sleep call.
+    assert semaphore_value_during_sleep, "asyncio.sleep was never called — rpm check not triggered"
+    assert semaphore_value_during_sleep[0] >= 1, (
+        f"Semaphore value during sleep was {semaphore_value_during_sleep[0]} "
+        "(expected >= 1, meaning the slot was released before sleeping)"
+    )
+
+
+def test_throttler_history_uses_deque():
+    """_history must be a deque for O(1) popleft cleanup."""
+    import collections
+    throttler = _proxy.Throttler("test", rpm=5, concurrency=2)
+    assert isinstance(throttler._history, collections.deque), (
+        f"Expected deque, got {type(throttler._history).__name__}"
+    )

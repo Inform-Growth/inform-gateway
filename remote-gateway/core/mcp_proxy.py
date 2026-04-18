@@ -32,6 +32,7 @@ import os
 import re
 import shutil
 import time
+from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -700,28 +701,51 @@ class Throttler:
 
     Uses an asyncio.Semaphore for concurrency and tracks request timestamps
     to enforce a requests-per-minute (RPM) limit.
+
+    The semaphore is released before any rate-limit sleep so that the
+    concurrency slot is not held while waiting for the window to expire.
+    Other callers can use the slot during the wait; the sleeping caller
+    re-acquires it afterwards.
     """
 
     def __init__(self, name: str, rpm: int = 0, concurrency: int = 2) -> None:
         self.name = name
         self.rpm = rpm
         self.semaphore = asyncio.Semaphore(concurrency)
-        self._history: list[float] = []
+        self._history: deque[float] = deque()
 
     async def acquire(self) -> None:
-        """Wait for a permit to execute a request."""
+        """Wait for a permit to execute a request.
+
+        Acquires the concurrency semaphore first, then checks the RPM window.
+        If the rate limit is exceeded, releases the semaphore before sleeping
+        so the slot is available to other callers during the wait. Re-acquires
+        the semaphore after the window clears and loops to re-check (another
+        caller may have consumed capacity while we slept).
+        """
         await self.semaphore.acquire()
 
-        if self.rpm > 0:
+        while self.rpm > 0:
             now = time.time()
-            # Purge history older than 60s
-            self._history = [t for t in self._history if now - t < 60]
-            if len(self._history) >= self.rpm:
-                # Wait until the oldest request is > 60s old
-                wait_time = 60 - (now - self._history[0])
-                if wait_time > 0:
-                    print(f"  [proxy] '{self.name}' rate limit reached — waiting {wait_time:.1f}s")
-                    await asyncio.sleep(wait_time)
+            # O(1) cleanup: discard timestamps older than 60 seconds
+            while self._history and now - self._history[0] >= 60:
+                self._history.popleft()
+
+            if len(self._history) < self.rpm:
+                break  # under rate limit — proceed
+
+            # Over rate limit: release the slot so others can use it while we wait
+            wait_time = 60.0 - (now - self._history[0])
+            self.semaphore.release()
+            if wait_time > 0:
+                print(
+                    f"  [proxy] '{self.name}' rate limit reached — waiting {wait_time:.1f}s"
+                )
+                await asyncio.sleep(wait_time)
+            # Re-acquire and re-check (another caller may have used capacity)
+            await self.semaphore.acquire()
+
+        if self.rpm > 0:
             self._history.append(time.time())
 
     def release(self) -> None:
