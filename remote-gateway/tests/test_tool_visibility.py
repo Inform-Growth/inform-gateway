@@ -124,7 +124,7 @@ def test_filter_shows_all_when_no_disables(tmp_path):
     assert result == {"tool_a", "tool_b", "tool_c"}
 
 
-def test_filter_fails_open_when_telemetry_disabled(tmp_path):
+def test_filter_fails_open_when_disabled(tmp_path):
     """If telemetry is disabled (bad DB path), filter returns full list."""
     store = TelemetryStore(db_path=Path("/nonexistent/path/db.sqlite"))
 
