@@ -302,6 +302,8 @@ class TelemetryStore:
         Returns:
             Set of tool names the user is allowed to see.
         """
+        if not self._enabled:
+            return set(tool_names)
         globally_disabled = self._disabled_cache.get("*", set())
         user_disabled = self._disabled_cache.get(user_id, set()) if user_id else set()
         hidden = globally_disabled | user_disabled
