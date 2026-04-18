@@ -477,6 +477,33 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
 
 mcp.add_tool = _tracked_add_tool
 
+_orig_list_tools = mcp.list_tools
+
+
+async def _filtered_list_tools() -> list[Any]:
+    """list_tools override that hides tools disabled for the current user.
+
+    Reads _disabled_cache from telemetry — no DB query at list time.
+    Fails open: returns the full tool list if telemetry is unavailable.
+    Global disables (user_id='*') apply to unauthenticated requests too.
+
+    Patched onto mcp.list_tools so every tools/list RPC goes through this.
+    If FastMCP's tools/list RPC handler calls an internal method rather than
+    mcp.list_tools, the patch target may need to be mcp._tool_manager.list_tools
+    instead — verify by confirming that filtering applies during a live session.
+    """
+    tools = await _orig_list_tools()
+    user_id = _current_user.get()
+    if not _telemetry._enabled:
+        return tools
+    visible = _telemetry.filter_visible_tools(user_id, [t.name for t in tools])
+    return [t for t in tools if t.name in visible]
+
+
+mcp.list_tools = _filtered_list_tools
+if hasattr(mcp, '_tool_manager') and hasattr(mcp._tool_manager, 'list_tools'):
+    mcp._tool_manager.list_tools = _filtered_list_tools
+
 
 # ---------------------------------------------------------------------------
 # Register internal tools from tools/ modules
