@@ -38,6 +38,7 @@ if _env_file.exists():
 
 from field_registry import registry  # noqa: E402
 from mcp.server.fastmcp import FastMCP  # noqa: E402
+from mcp.server.lowlevel.server import lifespan as _noop_lifespan  # noqa: E402
 from mcp.server.lowlevel.server import request_ctx as _request_ctx  # noqa: E402
 from mcp_proxy import mount_all_proxies  # noqa: E402
 from telemetry import telemetry as _telemetry  # noqa: E402
@@ -504,8 +505,6 @@ async def _filtered_list_tools() -> list[Any]:
 
 
 mcp.list_tools = _filtered_list_tools
-if hasattr(mcp, '_tool_manager') and hasattr(mcp._tool_manager, 'list_tools'):
-    mcp._tool_manager.list_tools = _filtered_list_tools
 
 
 # ---------------------------------------------------------------------------
@@ -585,8 +584,14 @@ if __name__ == "__main__":
                 # 2. Re-setup handlers to ensure Prompts/Tools capabilities are updated
                 # in the MCP server instance based on what was just mounted.
                 mcp._setup_handlers()
-                
-                # 3. Start the FastMCP session manager which handles the underlying 
+
+                # 3. Prevent per-SSE-connection re-initialization: FastMCP's low-level
+                # Server.run() calls self.lifespan() on every SSE client connection,
+                # which would re-run mount_all_proxies for each client. Swap it out
+                # for the built-in no-op now that startup is complete.
+                mcp._mcp_server.lifespan = _noop_lifespan
+
+                # 4. Start the FastMCP session manager which handles the underlying
                 # JSON-RPC protocol state for both SSE and HTTP transports.
                 async with mcp.session_manager.run():
                     yield
