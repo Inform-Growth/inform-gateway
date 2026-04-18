@@ -126,3 +126,27 @@ Every tool call is recorded automatically (timing, success/failure, `user_id`, `
 - **No Hardcoded Credentials.** Use `os.environ` exclusively.
 - **Read-Only by Default.** Mutating operations require explicit admin approval in code review.
 - **Field Registry.** Wrap all tool responses with `validated("<integration>", result)` to ensure field consistency and drift detection. YAML schemas live in `context/fields/`.
+
+## Admin Guardrails
+
+- All proxied integrations (exa, apollo, attio, github) are subject to per-user tool permissions via `tool_permissions` table.
+- Tool allow/deny lists are enforced at tool invocation time and reflected in `tools/list` responses.
+- Admin approval is required before adding new built-in tools; follow code review guidelines in Coding Standards.
+
+### Global Tool Toggle
+
+Disable a proxied or built-in tool for **all users** at runtime — no restart required:
+
+```
+PUT /api/permissions/*/attio__search_records
+Body: {"enabled": false}
+```
+
+The sentinel `user_id = "*"` in `tool_permissions` applies to every user. Globally disabled tools are hidden from `tools/list` and blocked at call time. Re-enable with `{"enabled": true}`.
+
+View all global toggles:
+```
+GET /api/permissions/*
+```
+
+Use this when replacing a proxied MCP tool with a Python tool — disable the old route globally, register the new Python tool via `@mcp.tool()`, and the transition is live immediately.
