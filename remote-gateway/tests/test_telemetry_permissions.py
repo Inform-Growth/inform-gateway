@@ -217,3 +217,13 @@ def test_record_error_message_missing_param_defaults_none(store):
     logs = store.raw_logs(limit=1)
     assert "error_message" in logs[0]
     assert logs[0]["error_message"] is None
+
+
+def test_connect_returns_same_connection_object(store):
+    """_connect() must return the cached connection — no new object per call."""
+    first = store._connect()
+    second = store._connect()
+    assert first is second, (
+        "_connect() returned a different object on the second call. "
+        "The connection must be cached and reused."
+    )

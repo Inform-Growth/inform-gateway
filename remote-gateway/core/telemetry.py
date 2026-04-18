@@ -97,6 +97,7 @@ class TelemetryStore:
         self._path = db_path
         self._enabled = False
         self._disabled_cache: dict[str, set[str]] = {}
+        self._conn: sqlite3.Connection | None = None
         self._setup()
         self._load_disabled_cache()
 
@@ -104,11 +105,13 @@ class TelemetryStore:
         """Create the database file and schema. Disables itself on any failure."""
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
-            conn = sqlite3.connect(self._path)
+            conn = sqlite3.connect(self._path, check_same_thread=False)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
             conn.executescript(_SCHEMA_TABLES)
             self._migrate(conn)
             conn.executescript(_SCHEMA_INDEXES)
-            conn.close()
+            self._conn = conn          # store; do NOT close
             self._enabled = True
         except Exception as exc:
             print(f"[telemetry] disabled — could not open {self._path}: {exc}", flush=True)
@@ -127,11 +130,12 @@ class TelemetryStore:
         conn.commit()
 
     def _connect(self) -> sqlite3.Connection:
-        """Return a new WAL-mode connection with row_factory set."""
-        conn = sqlite3.connect(self._path, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        return conn
+        """Return the shared persistent WAL-mode connection.
+
+        The connection is created once in _setup() and lives for the process
+        lifetime. Callers must NOT call conn.close().
+        """
+        return self._conn  # type: ignore[return-value]
 
     def _load_disabled_cache(self) -> None:
         """Populate _disabled_cache from all enabled=0 rows in tool_permissions.
@@ -147,7 +151,6 @@ class TelemetryStore:
             rows = conn.execute(
                 "SELECT user_id, tool_name FROM tool_permissions WHERE enabled = 0"
             ).fetchall()
-            conn.close()
             for row in rows:
                 self._disabled_cache.setdefault(row["user_id"], set()).add(row["tool_name"])
         except Exception:
@@ -178,7 +181,6 @@ class TelemetryStore:
                 (key, user_id, time.time()),
             )
             conn.commit()
-            conn.close()
         except Exception:
             pass
         return key
@@ -195,7 +197,6 @@ class TelemetryStore:
             conn = self._connect()
             conn.execute("DELETE FROM api_keys WHERE key = ?", (key,))
             conn.commit()
-            conn.close()
         except Exception:
             pass
 
@@ -219,7 +220,6 @@ class TelemetryStore:
                 ORDER BY ak.created_at DESC
                 """
             ).fetchall()
-            conn.close()
         except Exception:
             return []
         return [
@@ -251,7 +251,6 @@ class TelemetryStore:
             deleted = cursor.rowcount
             conn.execute("DELETE FROM tool_permissions WHERE user_id = ?", (user_id,))
             conn.commit()
-            conn.close()
             return deleted
         except Exception:
             return 0
@@ -281,7 +280,6 @@ class TelemetryStore:
                 "SELECT enabled FROM tool_permissions WHERE user_id = ? AND tool_name = ?",
                 (user_id, tool_name),
             ).fetchone()
-            conn.close()
             return row is None or bool(row["enabled"])
         except Exception:
             return True  # never block on DB failure
@@ -320,7 +318,6 @@ class TelemetryStore:
                 " WHERE user_id = ? ORDER BY tool_name",
                 (user_id,),
             ).fetchall()
-            conn.close()
         except Exception:
             return []
         return [{"tool_name": row["tool_name"], "enabled": bool(row["enabled"])} for row in rows]
@@ -346,7 +343,6 @@ class TelemetryStore:
                 (user_id, tool_name, int(enabled)),
             )
             conn.commit()
-            conn.close()
         except Exception:
             pass
         # Keep cache consistent regardless of DB success/failure
@@ -372,7 +368,6 @@ class TelemetryStore:
             row = conn.execute(
                 "SELECT user_id FROM api_keys WHERE key = ?", (key,)
             ).fetchone()
-            conn.close()
             return row["user_id"] if row else None
         except Exception:
             return None
@@ -423,7 +418,6 @@ class TelemetryStore:
                 ),
             )
             conn.commit()
-            conn.close()
         except Exception:
             pass  # telemetry must never break the gateway
 
@@ -477,7 +471,6 @@ class TelemetryStore:
                 """,
                 params,
             ).fetchall()
-            conn.close()
         except Exception as exc:
             return {"error": str(exc), "tools": []}
 
@@ -561,8 +554,6 @@ class TelemetryStore:
                 ORDER BY call_count DESC
                 """
             ).fetchall()
-            
-            conn.close()
         except Exception as exc:
             return {"error": str(exc)}
 
@@ -617,7 +608,6 @@ class TelemetryStore:
                 """,
                 (limit,),
             ).fetchall()
-            conn.close()
         except Exception as exc:
             return {"error": str(exc)}
 
@@ -699,7 +689,6 @@ class TelemetryStore:
                 """,
                 (cutoff,),
             ).fetchall()
-            conn.close()
         except Exception:
             return []
         return [
@@ -739,7 +728,6 @@ class TelemetryStore:
                 """,
                 (cutoff,),
             ).fetchall()
-            conn.close()
         except Exception:
             return {"users": [], "days": []}
 
@@ -818,7 +806,6 @@ class TelemetryStore:
                 """,
                 params,
             ).fetchall()
-            conn.close()
         except Exception:
             return []
         result = []
