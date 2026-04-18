@@ -134,18 +134,29 @@ def _resolve_command(command: str, env: dict[str, str]) -> str:
 # Config loading
 # ---------------------------------------------------------------------------
 
+# Module-level cache — connections config is static; never changes without a restart.
+_connections_cache: dict[str, dict] | None = None
+
 
 def load_connections() -> dict[str, dict]:
     """Load upstream MCP connection definitions from mcp_connections.json.
+
+    Result is cached after the first read — the file is never read more than once
+    per process lifetime. Call sites that previously called this per-invocation
+    (e.g. _call_with_retry) now pay zero I/O cost after startup.
 
     Returns:
         Dict mapping integration slug → connection config dict.
         Returns empty dict if mcp_connections.json does not exist.
     """
-    if not CONNECTIONS_FILE.exists():
-        return {}
-    data = json.loads(CONNECTIONS_FILE.read_text())
-    return data.get("connections", {})
+    global _connections_cache
+    if _connections_cache is None:
+        if not CONNECTIONS_FILE.exists():
+            _connections_cache = {}
+        else:
+            data = json.loads(CONNECTIONS_FILE.read_text())
+            _connections_cache = data.get("connections", {})
+    return _connections_cache
 
 
 def resolve_headers(headers_config: dict[str, str]) -> dict[str, str]:

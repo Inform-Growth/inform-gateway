@@ -281,3 +281,49 @@ def test_throttler_history_uses_deque():
     assert isinstance(throttler._history, collections.deque), (
         f"Expected deque, got {type(throttler._history).__name__}"
     )
+
+
+# ---------------------------------------------------------------------------
+# load_connections() — module-level cache
+# ---------------------------------------------------------------------------
+
+def test_load_connections_returns_same_object_on_second_call(tmp_path, monkeypatch):
+    """load_connections() must return the cached dict on the second call (no re-read)."""
+    import json
+
+    connections_file = tmp_path / "mcp_connections.json"
+    connections_file.write_text(json.dumps({
+        "connections": {
+            "exa": {"transport": "http", "url": "https://mcp.exa.ai/mcp"}
+        }
+    }))
+
+    monkeypatch.setattr(_proxy, "CONNECTIONS_FILE", connections_file)
+    monkeypatch.setattr(_proxy, "_connections_cache", None)
+
+    first = _proxy.load_connections()
+    second = _proxy.load_connections()
+
+    assert first is second, (
+        "load_connections() returned different objects — cache miss on second call. "
+        "The JSON file must only be read once."
+    )
+
+
+def test_load_connections_cache_returns_correct_data(tmp_path, monkeypatch):
+    """Cached result must contain the actual connection definitions."""
+    import json
+
+    connections_file = tmp_path / "mcp_connections.json"
+    connections_file.write_text(json.dumps({
+        "connections": {
+            "apollo": {"transport": "sse", "url": "https://mcp.apollo.io/mcp"}
+        }
+    }))
+
+    monkeypatch.setattr(_proxy, "CONNECTIONS_FILE", connections_file)
+    monkeypatch.setattr(_proxy, "_connections_cache", None)
+
+    result = _proxy.load_connections()
+    assert "apollo" in result
+    assert result["apollo"]["url"] == "https://mcp.apollo.io/mcp"
