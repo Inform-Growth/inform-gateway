@@ -266,13 +266,16 @@ class _AuthMiddleware:
 
     @staticmethod
     def _extract_key(scope: Any) -> str | None:
-        """Return the API key from the Authorization header or api_key query param."""
-        headers = {k.lower(): v for k, v in scope.get("headers", [])}
-        auth: str = headers.get(b"authorization", b"").decode()
-        if auth.lower().startswith("bearer "):
-            return auth[7:].strip() or None
+        """Return the API key from the Authorization header or api_key query param.
 
-        # Fall back to query param — used by clients that can't set headers
+        Scans headers directly — no dict allocation on the hot request path.
+        """
+        for key, val in scope.get("headers", []):
+            if key.lower() == b"authorization":
+                auth: str = val.decode()
+                if auth.lower().startswith("bearer "):
+                    return auth[7:].strip() or None
+
         qs: str = scope.get("query_string", b"").decode()
         for part in qs.split("&"):
             if part.startswith("api_key="):
