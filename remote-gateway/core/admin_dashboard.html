@@ -683,6 +683,11 @@
         </thead>
         <tbody id="tools-tbody"></tbody>
       </table>
+      <div class="pagination-bar" id="tools-pagination">
+        <button class="btn btn-green" id="tools-prev" onclick="toolsPagePrev()" disabled>Prev</button>
+        <span class="page-label" id="tools-page-label">Page 1</span>
+        <button class="btn btn-green" id="tools-next" onclick="toolsPageNext()" disabled>Next</button>
+      </div>
     </div>
   </div>
 
@@ -1348,6 +1353,18 @@
   let _toolsData = [];
   let _globalDisabled = new Set();
   let _toolsPage = 0;
+
+  function toolsPagePrev() {
+    if (_toolsPage === 0) return;
+    _toolsPage--;
+    renderToolsTable();
+  }
+
+  function toolsPageNext() {
+    _toolsPage++;
+    renderToolsTable();
+  }
+
   let _toolsSortKey = 'name';
   let _toolsSortAsc = true;
 
@@ -1410,6 +1427,7 @@
   function sortTools(key) {
     if (_toolsSortKey === key) _toolsSortAsc = !_toolsSortAsc;
     else { _toolsSortKey = key; _toolsSortAsc = true; }
+    _toolsPage = 0;
     renderToolsTable();
   }
 
@@ -1445,7 +1463,11 @@
       return _toolsSortAsc ? av - bv : bv - av;
     });
 
-    tbody.innerHTML = rows.map(r => {
+    const PAGE_SIZE = 50;
+    const pageRows  = rows.slice(_toolsPage * PAGE_SIZE, (_toolsPage + 1) * PAGE_SIZE);
+    const hasNext   = (_toolsPage + 1) * PAGE_SIZE < rows.length;
+
+    tbody.innerHTML = pageRows.map(r => {
       const isDisabled = _globalDisabled.has(r.name);
       const rowOpacity = isDisabled ? 'opacity:0.5;' : '';
       const badge = isDisabled
@@ -1470,6 +1492,10 @@
         </td>
       </tr>`;
     }).join('');
+
+    document.getElementById('tools-page-label').textContent = 'Page ' + (_toolsPage + 1);
+    document.getElementById('tools-prev').disabled = _toolsPage === 0;
+    document.getElementById('tools-next').disabled = !hasNext;
   }
 
   // ----------------------------------------------------------------
