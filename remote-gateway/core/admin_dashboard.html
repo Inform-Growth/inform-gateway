@@ -502,6 +502,25 @@
 .drawer-pre.request { color: var(--text); }
 #logs-tbody tr.log-selected { background: #d8ecd3; outline: 1px solid var(--green); }
 
+/* ---- PAGINATION ---- */
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+.page-label {
+  font-family: 'Courier New', monospace;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  min-width: 60px;
+  text-align: center;
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
     /* ---- RESPONSIVE ---- */
     @media (max-width: 900px) {
       .cards-grid { grid-template-columns: repeat(2, 1fr); }
@@ -673,13 +692,13 @@
       <div style="display:flex;gap:0.6rem;margin-bottom:1rem;flex-wrap:wrap;">
         <input type="text" id="logs-filter-tool" placeholder="Filter by tool…"
           style="padding:0.35rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;flex:1;min-width:160px;"
-          oninput="loadLogs()" />
+          oninput="resetLogsPage()" />
         <input type="text" id="logs-filter-user" placeholder="Filter by user…"
           style="padding:0.35rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;flex:1;min-width:160px;"
-          oninput="loadLogs()" />
+          oninput="resetLogsPage()" />
         <select id="logs-filter-success"
           style="padding:0.35rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-size:0.82rem;"
-          onchange="loadLogs()">
+          onchange="resetLogsPage()">
           <option value="">All</option>
           <option value="true">Success only</option>
           <option value="false">Errors only</option>
@@ -701,6 +720,11 @@
           </thead>
           <tbody id="logs-tbody"></tbody>
         </table>
+      </div>
+      <div class="pagination-bar" id="logs-pagination">
+        <button class="btn btn-green" id="logs-prev" onclick="logsPagePrev()" disabled>Prev</button>
+        <span class="page-label" id="logs-page-label">Page 1</span>
+        <button class="btn btn-green" id="logs-next" onclick="logsPageNext()">Next</button>
       </div>
     </div>
   </div>
@@ -1387,6 +1411,25 @@
   let _logsToolMap = {};
   let _logsTimeMap = {};
   let _selectedLogId = null;
+  let _logsPage = 0;
+  let _logsHasMore = false;
+
+  function logsPagePrev() {
+    if (_logsPage === 0) return;
+    _logsPage--;
+    loadLogs();
+  }
+
+  function logsPageNext() {
+    if (!_logsHasMore) return;
+    _logsPage++;
+    loadLogs();
+  }
+
+  function resetLogsPage() {
+    _logsPage = 0;
+    loadLogs();
+  }
 
   function openLogDrawer(id) {
     id = String(id);
@@ -1435,22 +1478,30 @@
   }
 
   async function loadLogs() {
-    const tool = (document.getElementById('logs-filter-tool').value || '').trim();
-    const user = (document.getElementById('logs-filter-user').value || '').trim();
-    const successVal = document.getElementById('logs-filter-success').value;
-    let url = apiUrl('/api/logs') + '&limit=200';
-    if (tool) url += '&tool=' + encodeURIComponent(tool);
-    if (user) url += '&user=' + encodeURIComponent(user);
+    const tool       = (document.getElementById('logs-filter-tool').value    || '').trim();
+    const user       = (document.getElementById('logs-filter-user').value    || '').trim();
+    const successVal =  document.getElementById('logs-filter-success').value;
+
+    let url = apiUrl('/api/logs') + '&limit=100&offset=' + (_logsPage * 100);
+    if (tool) url += '&tool='    + encodeURIComponent(tool);
+    if (user) url += '&user='    + encodeURIComponent(user);
     if (successVal === 'blocked') {
       url += '&success=false&error_type=PermissionError';
     } else if (successVal) {
       url += '&success=' + encodeURIComponent(successVal);
     }
+
     try {
-      const res = await fetch(url);
+      const res  = await fetch(url);
       const logs = await res.json();
-      renderLogsTable(Array.isArray(logs) ? logs : []);
+      const arr  = Array.isArray(logs) ? logs : [];
+      _logsHasMore = arr.length === 100;
+      renderLogsTable(arr);
       updateTimestamp();
+
+      document.getElementById('logs-page-label').textContent = 'Page ' + (_logsPage + 1);
+      document.getElementById('logs-prev').disabled = _logsPage === 0;
+      document.getElementById('logs-next').disabled = !_logsHasMore;
     } catch (e) {
       console.error('loadLogs error:', e);
     }
