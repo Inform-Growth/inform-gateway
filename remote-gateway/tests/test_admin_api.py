@@ -293,6 +293,24 @@ def test_logs_filters_by_user(client):
     assert all(row["user_id"] == "alice" for row in rows)
 
 
+def test_logs_includes_response_preview(client):
+    c, store = client
+    store.record("health_check", 10, True, response_preview='{"status": "ok"}')
+    resp = c.get(f"/api/logs?token={TOKEN}")
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert rows[0]["response_preview"] == '{"status": "ok"}'
+
+
+def test_logs_response_preview_none_when_not_provided(client):
+    c, store = client
+    store.record("health_check", 10, True)
+    resp = c.get(f"/api/logs?token={TOKEN}")
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert rows[0]["response_preview"] is None
+
+
 def test_logs_negative_limit_clamped(client):
     c, store = client
     store.record("health_check", 10, True)

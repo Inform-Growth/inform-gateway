@@ -61,7 +61,8 @@ CREATE TABLE IF NOT EXISTS tool_calls (
     user_id       TEXT,
     request_id    TEXT,
     response_size INTEGER,
-    input_body    TEXT
+    input_body    TEXT,
+    response_preview TEXT
 );
 
 CREATE TABLE IF NOT EXISTS tool_permissions (
@@ -82,11 +83,12 @@ CREATE INDEX IF NOT EXISTS idx_user_id   ON tool_calls (user_id);
 
 # Columns added after initial release — applied via ALTER TABLE migration.
 _MIGRATIONS = [
-    ("tool_calls", "user_id",        "TEXT"),
-    ("tool_calls", "request_id",     "TEXT"),
-    ("tool_calls", "response_size",  "INTEGER"),
-    ("tool_calls", "input_body",     "TEXT"),
-    ("tool_calls", "error_message",  "TEXT"),
+    ("tool_calls", "user_id",          "TEXT"),
+    ("tool_calls", "request_id",       "TEXT"),
+    ("tool_calls", "response_size",    "INTEGER"),
+    ("tool_calls", "input_body",       "TEXT"),
+    ("tool_calls", "error_message",    "TEXT"),
+    ("tool_calls", "response_preview", "TEXT"),
 ]
 
 
@@ -387,6 +389,7 @@ class TelemetryStore:
         response_size: int | None = None,
         input_body: str | None = None,
         error_message: str | None = None,
+        response_preview: str | None = None,
     ) -> None:
         """Record a single tool invocation. Silent no-op if disabled.
 
@@ -402,6 +405,8 @@ class TelemetryStore:
             input_body: JSON-serialized tool arguments captured at call time.
             error_message: Full exception message string on failure (e.g. str(exc)),
                 complementing error_type which holds only the class name. None on success.
+            response_preview: First 400 chars of str(result) on success. None on
+                failure or when result is None.
         """
         if not self._enabled:
             return
@@ -410,11 +415,13 @@ class TelemetryStore:
             conn.execute(
                 "INSERT INTO tool_calls"
                 " (tool_name, called_at, duration_ms, success,"
-                "  error_type, error_message, user_id, request_id, response_size, input_body)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "  error_type, error_message, user_id, request_id, response_size, input_body,"
+                "  response_preview)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     tool_name, time.time(), duration_ms, int(success),
                     error_type, error_message, user_id, request_id, response_size, input_body,
+                    response_preview,
                 ),
             )
             conn.commit()
@@ -798,7 +805,8 @@ class TelemetryStore:
             rows = conn.execute(
                 f"""
                 SELECT id, tool_name, called_at, duration_ms, success,
-                       error_type, error_message, user_id, request_id, response_size, input_body
+                       error_type, error_message, user_id, request_id, response_size, input_body,
+                       response_preview
                 FROM tool_calls
                 {where}
                 ORDER BY called_at DESC
@@ -832,6 +840,7 @@ class TelemetryStore:
                     "response_size": row["response_size"],
                     "input_size": len(row["input_body"]) if row["input_body"] else None,
                     "input_body": row["input_body"],
+                    "response_preview": row["response_preview"],
                 }
             )
         return result
