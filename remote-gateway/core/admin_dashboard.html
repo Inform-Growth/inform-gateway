@@ -413,6 +413,95 @@
     .toggle-wrap input:checked + .toggle-slider { background: var(--green); }
     .toggle-wrap input:checked + .toggle-slider:before { transform: translateX(18px); }
 
+    /* ---- LOG DRAWER ---- */
+#log-drawer-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.3);
+  z-index: 199;
+}
+#log-drawer-overlay.open { display: block; }
+
+#log-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  width: 420px;
+  background: var(--cream-light);
+  border-left: 2px solid var(--border);
+  z-index: 200;
+  transform: translateX(100%);
+  transition: transform 0.2s ease;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+#log-drawer.open { transform: translateX(0); }
+
+.drawer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 1rem 1.2rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--cream-dark);
+  flex-shrink: 0;
+}
+.drawer-title {
+  font-family: 'Courier New', monospace;
+  font-size: 0.88rem;
+  color: var(--green);
+  font-weight: 700;
+  word-break: break-all;
+}
+.drawer-meta {
+  font-family: 'Courier New', monospace;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+}
+.drawer-close {
+  background: none;
+  border: none;
+  font-size: 1.3rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-left: 0.75rem;
+}
+.drawer-close:hover { color: var(--orange); }
+.drawer-body {
+  padding: 1rem 1.2rem;
+  flex: 1;
+  overflow-y: auto;
+}
+.drawer-section-label {
+  font-family: 'Arial', sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 0.4rem;
+}
+.drawer-section-label.error  { color: var(--orange); }
+.drawer-section-label.request { color: var(--text-muted); }
+.drawer-pre {
+  font-family: 'Courier New', monospace;
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 340px;
+  overflow-y: auto;
+  margin: 0 0 1.2rem 0;
+}
+.drawer-pre.error   { color: var(--orange); }
+.drawer-pre.request { color: var(--text); }
+#logs-tbody tr.log-selected { background: #d8ecd3; outline: 1px solid var(--green); }
+
     /* ---- RESPONSIVE ---- */
     @media (max-width: 900px) {
       .cards-grid { grid-template-columns: repeat(2, 1fr); }
@@ -613,20 +702,31 @@
           <tbody id="logs-tbody"></tbody>
         </table>
       </div>
-      <div id="logs-body-panel" style="display:none;margin-top:1rem;padding:0.8rem 1rem;background:var(--cream-dark);border:1px solid var(--border);">
-        <div id="logs-error-section" style="display:none;margin-bottom:0.8rem;">
-          <div style="font-family:'Arial',sans-serif;font-size:0.68rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--orange);margin-bottom:0.4rem;">Error</div>
-          <pre id="logs-error-content" style="font-family:'Courier New',monospace;font-size:0.78rem;white-space:pre-wrap;word-break:break-word;color:var(--orange);max-height:200px;overflow-y:auto;margin:0;"></pre>
-        </div>
-        <div id="logs-request-section" style="display:none;">
-          <div style="font-family:'Arial',sans-serif;font-size:0.68rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:0.4rem;">Request</div>
-          <pre id="logs-body-content" style="font-family:'Courier New',monospace;font-size:0.78rem;white-space:pre-wrap;word-break:break-word;color:var(--text);max-height:300px;overflow-y:auto;margin:0;"></pre>
-        </div>
-      </div>
     </div>
   </div>
 
 </main>
+
+<div id="log-drawer-overlay" onclick="closeLogDrawer()"></div>
+<div id="log-drawer">
+  <div class="drawer-header">
+    <div>
+      <div class="drawer-title" id="drawer-tool-name"></div>
+      <div class="drawer-meta" id="drawer-meta"></div>
+    </div>
+    <button class="drawer-close" onclick="closeLogDrawer()">&#x2715;</button>
+  </div>
+  <div class="drawer-body">
+    <div id="drawer-error-section" style="display:none;">
+      <div class="drawer-section-label error">Error</div>
+      <pre class="drawer-pre error" id="drawer-error-content"></pre>
+    </div>
+    <div id="drawer-request-section" style="display:none;">
+      <div class="drawer-section-label request">Request</div>
+      <pre class="drawer-pre request" id="drawer-request-content"></pre>
+    </div>
+  </div>
+</div>
 
 <script>
   // ----------------------------------------------------------------
@@ -1283,7 +1383,53 @@
   // ----------------------------------------------------------------
   let _logsBodyMap = {};
   let _logsErrorMap = {};
+  let _logsToolMap = {};
+  let _logsTimeMap = {};
   let _selectedLogId = null;
+
+  function openLogDrawer(id) {
+    document.getElementById('drawer-tool-name').textContent = _logsToolMap[id] || '';
+    document.getElementById('drawer-meta').textContent = _logsTimeMap[id] || '';
+
+    const errorMsg = _logsErrorMap[id];
+    const errorSection = document.getElementById('drawer-error-section');
+    document.getElementById('drawer-error-content').textContent = errorMsg || '';
+    errorSection.style.display = errorMsg ? 'block' : 'none';
+
+    const body = _logsBodyMap[id];
+    const requestSection = document.getElementById('drawer-request-section');
+    if (body) {
+      try {
+        document.getElementById('drawer-request-content').textContent =
+          JSON.stringify(JSON.parse(body), null, 2);
+      } catch (_) {
+        document.getElementById('drawer-request-content').textContent = body;
+      }
+      requestSection.style.display = 'block';
+    } else {
+      requestSection.style.display = 'none';
+    }
+
+    document.getElementById('log-drawer-overlay').classList.add('open');
+    document.getElementById('log-drawer').classList.add('open');
+    _selectedLogId = id;
+
+    document.querySelectorAll('#logs-tbody tr').forEach(r => {
+      r.classList.toggle('log-selected', r.dataset.logId === String(id));
+    });
+  }
+
+  function closeLogDrawer() {
+    document.getElementById('log-drawer-overlay').classList.remove('open');
+    document.getElementById('log-drawer').classList.remove('open');
+    _selectedLogId = null;
+    document.querySelectorAll('#logs-tbody tr').forEach(r => r.classList.remove('log-selected'));
+  }
+
+  function toggleLogDrawer(id) {
+    if (_selectedLogId === id) { closeLogDrawer(); return; }
+    openLogDrawer(id);
+  }
 
   async function loadLogs() {
     const tool = (document.getElementById('logs-filter-tool').value || '').trim();
@@ -1310,10 +1456,11 @@
   function renderLogsTable(logs) {
     _logsBodyMap = {};
     _logsErrorMap = {};
+    _logsToolMap = {};
+    _logsTimeMap = {};
     _selectedLogId = null;
-    document.getElementById('logs-body-panel').style.display = 'none';
-    document.getElementById('logs-error-section').style.display = 'none';
-    document.getElementById('logs-request-section').style.display = 'none';
+    closeLogDrawer();
+
     const tbody = document.getElementById('logs-tbody');
 
     if (!logs.length) {
@@ -1322,8 +1469,10 @@
     }
 
     logs.forEach(row => {
-      if (row.input_body != null) _logsBodyMap[row.id] = row.input_body;
+      if (row.input_body   != null) _logsBodyMap[row.id]  = row.input_body;
       if (row.error_message != null) _logsErrorMap[row.id] = row.error_message;
+      _logsToolMap[row.id] = row.tool_name || '';
+      _logsTimeMap[row.id] = row.called_at || '';
     });
 
     tbody.innerHTML = logs.map(row => {
@@ -1334,8 +1483,8 @@
           : '<span class="badge badge-orange" title="' + escHtml(row.error_type || '') + '">' + escHtml(row.error_type || 'ERR') + '</span>';
       const hasDetail = row.input_body != null || row.error_message != null;
       const rowStyle = hasDetail ? 'cursor:pointer;' : '';
-      const onclick = hasDetail ? ' onclick="showLogBody(' + escJs(String(row.id)) + ')"' : '';
-      return '<tr style="' + rowStyle + '"' + onclick + '>'
+      const onclick  = hasDetail ? ' onclick="toggleLogDrawer(' + escJs(String(row.id)) + ')"' : '';
+      return '<tr style="' + rowStyle + '" data-log-id="' + escHtml(String(row.id)) + '"' + onclick + '>'
         + '<td style="white-space:nowrap;font-size:0.75rem;">' + escHtml(row.called_at || '—') + '</td>'
         + '<td>' + escHtml(row.tool_name) + '</td>'
         + '<td style="font-size:0.78rem;">' + escHtml(row.user_id || '—') + '</td>'
@@ -1347,46 +1496,10 @@
     }).join('');
   }
 
-  function showLogBody(id) {
-    const panel = document.getElementById('logs-body-panel');
-    if (_selectedLogId === id) {
-      panel.style.display = 'none';
-      _selectedLogId = null;
-      return;
-    }
-    _selectedLogId = id;
-
-    const errorSection = document.getElementById('logs-error-section');
-    const errorContent = document.getElementById('logs-error-content');
-    const requestSection = document.getElementById('logs-request-section');
-    const requestContent = document.getElementById('logs-body-content');
-
-    const errorMsg = _logsErrorMap[id];
-    if (errorMsg) {
-      errorContent.textContent = errorMsg;
-      errorSection.style.display = 'block';
-    } else {
-      errorSection.style.display = 'none';
-    }
-
-    const body = _logsBodyMap[id];
-    if (body) {
-      try {
-        requestContent.textContent = JSON.stringify(JSON.parse(body), null, 2);
-      } catch (_) {
-        requestContent.textContent = body;
-      }
-      requestSection.style.display = 'block';
-    } else {
-      requestSection.style.display = 'none';
-    }
-
-    panel.style.display = 'block';
-  }
-
   // ----------------------------------------------------------------
   // Init
   // ----------------------------------------------------------------
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLogDrawer(); });
   loadExec();
 </script>
 </body>
