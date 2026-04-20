@@ -315,6 +315,16 @@ def _calculate_response_size(result: Any) -> int:
         return 0
 
 
+def _get_response_preview(result: Any) -> str | None:
+    """Return the first 400 chars of str(result), or None if result is None."""
+    if result is None:
+        return None
+    try:
+        return str(result)[:400]
+    except Exception:
+        return None
+
+
 _orig_mcp_tool = mcp.tool
 
 
@@ -345,6 +355,7 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                         user_id=sid, request_id=rid,
                         response_size=_calculate_response_size(result),
                         input_body=input_body,
+                        response_preview=_get_response_preview(result),
                     )
                     return result
                 except Exception as exc:
@@ -379,6 +390,7 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                     user_id=sid, request_id=rid,
                     response_size=_calculate_response_size(result),
                     input_body=input_body,
+                    response_preview=_get_response_preview(result),
                 )
                 return result
             except Exception as exc:
@@ -431,6 +443,7 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
                     user_id=sid, request_id=rid,
                     response_size=_calculate_response_size(result),
                     input_body=input_body,
+                    response_preview=_get_response_preview(result),
                 )
                 return result
             except Exception as exc:
@@ -465,6 +478,7 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
                 user_id=sid, request_id=rid,
                 response_size=_calculate_response_size(result),
                 input_body=input_body,
+                response_preview=_get_response_preview(result),
             )
             return result
         except Exception as exc:

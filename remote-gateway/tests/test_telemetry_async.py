@@ -35,6 +35,14 @@ def _import_mcp_server():
 
     # request_ctx: ContextVar with no value set — _get_call_ids() returns (None, None)
     sys.modules["mcp.server.lowlevel.server"].request_ctx = contextvars.ContextVar("request_ctx")
+    # lifespan: stub as a no-op context manager factory (used for SSE transport setup)
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _stub_lifespan(server):  # type: ignore[misc]
+        yield
+
+    sys.modules["mcp.server.lowlevel.server"].lifespan = _stub_lifespan
 
     # FastMCP: mcp.tool() decorator returns fn unchanged for test isolation
     mock_fastmcp_class = MagicMock()
@@ -62,16 +70,18 @@ def _import_mcp_server():
     recorded: list[dict] = []
     mod_tel = types.ModuleType("telemetry")
     mock_tel = MagicMock()
-    mock_tel.record = lambda name, duration_ms, success, exc_type=None, user_id=None, request_id=None, response_size=None, input_body=None, error_message=None: recorded.append(  # noqa: E501
+    mock_tel.record = lambda name, duration_ms, success, exc_type=None, user_id=None, request_id=None, response_size=None, input_body=None, error_message=None, response_preview=None: recorded.append(  # noqa: E501
         {"name": name, "duration_ms": duration_ms, "success": success, "exc_type": exc_type,
-         "user_id": user_id, "request_id": request_id, "error_message": error_message}
+         "user_id": user_id, "request_id": request_id, "error_message": error_message,
+         "response_preview": response_preview}
     )
     mock_tel.lookup_user = MagicMock(return_value=None)
     mod_tel.telemetry = mock_tel
     sys.modules["telemetry"] = mod_tel
 
     # Stub tools sub-modules
-    for mod_name in ("tools", "tools.meta", "tools.notes", "tools.registry", "tools.attio"):
+    for mod_name in ("tools", "tools.meta", "tools.notes", "tools.registry", "tools.attio",
+                     "tools.email_tools"):
         if mod_name not in sys.modules:
             m = types.ModuleType(mod_name)
             sys.modules[mod_name] = m
@@ -192,3 +202,18 @@ def test_error_message_captured_on_failure():
     call = _recorded[0]
     assert call["exc_type"] == "ValueError"
     assert call["error_message"] == "bad input: x must be positive"
+
+
+def test_async_tool_captures_response_preview():
+    """response_preview passed to record() must be str(result)[:400]."""
+    long_response = "x" * 800
+
+    async def big_tool() -> str:
+        return long_response
+
+    tracked = _server._tracked_mcp_tool()(big_tool)
+    result = asyncio.run(tracked())
+
+    assert result == long_response
+    assert len(_recorded) == 1
+    assert _recorded[0]["response_preview"] == "x" * 400
