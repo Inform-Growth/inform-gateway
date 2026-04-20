@@ -795,6 +795,7 @@
   let _pendingUserSelect = null;
 
   function switchTab(tab) {
+    closeLogDrawer();
     currentTab = tab;
     ['exec', 'ops', 'tools', 'logs'].forEach(t => {
       document.getElementById('tab-' + t).classList.toggle('active', t === tab);
@@ -1388,6 +1389,7 @@
   let _selectedLogId = null;
 
   function openLogDrawer(id) {
+    id = String(id);
     document.getElementById('drawer-tool-name').textContent = _logsToolMap[id] || '';
     document.getElementById('drawer-meta').textContent = _logsTimeMap[id] || '';
 
@@ -1427,6 +1429,7 @@
   }
 
   function toggleLogDrawer(id) {
+    id = String(id);
     if (_selectedLogId === id) { closeLogDrawer(); return; }
     openLogDrawer(id);
   }
