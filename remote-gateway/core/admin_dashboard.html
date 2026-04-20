@@ -487,8 +487,17 @@
   text-transform: uppercase;
   margin-bottom: 0.4rem;
 }
-.drawer-section-label.error  { color: var(--orange); }
-.drawer-section-label.request { color: var(--text-muted); }
+.drawer-section-label.error    { color: var(--orange); }
+.drawer-section-label.response { color: var(--green); }
+.drawer-section-label.request  { color: var(--text-muted); }
+.drawer-pre.response { color: var(--text); }
+.drawer-response-hint {
+  font-family: 'Courier New', monospace;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  margin-top: -0.8rem;
+  margin-bottom: 1.2rem;
+}
 .drawer-pre {
   font-family: 'Courier New', monospace;
   font-size: 0.78rem;
@@ -750,6 +759,11 @@
     <div id="drawer-error-section" style="display:none;">
       <div class="drawer-section-label error">Error</div>
       <pre class="drawer-pre error" id="drawer-error-content"></pre>
+    </div>
+    <div id="drawer-response-section" style="display:none;">
+      <div class="drawer-section-label response">Response Preview</div>
+      <pre class="drawer-pre response" id="drawer-response-content"></pre>
+      <div class="drawer-response-hint" id="drawer-response-hint"></div>
     </div>
     <div id="drawer-request-section" style="display:none;">
       <div class="drawer-section-label request">Request</div>
@@ -1512,6 +1526,8 @@
   let _logsErrorMap = {};
   let _logsToolMap = {};
   let _logsTimeMap = {};
+  let _logsResponseMap = {};
+  let _logsResponseSizeMap = {};
   let _selectedLogId = null;
   let _logsPage = 0;
   let _logsHasMore = false;
@@ -1542,6 +1558,20 @@
     const errorSection = document.getElementById('drawer-error-section');
     document.getElementById('drawer-error-content').textContent = errorMsg || '';
     errorSection.style.display = errorMsg ? 'block' : 'none';
+
+    const preview = _logsResponseMap[id];
+    const responseSection = document.getElementById('drawer-response-section');
+    if (preview != null) {
+      document.getElementById('drawer-response-content').textContent = preview;
+      const fullSize = _logsResponseSizeMap[id];
+      const hint = fullSize && fullSize > 400
+        ? 'preview · full response: ' + fullSize.toLocaleString() + ' chars'
+        : 'full response';
+      document.getElementById('drawer-response-hint').textContent = hint;
+      responseSection.style.display = 'block';
+    } else {
+      responseSection.style.display = 'none';
+    }
 
     const body = _logsBodyMap[id];
     const requestSection = document.getElementById('drawer-request-section');
@@ -1617,6 +1647,8 @@
     _logsErrorMap = {};
     _logsToolMap = {};
     _logsTimeMap = {};
+    _logsResponseMap = {};
+    _logsResponseSizeMap = {};
     _selectedLogId = null;
     closeLogDrawer();
 
@@ -1628,8 +1660,10 @@
     }
 
     logs.forEach(row => {
-      if (row.input_body   != null) _logsBodyMap[row.id]  = row.input_body;
-      if (row.error_message != null) _logsErrorMap[row.id] = row.error_message;
+      if (row.input_body      != null) _logsBodyMap[row.id]        = row.input_body;
+      if (row.error_message   != null) _logsErrorMap[row.id]       = row.error_message;
+      if (row.response_preview != null) _logsResponseMap[row.id]   = row.response_preview;
+      if (row.response_size   != null) _logsResponseSizeMap[row.id] = row.response_size;
       _logsToolMap[row.id] = row.tool_name || '';
       _logsTimeMap[row.id] = row.called_at || '';
     });
@@ -1640,7 +1674,7 @@
         : row.error_type === 'PermissionError'
           ? '<span class="badge badge-red" title="Tool blocked by permissions">BLOCKED</span>'
           : '<span class="badge badge-orange" title="' + escHtml(row.error_type || '') + '">' + escHtml(row.error_type || 'ERR') + '</span>';
-      const hasDetail = row.input_body != null || row.error_message != null;
+      const hasDetail = row.input_body != null || row.error_message != null || row.response_preview != null;
       const rowStyle = hasDetail ? 'cursor:pointer;' : '';
       const onclick  = hasDetail ? ' onclick="toggleLogDrawer(' + escJs(String(row.id)) + ')"' : '';
       return '<tr style="' + rowStyle + '" data-log-id="' + escHtml(String(row.id)) + '"' + onclick + '>'
