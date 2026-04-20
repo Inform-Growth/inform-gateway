@@ -1361,6 +1361,8 @@
   }
 
   function toolsPageNext() {
+    const PAGE_SIZE = 50;
+    if ((_toolsPage + 1) * PAGE_SIZE >= (_toolsData ? _toolsData.length : 0)) return;
     _toolsPage++;
     renderToolsTable();
   }
@@ -1388,6 +1390,7 @@
         _healthData = stats.tools || [];
       }
 
+      _toolsPage = 0;
       renderToolsTable();
       updateTimestamp();
     } catch (e) {
@@ -1435,6 +1438,10 @@
     const tbody = document.getElementById('tools-tbody');
     if (!_toolsData || !_toolsData.length) {
       tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted);font-style:italic;text-align:center;">No tools registered.</td></tr>';
+      _toolsPage = 0;
+      document.getElementById('tools-prev').disabled = true;
+      document.getElementById('tools-next').disabled = true;
+      document.getElementById('tools-page-label').textContent = 'Page 1';
       return;
     }
 
