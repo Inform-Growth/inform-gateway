@@ -678,6 +678,7 @@
             <th onclick="sortTools('call_count')">Calls</th>
             <th onclick="sortTools('status')">Status</th>
             <th onclick="sortTools('last_called')">Last Called</th>
+            <th>Global</th>
           </tr>
         </thead>
         <tbody id="tools-tbody"></tbody>
@@ -1267,8 +1268,17 @@
 
   async function loadPermissions(userId) {
     try {
-      const res = await fetch(apiUrl('/api/permissions/' + encodeURIComponent(userId)));
-      const data = await res.json();
+      const [permsRes, globalRes] = await Promise.all([
+        fetch(apiUrl('/api/permissions/' + encodeURIComponent(userId))),
+        fetch(apiUrl('/api/permissions/*')),
+      ]);
+      const data       = await permsRes.json();
+      const globalData = await globalRes.json();
+      _globalDisabled = new Set(
+        (globalData.permissions || [])
+          .filter(p => !p.enabled)
+          .map(p => p.tool_name)
+      );
       renderPermissions(userId, data.permissions || []);
     } catch (e) {
       console.error('loadPermissions error:', e);
@@ -1301,6 +1311,12 @@
       return;
     }
     list.innerHTML = permissions.map(p => {
+      if (_globalDisabled.has(p.tool_name)) {
+        return `<div class="perm-row">
+        <span class="perm-tool-name" style="opacity:0.5;">${escHtml(p.tool_name)}</span>
+        <span class="badge badge-red" style="font-size:0.65rem;letter-spacing:0.04em;">GLOBAL OFF</span>
+      </div>`;
+      }
       const checked = p.enabled ? 'checked' : '';
       const tid = 'toggle-' + escHtml(p.tool_name).replace(/[^a-z0-9]/gi, '_');
       return `<div class="perm-row">
@@ -1330,24 +1346,58 @@
   // Tools view
   // ----------------------------------------------------------------
   let _toolsData = [];
+  let _globalDisabled = new Set();
+  let _toolsPage = 0;
   let _toolsSortKey = 'name';
   let _toolsSortAsc = true;
 
   async function loadTools() {
     try {
-      // Fetch tool registry; fetch stats if not yet loaded
-      const fetches = [fetch(apiUrl('/api/tools'))];
+      const fetches = [fetch(apiUrl('/api/tools')), fetch(apiUrl('/api/permissions/*'))];
       if (!_healthData.length) fetches.push(fetch(apiUrl('/api/stats')));
       const results = await Promise.all(fetches);
+
       _toolsData = await results[0].json();
-      if (results[1]) {
-        const stats = await results[1].json();
+
+      const globalPerms = await results[1].json();
+      _globalDisabled = new Set(
+        (globalPerms.permissions || [])
+          .filter(p => !p.enabled)
+          .map(p => p.tool_name)
+      );
+
+      if (results[2]) {
+        const stats = await results[2].json();
         _healthData = stats.tools || [];
       }
+
       renderToolsTable();
       updateTimestamp();
     } catch (e) {
       console.error('loadTools error:', e);
+    }
+  }
+
+  async function setGlobalPermission(toolName, enabled) {
+    try {
+      await fetch(
+        apiUrl('/api/permissions/*/' + encodeURIComponent(toolName)),
+        {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({enabled}),
+        }
+      );
+      if (enabled) {
+        _globalDisabled.delete(toolName);
+      } else {
+        _globalDisabled.add(toolName);
+      }
+      renderToolsTable();
+      // Keep Ops permissions panel in sync if a user is selected
+      if (_selectedUser) await loadPermissions(_selectedUser);
+    } catch (e) {
+      console.error('setGlobalPermission error:', e);
     }
   }
 
@@ -1360,7 +1410,7 @@
   function renderToolsTable() {
     const tbody = document.getElementById('tools-tbody');
     if (!_toolsData || !_toolsData.length) {
-      tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);font-style:italic;text-align:center;">No tools registered.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted);font-style:italic;text-align:center;">No tools registered.</td></tr>';
       return;
     }
 
@@ -1390,15 +1440,28 @@
     });
 
     tbody.innerHTML = rows.map(r => {
-      const badge = r.status === 'active'
-        ? '<span class="badge badge-green">Active</span>'
-        : '<span class="badge" style="background:var(--cream-dark);color:var(--text-muted);">Never called</span>';
-      return `<tr>
+      const isDisabled = _globalDisabled.has(r.name);
+      const rowOpacity = isDisabled ? 'opacity:0.5;' : '';
+      const badge = isDisabled
+        ? '<span class="badge badge-red">Disabled</span>'
+        : r.status === 'active'
+          ? '<span class="badge badge-green">Active</span>'
+          : '<span class="badge" style="background:var(--cream-dark);color:var(--text-muted);">Never called</span>';
+      const toggleChecked = isDisabled ? '' : 'checked';
+      const tid = 'gtoggle-' + r.name.replace(/[^a-z0-9]/gi, '_');
+      return `<tr style="${rowOpacity}">
         <td>${escHtml(r.name)}</td>
         <td style="font-size:0.78rem;color:var(--text-muted);font-family:'Arial',sans-serif;max-width:320px;">${escHtml(r.description)}</td>
         <td>${escHtml(r.call_count)}</td>
         <td>${badge}</td>
         <td>${fmtDate(r.last_called)}</td>
+        <td>
+          <label class="toggle-wrap" title="${isDisabled ? 'Globally disabled' : 'Globally enabled'}">
+            <input type="checkbox" id="${escHtml(tid)}" ${toggleChecked}
+              onchange="setGlobalPermission('${escJs(r.name)}',this.checked)" />
+            <span class="toggle-slider"></span>
+          </label>
+        </td>
       </tr>`;
     }).join('');
   }
