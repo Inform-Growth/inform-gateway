@@ -1380,7 +1380,7 @@
 
   async function setGlobalPermission(toolName, enabled) {
     try {
-      await fetch(
+      const res = await fetch(
         apiUrl('/api/permissions/*/' + encodeURIComponent(toolName)),
         {
           method: 'PUT',
@@ -1388,6 +1388,11 @@
           body: JSON.stringify({enabled}),
         }
       );
+      if (!res.ok) {
+        console.error('setGlobalPermission failed:', res.status);
+        renderToolsTable(); // snap toggle back to actual state
+        return;
+      }
       if (enabled) {
         _globalDisabled.delete(toolName);
       } else {
@@ -1398,6 +1403,7 @@
       if (_selectedUser) await loadPermissions(_selectedUser);
     } catch (e) {
       console.error('setGlobalPermission error:', e);
+      renderToolsTable(); // snap toggle back on network error too
     }
   }
 
@@ -1458,7 +1464,7 @@
         <td>
           <label class="toggle-wrap" title="${isDisabled ? 'Globally disabled' : 'Globally enabled'}">
             <input type="checkbox" id="${escHtml(tid)}" ${toggleChecked}
-              onchange="setGlobalPermission('${escJs(r.name)}',this.checked)" />
+              onchange="setGlobalPermission('${escJs(escHtml(r.name))}',this.checked)" />
             <span class="toggle-slider"></span>
           </label>
         </td>
