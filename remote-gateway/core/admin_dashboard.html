@@ -724,7 +724,7 @@
       <div class="pagination-bar" id="logs-pagination">
         <button class="btn btn-green" id="logs-prev" onclick="logsPagePrev()" disabled>Prev</button>
         <span class="page-label" id="logs-page-label">Page 1</span>
-        <button class="btn btn-green" id="logs-next" onclick="logsPageNext()">Next</button>
+        <button class="btn btn-green" id="logs-next" onclick="logsPageNext()" disabled>Next</button>
       </div>
     </div>
   </div>
@@ -827,14 +827,14 @@
     });
     if (tab === 'exec') loadExec();
     else if (tab === 'ops') loadOps();
-    else if (tab === 'logs') loadLogs();
+    else if (tab === 'logs') resetLogsPage();
     else loadTools();
   }
 
   function refreshCurrent() {
     if (currentTab === 'exec') loadExec();
     else if (currentTab === 'ops') loadOps();
-    else if (currentTab === 'logs') loadLogs();
+    else if (currentTab === 'logs') resetLogsPage();
     else loadTools();
   }
 
@@ -1503,6 +1503,9 @@
       document.getElementById('logs-prev').disabled = _logsPage === 0;
       document.getElementById('logs-next').disabled = !_logsHasMore;
     } catch (e) {
+      _logsHasMore = false;
+      document.getElementById('logs-prev').disabled = _logsPage === 0;
+      document.getElementById('logs-next').disabled = true;
       console.error('loadLogs error:', e);
     }
   }
