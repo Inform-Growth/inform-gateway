@@ -49,6 +49,6 @@ fields:
   credits_used:
     display_name: Credits Used
     description: Breakdown of credits deducted for this reveal. email=2 if valid email found, phone=5 if phone found, api=1 for LinkedIn match.
-    type: string
+    type: object
     notes: Credits are only deducted on successful data retrieval.
     nullable: false

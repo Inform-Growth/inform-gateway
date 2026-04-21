@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import os
 import time
+
+from core.field_registry import registry
 from typing import Any
 
 _WIZA_BASE = "https://wiza.co/api"
@@ -150,12 +152,17 @@ def wiza__enrich_person(linkedin_url: str) -> dict[str, Any]:
 
     credits_raw = payload.get("credits") or {}
     api_credits_raw = credits_raw.get("api_credits") or {}
+    # credits_used is always returned — Wiza always includes a credits block,
+    # and the field registry marks it nullable: false.
     result["credits_used"] = {
         "email": credits_raw.get("email_credits", 0),
         "phone": credits_raw.get("phone_credits", 0),
         "api": api_credits_raw.get("total", 0) if isinstance(api_credits_raw, dict) else 0,
     }
 
+    validation = registry.validate_response("wiza", result)
+    if not validation.valid:
+        result["_field_validation"] = validation.summary()
     return result
 
 
