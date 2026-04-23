@@ -134,6 +134,7 @@ class TelemetryStore:
         self._path = db_path
         self._enabled = False
         self._disabled_cache: dict[str, set[str]] = {}
+        self._hint_cache: dict[str, dict[str, dict]] = {}
         self._conn: sqlite3.Connection | None = None
         self._setup()
         self._load_disabled_cache()
@@ -529,6 +530,259 @@ class TelemetryStore:
             return current
         except Exception:
             return fields
+
+    def list_skills(self, org_id: str) -> list[dict]:
+        """Return all active skills for an org.
+
+        Args:
+            org_id: Organization identifier.
+        """
+        if not self._enabled:
+            return []
+        try:
+            conn = self._connect()
+            rows = conn.execute(
+                "SELECT id, name, description, prompt_template, is_system, created_by, created_at, updated_at "
+                "FROM skills WHERE org_id = ? AND is_active = 1 ORDER BY name",
+                (org_id,),
+            ).fetchall()
+        except Exception:
+            return []
+        return [dict(row) for row in rows]
+
+    def get_skill(self, org_id: str, name: str) -> dict | None:
+        """Return a single active skill by name, or None if not found.
+
+        Args:
+            org_id: Organization identifier.
+            name: Skill name.
+        """
+        if not self._enabled:
+            return None
+        try:
+            conn = self._connect()
+            row = conn.execute(
+                "SELECT id, name, description, prompt_template, is_system, created_by, created_at, updated_at "
+                "FROM skills WHERE org_id = ? AND name = ? AND is_active = 1",
+                (org_id, name),
+            ).fetchone()
+            return dict(row) if row else None
+        except Exception:
+            return None
+
+    def create_skill(
+        self,
+        org_id: str,
+        name: str,
+        description: str,
+        prompt_template: str,
+        created_by: str | None = None,
+    ) -> dict:
+        """Insert a new skill row and return it.
+
+        Args:
+            org_id: Organization identifier.
+            name: Unique skill name within the org.
+            description: Human-readable description shown in skill_list.
+            prompt_template: Prompt string with optional {variable} placeholders.
+            created_by: user_id of creator.
+
+        Returns:
+            The created skill dict.
+        """
+        import secrets as _secrets_mod
+        if not self._enabled:
+            return {"name": name, "description": description, "prompt_template": prompt_template}
+        now = time.time()
+        sid = _secrets_mod.token_hex(8)
+        try:
+            conn = self._connect()
+            conn.execute(
+                "INSERT INTO skills (id, org_id, name, description, prompt_template, "
+                "is_active, is_system, created_by, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, 1, 0, ?, ?, ?)",
+                (sid, org_id, name, description, prompt_template, created_by, now, now),
+            )
+            conn.commit()
+            return self.get_skill(org_id, name) or {}
+        except Exception:
+            return {}
+
+    def update_skill(self, org_id: str, name: str, **fields: Any) -> dict | None:
+        """Update a non-system skill's fields. Returns updated row or None on failure.
+
+        Accepted fields: description, prompt_template.
+        System skills (is_system=1) cannot be updated.
+
+        Args:
+            org_id: Organization identifier.
+            name: Skill name.
+            **fields: Field values to update (description, prompt_template).
+        """
+        if not self._enabled:
+            return None
+        allowed = {"description", "prompt_template"}
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if not updates:
+            return self.get_skill(org_id, name)
+        try:
+            conn = self._connect()
+            row = conn.execute(
+                "SELECT is_system FROM skills WHERE org_id = ? AND name = ? AND is_active = 1",
+                (org_id, name),
+            ).fetchone()
+            if not row or row["is_system"]:
+                return None
+            set_clause = ", ".join(f"{k} = ?" for k in updates)
+            values = list(updates.values()) + [time.time(), org_id, name]
+            conn.execute(
+                f"UPDATE skills SET {set_clause}, updated_at = ? WHERE org_id = ? AND name = ?",
+                values,
+            )
+            conn.commit()
+            return self.get_skill(org_id, name)
+        except Exception:
+            return None
+
+    def delete_skill(self, org_id: str, name: str) -> bool:
+        """Soft-delete a skill by setting is_active=0. System skills cannot be deleted.
+
+        Args:
+            org_id: Organization identifier.
+            name: Skill name.
+
+        Returns:
+            True if deleted, False if not found or is a system skill.
+        """
+        if not self._enabled:
+            return False
+        try:
+            conn = self._connect()
+            row = conn.execute(
+                "SELECT is_system FROM skills WHERE org_id = ? AND name = ? AND is_active = 1",
+                (org_id, name),
+            ).fetchone()
+            if not row or row["is_system"]:
+                return False
+            conn.execute(
+                "UPDATE skills SET is_active = 0 WHERE org_id = ? AND name = ?",
+                (org_id, name),
+            )
+            conn.commit()
+            return True
+        except Exception:
+            return False
+
+    def get_tool_hint(self, org_id: str, tool_name: str) -> dict | None:
+        """Return tool hint for an org+tool combo, or None if not set.
+
+        Uses in-process cache per org. Invalidated by upsert_tool_hint.
+
+        Args:
+            org_id: Organization identifier.
+            tool_name: Registered tool name.
+        """
+        if org_id not in self._hint_cache:
+            self._load_hint_cache(org_id)
+        return self._hint_cache.get(org_id, {}).get(tool_name)
+
+    def _load_hint_cache(self, org_id: str) -> None:
+        """Populate _hint_cache for an org from the DB."""
+        self._hint_cache[org_id] = {}
+        if not self._enabled:
+            return
+        try:
+            conn = self._connect()
+            rows = conn.execute(
+                "SELECT tool_name, interpretation_hint, usage_rules, data_sensitivity "
+                "FROM tool_hints WHERE org_id = ? AND is_active = 1",
+                (org_id,),
+            ).fetchall()
+            for row in rows:
+                self._hint_cache[org_id][row["tool_name"]] = {
+                    "interpretation_hint": row["interpretation_hint"],
+                    "usage_rules": row["usage_rules"],
+                    "data_sensitivity": row["data_sensitivity"],
+                }
+        except Exception:
+            pass
+
+    def upsert_tool_hint(
+        self,
+        org_id: str,
+        tool_name: str,
+        *,
+        interpretation_hint: str | None = None,
+        usage_rules: str | None = None,
+        data_sensitivity: str = "internal",
+    ) -> dict:
+        """Insert or overwrite a tool hint. Invalidates the in-process cache.
+
+        Args:
+            org_id: Organization identifier.
+            tool_name: Registered tool name.
+            interpretation_hint: Guidance on how to interpret results.
+            usage_rules: When/how the tool should be called.
+            data_sensitivity: One of 'public', 'internal', 'confidential'.
+
+        Returns:
+            The upserted hint dict.
+        """
+        import secrets as _secrets_mod
+        hint = {
+            "interpretation_hint": interpretation_hint,
+            "usage_rules": usage_rules,
+            "data_sensitivity": data_sensitivity,
+        }
+        if self._enabled:
+            try:
+                conn = self._connect()
+                sid = _secrets_mod.token_hex(8)
+                conn.execute(
+                    """
+                    INSERT INTO tool_hints (id, org_id, tool_name, interpretation_hint,
+                        usage_rules, data_sensitivity, is_active)
+                    VALUES (?, ?, ?, ?, ?, ?, 1)
+                    ON CONFLICT(org_id, tool_name) DO UPDATE SET
+                        interpretation_hint = excluded.interpretation_hint,
+                        usage_rules = excluded.usage_rules,
+                        data_sensitivity = excluded.data_sensitivity
+                    """,
+                    (sid, org_id, tool_name, interpretation_hint, usage_rules, data_sensitivity),
+                )
+                conn.commit()
+            except Exception:
+                pass
+        # Invalidate cache so next get_tool_hint re-reads from DB
+        self._hint_cache.pop(org_id, None)
+        return {"tool_name": tool_name, **hint}
+
+    def list_tool_hints(self, org_id: str) -> list[dict]:
+        """Return all active tool hints for an org.
+
+        Args:
+            org_id: Organization identifier.
+        """
+        if not self._enabled:
+            return []
+        try:
+            conn = self._connect()
+            rows = conn.execute(
+                "SELECT tool_name, interpretation_hint, usage_rules, data_sensitivity "
+                "FROM tool_hints WHERE org_id = ? AND is_active = 1 ORDER BY tool_name",
+                (org_id,),
+            ).fetchall()
+        except Exception:
+            return []
+        return [
+            {
+                "tool_name": row["tool_name"],
+                "interpretation_hint": row["interpretation_hint"],
+                "usage_rules": row["usage_rules"],
+                "data_sensitivity": row["data_sensitivity"],
+            }
+            for row in rows
+        ]
 
     # ------------------------------------------------------------------
     # Call recording
