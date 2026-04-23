@@ -123,7 +123,7 @@ _MIGRATIONS = [
     ("tool_calls", "input_body",       "TEXT"),
     ("tool_calls", "error_message",    "TEXT"),
     ("tool_calls", "response_preview", "TEXT"),
-    ("api_keys", "org_id", "TEXT"),
+    ("api_keys", "org_id",             "TEXT"),
 ]
 
 
@@ -435,45 +435,9 @@ class TelemetryStore:
             pass
         return user_id
 
-    def is_initialized(self, org_id: str) -> bool:
-        """Return True if org has completed setup.
-
-        Args:
-            org_id: Organization identifier.
-        """
-        if not self._enabled:
-            return True  # fail open — never gate on DB failure
-        try:
-            conn = self._connect()
-            row = conn.execute(
-                "SELECT initialized FROM org_profiles WHERE org_id = ?", (org_id,)
-            ).fetchone()
-            return bool(row["initialized"]) if row else False
-        except Exception:
-            return True  # fail open
-
-    def set_initialized(self, org_id: str) -> None:
-        """Mark an org as initialized.
-
-        Args:
-            org_id: Organization identifier.
-        """
-        if not self._enabled:
-            return
-        try:
-            conn = self._connect()
-            now = time.time()
-            conn.execute(
-                """
-                INSERT INTO org_profiles (org_id, profile_json, initialized, created_at, updated_at)
-                VALUES (?, '{}', 1, ?, ?)
-                ON CONFLICT(org_id) DO UPDATE SET initialized = 1, updated_at = excluded.updated_at
-                """,
-                (org_id, now, now),
-            )
-            conn.commit()
-        except Exception:
-            pass
+    # ------------------------------------------------------------------
+    # Organization profiles
+    # ------------------------------------------------------------------
 
     def get_org_profile(self, org_id: str) -> dict:
         """Return the org's profile_json as a dict. Returns {} if not found.
@@ -530,6 +494,50 @@ class TelemetryStore:
             return current
         except Exception:
             return fields
+
+    def is_initialized(self, org_id: str) -> bool:
+        """Return True if org has completed setup.
+
+        Args:
+            org_id: Organization identifier.
+        """
+        if not self._enabled:
+            return True  # fail open — never gate on DB failure
+        try:
+            conn = self._connect()
+            row = conn.execute(
+                "SELECT initialized FROM org_profiles WHERE org_id = ?", (org_id,)
+            ).fetchone()
+            return bool(row["initialized"]) if row else False
+        except Exception:
+            return True  # fail open
+
+    def set_initialized(self, org_id: str) -> None:
+        """Mark an org as initialized.
+
+        Args:
+            org_id: Organization identifier.
+        """
+        if not self._enabled:
+            return
+        try:
+            conn = self._connect()
+            now = time.time()
+            conn.execute(
+                """
+                INSERT INTO org_profiles (org_id, profile_json, initialized, created_at, updated_at)
+                VALUES (?, '{}', 1, ?, ?)
+                ON CONFLICT(org_id) DO UPDATE SET initialized = 1, updated_at = excluded.updated_at
+                """,
+                (org_id, now, now),
+            )
+            conn.commit()
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Skills management
+    # ------------------------------------------------------------------
 
     def list_skills(self, org_id: str) -> list[dict]:
         """Return all active skills for an org.
@@ -672,6 +680,10 @@ class TelemetryStore:
             return True
         except Exception:
             return False
+
+    # ------------------------------------------------------------------
+    # Tool hints
+    # ------------------------------------------------------------------
 
     def get_tool_hint(self, org_id: str, tool_name: str) -> dict | None:
         """Return tool hint for an org+tool combo, or None if not set.
