@@ -71,6 +71,40 @@ CREATE TABLE IF NOT EXISTS tool_permissions (
     enabled   INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY (user_id, tool_name)
 );
+
+CREATE TABLE IF NOT EXISTS org_profiles (
+    org_id       TEXT PRIMARY KEY,
+    display_name TEXT,
+    profile_json TEXT NOT NULL DEFAULT '{}',
+    initialized  INTEGER NOT NULL DEFAULT 0,
+    created_at   REAL NOT NULL,
+    updated_at   REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS skills (
+    id              TEXT PRIMARY KEY,
+    org_id          TEXT NOT NULL,
+    name            TEXT NOT NULL,
+    description     TEXT NOT NULL,
+    prompt_template TEXT NOT NULL,
+    is_active       INTEGER NOT NULL DEFAULT 1,
+    is_system       INTEGER NOT NULL DEFAULT 0,
+    created_by      TEXT,
+    created_at      REAL NOT NULL,
+    updated_at      REAL NOT NULL,
+    UNIQUE(org_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS tool_hints (
+    id                  TEXT PRIMARY KEY,
+    org_id              TEXT NOT NULL,
+    tool_name           TEXT NOT NULL,
+    interpretation_hint TEXT,
+    usage_rules         TEXT,
+    data_sensitivity    TEXT DEFAULT 'internal',
+    is_active           INTEGER NOT NULL DEFAULT 1,
+    UNIQUE(org_id, tool_name)
+);
 """
 
 # Indexes are created after migrations so that columns added via ALTER TABLE
@@ -89,6 +123,7 @@ _MIGRATIONS = [
     ("tool_calls", "input_body",       "TEXT"),
     ("tool_calls", "error_message",    "TEXT"),
     ("tool_calls", "response_preview", "TEXT"),
+    ("api_keys", "org_id", "TEXT"),
 ]
 
 
@@ -162,25 +197,28 @@ class TelemetryStore:
     # API key management
     # ------------------------------------------------------------------
 
-    def add_api_key(self, user_id: str, key: str | None = None) -> str:
+    def add_api_key(self, user_id: str, key: str | None = None, org_id: str | None = None) -> str:
         """Create an API key for a user and store it. Returns the key.
 
         Args:
             user_id: Opaque user identifier (email, username, UUID, etc.).
             key: The key value to store. Generated securely if omitted.
+            org_id: Organization identifier. Defaults to user_id if omitted.
 
         Returns:
             The API key string (``sk-<32 random hex chars>``).
         """
         if key is None:
             key = f"sk-{secrets.token_hex(16)}"
+        if org_id is None:
+            org_id = user_id
         if not self._enabled:
             return key
         try:
             conn = self._connect()
             conn.execute(
-                "INSERT INTO api_keys (key, user_id, created_at) VALUES (?, ?, ?)",
-                (key, user_id, time.time()),
+                "INSERT INTO api_keys (key, user_id, org_id, created_at) VALUES (?, ?, ?, ?)",
+                (key, user_id, org_id, time.time()),
             )
             conn.commit()
         except Exception:
@@ -373,6 +411,124 @@ class TelemetryStore:
             return row["user_id"] if row else None
         except Exception:
             return None
+
+    def get_org_id(self, user_id: str) -> str:
+        """Return org_id for user_id, falling back to user_id if none set.
+
+        Args:
+            user_id: Authenticated user identifier.
+
+        Returns:
+            The org_id string — either the explicit org or user_id itself.
+        """
+        if not self._enabled:
+            return user_id
+        try:
+            conn = self._connect()
+            row = conn.execute(
+                "SELECT org_id FROM api_keys WHERE user_id = ?", (user_id,)
+            ).fetchone()
+            if row and row["org_id"]:
+                return row["org_id"]
+        except Exception:
+            pass
+        return user_id
+
+    def is_initialized(self, org_id: str) -> bool:
+        """Return True if org has completed setup.
+
+        Args:
+            org_id: Organization identifier.
+        """
+        if not self._enabled:
+            return True  # fail open — never gate on DB failure
+        try:
+            conn = self._connect()
+            row = conn.execute(
+                "SELECT initialized FROM org_profiles WHERE org_id = ?", (org_id,)
+            ).fetchone()
+            return bool(row["initialized"]) if row else False
+        except Exception:
+            return True  # fail open
+
+    def set_initialized(self, org_id: str) -> None:
+        """Mark an org as initialized.
+
+        Args:
+            org_id: Organization identifier.
+        """
+        if not self._enabled:
+            return
+        try:
+            conn = self._connect()
+            now = time.time()
+            conn.execute(
+                """
+                INSERT INTO org_profiles (org_id, profile_json, initialized, created_at, updated_at)
+                VALUES (?, '{}', 1, ?, ?)
+                ON CONFLICT(org_id) DO UPDATE SET initialized = 1, updated_at = excluded.updated_at
+                """,
+                (org_id, now, now),
+            )
+            conn.commit()
+        except Exception:
+            pass
+
+    def get_org_profile(self, org_id: str) -> dict:
+        """Return the org's profile_json as a dict. Returns {} if not found.
+
+        Args:
+            org_id: Organization identifier.
+        """
+        if not self._enabled:
+            return {}
+        try:
+            import json as _json
+            conn = self._connect()
+            row = conn.execute(
+                "SELECT profile_json FROM org_profiles WHERE org_id = ?", (org_id,)
+            ).fetchone()
+            if row:
+                return _json.loads(row["profile_json"] or "{}")
+        except Exception:
+            pass
+        return {}
+
+    def update_org_profile(self, org_id: str, fields: dict) -> dict:
+        """Merge fields into the org's profile_json. Creates row if absent.
+
+        Args:
+            org_id: Organization identifier.
+            fields: Dict of fields to set or overwrite.
+
+        Returns:
+            The updated profile dict.
+        """
+        import json as _json
+        if not self._enabled:
+            return fields
+        try:
+            conn = self._connect()
+            now = time.time()
+            row = conn.execute(
+                "SELECT profile_json FROM org_profiles WHERE org_id = ?", (org_id,)
+            ).fetchone()
+            current = _json.loads(row["profile_json"] or "{}") if row else {}
+            current.update(fields)
+            merged = _json.dumps(current)
+            conn.execute(
+                """
+                INSERT INTO org_profiles (org_id, profile_json, initialized, created_at, updated_at)
+                VALUES (?, ?, 0, ?, ?)
+                ON CONFLICT(org_id) DO UPDATE SET profile_json = excluded.profile_json,
+                                                  updated_at = excluded.updated_at
+                """,
+                (org_id, merged, now, now),
+            )
+            conn.commit()
+            return current
+        except Exception:
+            return fields
 
     # ------------------------------------------------------------------
     # Call recording
