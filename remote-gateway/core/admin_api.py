@@ -202,6 +202,90 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         return JSONResponse({"ok": True, "user_id": user_id, "tool_name": tool_name,
                              "enabled": bool(body["enabled"])})
 
+    async def api_org_profile_get(request: Request) -> Response:
+        if not _is_authorized(request):
+            return _forbidden()
+        profile = telemetry.get_org_profile("default")
+        initialized = telemetry.is_initialized("default")
+        return JSONResponse({"org_id": "default", "initialized": initialized, "profile": profile})
+
+    async def api_org_profile_update(request: Request) -> Response:
+        if not _is_authorized(request):
+            return _forbidden()
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "body must be a JSON object"}, status_code=400)
+        updated = telemetry.update_org_profile("default", body)
+        return JSONResponse({"org_id": "default", "profile": updated})
+
+    async def api_skills_list(request: Request) -> Response:
+        if not _is_authorized(request):
+            return _forbidden()
+        return JSONResponse(telemetry.list_skills("default"))
+
+    async def api_skills_create(request: Request) -> Response:
+        if not _is_authorized(request):
+            return _forbidden()
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+        for required in ("name", "description", "prompt_template"):
+            if not body.get(required):
+                return JSONResponse({"error": f"{required} is required"}, status_code=400)
+        skill = telemetry.create_skill(
+            "default", body["name"], body["description"], body["prompt_template"]
+        )
+        return JSONResponse(skill, status_code=201)
+
+    async def api_skills_update(request: Request) -> Response:
+        if not _is_authorized(request):
+            return _forbidden()
+        name = request.path_params["name"]
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+        fields = {k: v for k, v in body.items() if k in ("description", "prompt_template")}
+        result = telemetry.update_skill("default", name, **fields)
+        if result is None:
+            return JSONResponse({"error": f"skill '{name}' not found or is a system skill"}, status_code=404)
+        return JSONResponse(result)
+
+    async def api_skills_delete(request: Request) -> Response:
+        if not _is_authorized(request):
+            return _forbidden()
+        name = request.path_params["name"]
+        deleted = telemetry.delete_skill("default", name)
+        if not deleted:
+            return JSONResponse({"error": f"skill '{name}' not found or is a system skill"}, status_code=404)
+        return JSONResponse({"deleted": name})
+
+    async def api_hints_list(request: Request) -> Response:
+        if not _is_authorized(request):
+            return _forbidden()
+        return JSONResponse(telemetry.list_tool_hints("default"))
+
+    async def api_hints_upsert(request: Request) -> Response:
+        if not _is_authorized(request):
+            return _forbidden()
+        tool_name = request.path_params["tool_name"]
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+        hint = telemetry.upsert_tool_hint(
+            "default",
+            tool_name,
+            interpretation_hint=body.get("interpretation_hint"),
+            usage_rules=body.get("usage_rules"),
+            data_sensitivity=body.get("data_sensitivity", "internal"),
+        )
+        return JSONResponse(hint)
+
     routes = [
         Route("/", dashboard),
         Route("/api/stats", api_stats),
@@ -214,6 +298,14 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         Route("/api/timeline", api_timeline),
         Route("/api/tools", api_tools),
         Route("/api/logs", api_logs),
+        Route("/api/org-profile", api_org_profile_get, methods=["GET"]),
+        Route("/api/org-profile", api_org_profile_update, methods=["PUT"]),
+        Route("/api/skills", api_skills_list, methods=["GET"]),
+        Route("/api/skills", api_skills_create, methods=["POST"]),
+        Route("/api/skills/{name}", api_skills_update, methods=["PUT"]),
+        Route("/api/skills/{name}", api_skills_delete, methods=["DELETE"]),
+        Route("/api/tool-hints", api_hints_list, methods=["GET"]),
+        Route("/api/tool-hints/{tool_name:path}", api_hints_upsert, methods=["PUT"]),
     ]
 
     return Starlette(routes=routes)
