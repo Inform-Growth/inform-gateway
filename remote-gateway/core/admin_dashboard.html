@@ -556,6 +556,9 @@
   <div class="tab" id="tab-ops" onclick="switchTab('ops')">Ops</div>
   <div class="tab" id="tab-tools" onclick="switchTab('tools')">Tools</div>
   <div class="tab" id="tab-logs" onclick="switchTab('logs')">Logs</div>
+  <div class="tab" id="tab-profile" onclick="switchTab('profile')">Org Profile</div>
+  <div class="tab" id="tab-skills" onclick="switchTab('skills')">Skills</div>
+  <div class="tab" id="tab-hints" onclick="switchTab('hints')">Tool Hints</div>
 </div>
 
 <main>
@@ -744,6 +747,111 @@
     </div>
   </div>
 
+  <!-- ======== ORG PROFILE VIEW ======== -->
+  <div class="view" id="view-profile">
+    <div id="profile-status" class="mb-4 text-sm text-gray-500" style="margin-bottom:1rem;font-size:0.88rem;color:var(--text-muted);">Loading...</div>
+    <form id="profile-form" class="section-box" style="max-width:520px;">
+      <div class="section-title">Org Profile</div>
+      <div style="margin-bottom:1rem;">
+        <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Display Name</label>
+        <input id="profile-display_name" type="text" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;" placeholder="Acme Corp">
+      </div>
+      <div style="margin-bottom:1rem;">
+        <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Tone</label>
+        <input id="profile-tone" type="text" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;" placeholder="professional, concise">
+      </div>
+      <div style="margin-bottom:1rem;">
+        <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">ICP</label>
+        <input id="profile-icp" type="text" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;" placeholder="B2B SaaS, 10-200 employees">
+      </div>
+      <div style="margin-bottom:1rem;">
+        <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Vocab Rules</label>
+        <textarea id="profile-vocab_rules" rows="3" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;" placeholder="Always say 'prospect' not 'lead'..."></textarea>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.75rem;">
+        <button type="submit" class="btn btn-green">Save Profile</button>
+        <span id="profile-save-msg" style="display:none;font-size:0.82rem;color:var(--green);">Saved.</span>
+      </div>
+    </form>
+  </div>
+
+  <!-- ======== SKILLS VIEW ======== -->
+  <div class="view" id="view-skills">
+    <div class="section-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <div class="section-title" style="margin-bottom:0;">Skills</div>
+        <button id="skill-new-btn" class="btn btn-green">+ New Skill</button>
+      </div>
+      <div id="skills-table-wrap"></div>
+    </div>
+
+    <div id="skill-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;align-items:center;justify-content:center;">
+      <div style="background:#fff;border-radius:6px;padding:1.5rem;width:100%;max-width:520px;box-shadow:0 8px 32px rgba(0,0,0,0.18);">
+        <h3 style="font-size:1rem;font-weight:700;margin-bottom:1rem;" id="skill-modal-title">New Skill</h3>
+        <input id="skill-modal-orig-name" type="hidden">
+        <div style="margin-bottom:0.75rem;">
+          <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Name</label>
+          <input id="skill-modal-name" type="text" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;" placeholder="daily_briefing">
+        </div>
+        <div style="margin-bottom:0.75rem;">
+          <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Description</label>
+          <input id="skill-modal-desc" type="text" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;">
+        </div>
+        <div style="margin-bottom:0.75rem;">
+          <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Prompt Template</label>
+          <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.3rem;">Use {variable} for placeholders filled by run_skill.</p>
+          <textarea id="skill-modal-template" rows="5" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;"></textarea>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1rem;">
+          <button id="skill-modal-cancel" class="btn" style="background:var(--cream-dark);color:var(--text);">Cancel</button>
+          <button id="skill-modal-save" class="btn btn-green">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======== TOOL HINTS VIEW ======== -->
+  <div class="view" id="view-hints">
+    <div class="section-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <div class="section-title" style="margin-bottom:0;">Tool Hints</div>
+        <button id="hint-new-btn" class="btn btn-green">+ Add Hint</button>
+      </div>
+      <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:1rem;">Hints are injected into tool responses as <code>meta</code> fields to guide interpretation.</p>
+      <div id="hints-table-wrap"></div>
+    </div>
+
+    <div id="hint-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;align-items:center;justify-content:center;">
+      <div style="background:#fff;border-radius:6px;padding:1.5rem;width:100%;max-width:520px;box-shadow:0 8px 32px rgba(0,0,0,0.18);">
+        <h3 style="font-size:1rem;font-weight:700;margin-bottom:1rem;">Edit Tool Hint</h3>
+        <div style="margin-bottom:0.75rem;">
+          <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Tool Name</label>
+          <input id="hint-modal-tool" type="text" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;" placeholder="apollo__people_match">
+        </div>
+        <div style="margin-bottom:0.75rem;">
+          <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Interpretation Hint</label>
+          <textarea id="hint-modal-hint" rows="3" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;"></textarea>
+        </div>
+        <div style="margin-bottom:0.75rem;">
+          <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Usage Rules</label>
+          <textarea id="hint-modal-rules" rows="3" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;"></textarea>
+        </div>
+        <div style="margin-bottom:0.75rem;">
+          <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Data Sensitivity</label>
+          <select id="hint-modal-sensitivity" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-size:0.82rem;">
+            <option value="public">public</option>
+            <option value="internal" selected>internal</option>
+            <option value="confidential">confidential</option>
+          </select>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1rem;">
+          <button id="hint-modal-cancel" class="btn" style="background:var(--cream-dark);color:var(--text);">Cancel</button>
+          <button id="hint-modal-save" class="btn btn-green">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <div id="log-drawer-overlay" onclick="closeLogDrawer()"></div>
@@ -841,13 +949,16 @@
   function switchTab(tab) {
     closeLogDrawer();
     currentTab = tab;
-    ['exec', 'ops', 'tools', 'logs'].forEach(t => {
+    ['exec', 'ops', 'tools', 'logs', 'profile', 'skills', 'hints'].forEach(t => {
       document.getElementById('tab-' + t).classList.toggle('active', t === tab);
       document.getElementById('view-' + t).classList.toggle('active', t === tab);
     });
     if (tab === 'exec') loadExec();
     else if (tab === 'ops') loadOps();
     else if (tab === 'logs') resetLogsPage();
+    else if (tab === 'profile') loadProfile();
+    else if (tab === 'skills') loadSkills();
+    else if (tab === 'hints') loadHints();
     else loadTools();
   }
 
@@ -855,6 +966,9 @@
     if (currentTab === 'exec') loadExec();
     else if (currentTab === 'ops') loadOps();
     else if (currentTab === 'logs') resetLogsPage();
+    else if (currentTab === 'profile') loadProfile();
+    else if (currentTab === 'skills') loadSkills();
+    else if (currentTab === 'hints') loadHints();
     else loadTools();
   }
 
@@ -1688,6 +1802,215 @@
         + '</tr>';
     }).join('');
   }
+
+  // ----------------------------------------------------------------
+  // Org Profile
+  // ----------------------------------------------------------------
+  async function loadProfile() {
+    try {
+      const res = await fetch(apiUrl('/api/org-profile'));
+      const data = await res.json();
+      document.getElementById('profile-status').textContent =
+        data.initialized ? '✓ Initialized' : '⚠ Not yet initialized — run setup_start from Claude';
+      const p = data.profile || {};
+      ['display_name', 'tone', 'icp', 'vocab_rules'].forEach(k => {
+        const el = document.getElementById('profile-' + k);
+        if (el) el.value = p[k] || '';
+      });
+      updateTimestamp();
+    } catch (e) {
+      console.error('loadProfile error:', e);
+    }
+  }
+
+  document.getElementById('profile-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const fields = {};
+    ['display_name', 'tone', 'icp', 'vocab_rules'].forEach(k => {
+      const val = document.getElementById('profile-' + k).value.trim();
+      if (val) fields[k] = val;
+    });
+    try {
+      await fetch(apiUrl('/api/org-profile'), {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(fields),
+      });
+      const msg = document.getElementById('profile-save-msg');
+      msg.style.display = 'inline';
+      setTimeout(() => { msg.style.display = 'none'; }, 2000);
+    } catch (e) {
+      console.error('saveProfile error:', e);
+    }
+  });
+
+  // ----------------------------------------------------------------
+  // Skills
+  // ----------------------------------------------------------------
+  let _skillsData = [];
+
+  async function loadSkills() {
+    try {
+      const res = await fetch(apiUrl('/api/skills'));
+      _skillsData = await res.json();
+      const wrap = document.getElementById('skills-table-wrap');
+      if (!_skillsData.length) {
+        wrap.innerHTML = '<p style="color:var(--text-muted);font-style:italic;">No skills yet.</p>';
+        return;
+      }
+      wrap.innerHTML = '<table class="w-full text-sm border-collapse">' +
+        '<thead><tr><th>Name</th><th>Description</th><th></th></tr></thead>' +
+        '<tbody>' + _skillsData.map(s =>
+          '<tr><td style="font-family:\'Courier New\',monospace;">' + escHtml(s.name) + '</td>' +
+          '<td style="color:var(--text-muted);">' + escHtml(s.description) + '</td>' +
+          '<td>' + (s.is_system
+            ? '<span style="font-size:0.75rem;color:var(--text-muted);">system</span>'
+            : '<button onclick="openSkillEdit(\'' + escJs(s.name) + '\')" style="color:var(--green);font-size:0.78rem;background:none;border:none;cursor:pointer;text-decoration:underline;">Edit</button> ' +
+              '<button onclick="deleteSkill(\'' + escJs(s.name) + '\')" style="color:var(--orange);font-size:0.78rem;background:none;border:none;cursor:pointer;text-decoration:underline;">Delete</button>'
+          ) + '</td></tr>'
+        ).join('') + '</tbody></table>';
+      updateTimestamp();
+    } catch (e) {
+      console.error('loadSkills error:', e);
+    }
+  }
+
+  function openSkillEdit(name) {
+    const skill = _skillsData.find(s => s.name === name);
+    if (!skill) return;
+    document.getElementById('skill-modal-title').textContent = 'Edit Skill';
+    document.getElementById('skill-modal-orig-name').value = name;
+    document.getElementById('skill-modal-name').value = name;
+    document.getElementById('skill-modal-name').disabled = true;
+    document.getElementById('skill-modal-desc').value = skill.description || '';
+    document.getElementById('skill-modal-template').value = skill.prompt_template || '';
+    const modal = document.getElementById('skill-modal');
+    modal.style.display = 'flex';
+  }
+
+  document.getElementById('skill-new-btn').addEventListener('click', () => {
+    document.getElementById('skill-modal-title').textContent = 'New Skill';
+    document.getElementById('skill-modal-orig-name').value = '';
+    document.getElementById('skill-modal-name').value = '';
+    document.getElementById('skill-modal-name').disabled = false;
+    document.getElementById('skill-modal-desc').value = '';
+    document.getElementById('skill-modal-template').value = '';
+    const modal = document.getElementById('skill-modal');
+    modal.style.display = 'flex';
+  });
+
+  document.getElementById('skill-modal-cancel').addEventListener('click', () => {
+    document.getElementById('skill-modal').style.display = 'none';
+  });
+
+  document.getElementById('skill-modal-save').addEventListener('click', async () => {
+    const orig = document.getElementById('skill-modal-orig-name').value;
+    const payload = {
+      name: document.getElementById('skill-modal-name').value,
+      description: document.getElementById('skill-modal-desc').value,
+      prompt_template: document.getElementById('skill-modal-template').value,
+    };
+    try {
+      if (orig) {
+        await fetch(apiUrl('/api/skills/' + encodeURIComponent(orig)), {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await fetch(apiUrl('/api/skills'), {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        });
+      }
+      document.getElementById('skill-modal').style.display = 'none';
+      loadSkills();
+    } catch (e) {
+      console.error('saveSkill error:', e);
+    }
+  });
+
+  async function deleteSkill(name) {
+    if (!confirm('Delete skill "' + name + '"?')) return;
+    try {
+      await fetch(apiUrl('/api/skills/' + encodeURIComponent(name)), {method: 'DELETE'});
+      loadSkills();
+    } catch (e) {
+      console.error('deleteSkill error:', e);
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // Tool Hints
+  // ----------------------------------------------------------------
+  let _hintsData = [];
+
+  async function loadHints() {
+    try {
+      const res = await fetch(apiUrl('/api/tool-hints'));
+      _hintsData = await res.json();
+      const wrap = document.getElementById('hints-table-wrap');
+      if (!_hintsData.length) {
+        wrap.innerHTML = '<p style="color:var(--text-muted);font-style:italic;">No hints yet.</p>';
+        return;
+      }
+      wrap.innerHTML = '<table>' +
+        '<thead><tr><th>Tool</th><th>Sensitivity</th><th></th></tr></thead>' +
+        '<tbody>' + _hintsData.map(h =>
+          '<tr><td style="font-family:\'Courier New\',monospace;">' + escHtml(h.tool_name) + '</td>' +
+          '<td>' + escHtml(h.data_sensitivity) + '</td>' +
+          '<td><button onclick="openHintEdit(\'' + escJs(h.tool_name) + '\')" style="color:var(--green);font-size:0.78rem;background:none;border:none;cursor:pointer;text-decoration:underline;">Edit</button></td></tr>'
+        ).join('') + '</tbody></table>';
+      updateTimestamp();
+    } catch (e) {
+      console.error('loadHints error:', e);
+    }
+  }
+
+  document.getElementById('hint-new-btn').addEventListener('click', () => {
+    document.getElementById('hint-modal-tool').value = '';
+    document.getElementById('hint-modal-tool').disabled = false;
+    document.getElementById('hint-modal-hint').value = '';
+    document.getElementById('hint-modal-rules').value = '';
+    document.getElementById('hint-modal-sensitivity').value = 'internal';
+    document.getElementById('hint-modal').style.display = 'flex';
+  });
+
+  function openHintEdit(toolName) {
+    const h = _hintsData.find(x => x.tool_name === toolName);
+    if (!h) return;
+    document.getElementById('hint-modal-tool').value = toolName;
+    document.getElementById('hint-modal-tool').disabled = true;
+    document.getElementById('hint-modal-hint').value = h.interpretation_hint || '';
+    document.getElementById('hint-modal-rules').value = h.usage_rules || '';
+    document.getElementById('hint-modal-sensitivity').value = h.data_sensitivity || 'internal';
+    document.getElementById('hint-modal').style.display = 'flex';
+  }
+
+  document.getElementById('hint-modal-cancel').addEventListener('click', () => {
+    document.getElementById('hint-modal').style.display = 'none';
+  });
+
+  document.getElementById('hint-modal-save').addEventListener('click', async () => {
+    const toolName = document.getElementById('hint-modal-tool').value;
+    const payload = {
+      interpretation_hint: document.getElementById('hint-modal-hint').value,
+      usage_rules: document.getElementById('hint-modal-rules').value,
+      data_sensitivity: document.getElementById('hint-modal-sensitivity').value,
+    };
+    try {
+      await fetch(apiUrl('/api/tool-hints/' + encodeURIComponent(toolName)), {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload),
+      });
+      document.getElementById('hint-modal').style.display = 'none';
+      loadHints();
+    } catch (e) {
+      console.error('saveHint error:', e);
+    }
+  });
 
   // ----------------------------------------------------------------
   // Init
