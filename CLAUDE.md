@@ -92,12 +92,7 @@ The `_AuthMiddleware` ASGI layer resolves the key to a `user_id` on every reques
 ### Proxied integrations (from `mcp_connections.json`)
 Tools appear as `<integration>__<tool_name>`.
 
-| Integration | Transport | Notes |
-|---|---|---|
-| `exa` | HTTP | Rate-limited: 20 rpm, 2 concurrent |
-| `apollo` | HTTP (OAuth) | Rate-limited: 10 rpm, 1 concurrent |
-| `attio` | stdio | Tool deny list: `search_records`, `create_record` |
-| `github` | stdio | Tool allow list: get/create files, list/search repos and issues |
+No integrations configured by default — add entries to `mcp_connections.json`.
 
 ## Available Prompts
 
@@ -105,10 +100,6 @@ Tools appear as `<integration>__<tool_name>`.
 |---|---|
 | `operator_init` | Initialize Gateway Operator persona |
 | `qa_agent_instructions` | Instructions for QA agents reviewing tool usage |
-| `weekly_pipeline_review` | Analyze Attio deals + Apollo activity |
-| `research_prospect` | Research a company and draft an outreach brief |
-| `morning_briefing` | Daily RevOps summary (Attio + Apollo) |
-| `add_prospect` | Enrich a contact in Apollo and create in Attio |
 | `how_to_use_prompts` | Guide for invoking gateway workflows |
 
 ## Telemetry

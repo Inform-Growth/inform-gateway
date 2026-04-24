@@ -1,8 +1,0 @@
-integration: exa
-fields:
-  result:
-    display_name: Result
-    description: 'TODO: Add business description for ''result''.'
-    type: string
-    notes: ''
-    nullable: false

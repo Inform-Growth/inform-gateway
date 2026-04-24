@@ -44,48 +44,9 @@ from mcp_proxy import mount_all_proxies  # noqa: E402
 from telemetry import telemetry as _telemetry  # noqa: E402
 
 
-def _bootstrap_gmail_credentials() -> None:
-    """Write Gmail OAuth credentials from env vars to temp files.
-
-    Reads two env vars that hold the raw JSON content of the credential files:
-
-    - ``GMAIL_OAUTH_KEYS_JSON``  → gcp-oauth.keys.json (GCP OAuth client secret)
-    - ``GMAIL_CREDENTIALS_JSON`` → credentials.json (user access/refresh token)
-
-    Writes each to a temp directory and sets ``GMAIL_OAUTH_PATH`` /
-    ``GMAIL_CREDENTIALS_PATH`` so the Gmail MCP subprocess can find them.
-    Skips silently if the var is absent (useful for local dev where the files
-    already exist at their default locations).
-    """
-    import tempfile
-
-    tmpdir: Path | None = None
-
-    oauth_json = os.environ.get("GMAIL_OAUTH_KEYS_JSON")
-    creds_json = os.environ.get("GMAIL_CREDENTIALS_JSON")
-
-    if not (oauth_json or creds_json):
-        return
-
-    tmpdir = Path(tempfile.mkdtemp(prefix="gmail-mcp-"))
-
-    if oauth_json and not os.environ.get("GMAIL_OAUTH_PATH"):
-        p = tmpdir / "gcp-oauth.keys.json"
-        p.write_text(oauth_json)
-        os.environ["GMAIL_OAUTH_PATH"] = str(p)
-        print(f"  [gmail] OAuth keys written to {p}")
-
-    if creds_json and not os.environ.get("GMAIL_CREDENTIALS_PATH"):
-        p = tmpdir / "credentials.json"
-        p.write_text(creds_json)
-        os.environ["GMAIL_CREDENTIALS_PATH"] = str(p)
-        print(f"  [gmail] Credentials written to {p}")
-
-
 @asynccontextmanager
 async def lifespan(server: FastMCP):
     """Start upstream MCP proxy connections on startup; clean up on shutdown."""
-    _bootstrap_gmail_credentials()
     proxy_tasks = await mount_all_proxies(server)
     yield
     for task in proxy_tasks:
@@ -99,7 +60,7 @@ _init_prompt_path = Path(__file__).resolve().parent.parent / "prompts" / "init.m
 _instructions = _init_prompt_path.read_text() if _init_prompt_path.exists() else None
 
 mcp = FastMCP(
-    os.environ.get("MCP_SERVER_NAME", "inform-gateway"),
+    os.environ.get("MCP_SERVER_NAME", "agent-gateway"),
     instructions=_instructions,
     lifespan=lifespan,
     host=os.environ.get("MCP_SERVER_HOST", "0.0.0.0"),
@@ -159,51 +120,6 @@ def qa_agent_instructions() -> str:
     return prompt_path.read_text()
 
 
-@mcp.prompt(description="Run a weekly pipeline review across Attio and Apollo")
-def weekly_pipeline_review() -> str:
-    """Analyze Attio deals and cross-reference with Apollo activity."""
-    return """
-Pull all open deals from Attio. For each:
-- Check last activity date — flag anything with no contact in 14+ days
-- Check Apollo for any recent email activity on the contact
-Return a prioritized action list: who to follow up with and who to prospect.
-"""
-
-
-@mcp.prompt(description="Research a company and brief the outreach angle")
-def research_prospect(company: str) -> str:
-    """Research a company using Exa and check Attio/Apollo."""
-    return f"""
-Research {company} using Exa web search. Then check if they exist in Attio and Apollo.
-Return a 1-page brief: what they do, company size, tech stack signals,
-recent news, and the best outreach angle.
-"""
-
-
-@mcp.prompt(description="Morning RevOps briefing")
-def morning_briefing() -> str:
-    """Daily summary of Attio deals and new Apollo contacts."""
-    return """
-Give me my morning RevOps briefing:
-1. Attio: any deals with activity today or overdue tasks
-2. Apollo: new contacts added this week
-3. Anything that needs immediate attention
-Keep it tight — bullets only.
-"""
-
-
-@mcp.prompt(description="Add a new prospect to Attio and Apollo")
-def add_prospect(name: str, company: str) -> str:
-    """Enrich a contact in Apollo and create records in Attio."""
-    return f"""
-Add {name} from {company} as a new prospect:
-1. Search Apollo for their contact record and enrich it
-2. Create or update their record in Attio under People
-3. Link them to the company in Attio
-4. Confirm that it was created.
-"""
-
-
 @mcp.prompt(description="How to use these prompts in your client")
 def how_to_use_prompts() -> str:
     """Return a guide on how to invoke these workflows in Claude."""
@@ -213,11 +129,11 @@ def how_to_use_prompts() -> str:
 ## 1. Slash Commands (Preferred)
 In your chat box, simply type `/` followed by a command name. For example:
 - `/operator_init`
-- `/morning_briefing`
+- `/qa_agent_instructions`
 
 ## 2. Prompts as Tools
 If you do not see a slash menu (common in some desktop versions), you can ask Claude to
-"list available prompts" or "run the morning briefing prompt".
+"list available prompts" or "run the operator init prompt".
 
 Claude will use the `list_prompts` and `get_prompt` tools to find and execute
 these templates for you automatically.
@@ -484,7 +400,7 @@ class _AuthMiddleware:
 # ---------------------------------------------------------------------------
 # Telemetry — patches mcp.tool() and mcp.add_tool() so every registered tool
 # is tracked. mcp.tool() covers decorated built-in and promoted tools; mcp.add_tool()
-# covers proxy tools (attio, exa, apollo, etc.) registered by mcp_proxy.py.
+# covers proxied integration tools registered by mcp_proxy.py.
 # Uses functools.wraps so FastMCP sees the original function signatures.
 # ---------------------------------------------------------------------------
 
@@ -696,9 +612,9 @@ _orig_add_tool = mcp.add_tool
 def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
     """Replacement for mcp.add_tool() that injects timing and error recording.
 
-    Proxy tools (attio, exa, apollo, etc.) are registered via add_tool() rather
-    than the @mcp.tool() decorator, so they bypass _tracked_mcp_tool. This patch
-    ensures every tool — decorator or direct — is captured in telemetry.
+    Proxied integration tools are registered via add_tool() rather than the
+    @mcp.tool() decorator, so they bypass _tracked_mcp_tool. This patch ensures
+    every tool — decorator or direct — is captured in telemetry.
 
     Note: FastMCP's ``@mcp.tool()`` decorator internally calls
     ``self.add_tool(fn, name=None, ...)`` when the caller did not supply a
@@ -859,15 +775,12 @@ import sys as _sys  # noqa: E402
 
 _sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tools import attio as _attio_tools  # noqa: E402
-from tools import email_tools as _email_tools  # noqa: E402
 from tools import meta as _meta_tools  # noqa: E402
 from tools import notes as _notes_tools  # noqa: E402
 from tools import registry as _registry_tools  # noqa: E402
-from tools import wiza as _wiza_tools  # noqa: E402
 from tools._core import onboarding as _onboarding_tools  # noqa: E402
-from tools._core import skill_manager as _skill_manager_tools  # noqa: E402
 from tools._core import profile_manager as _profile_manager_tools  # noqa: E402
+from tools._core import skill_manager as _skill_manager_tools  # noqa: E402
 from tools._core import task_manager as _task_manager_tools  # noqa: E402
 
 class _RequestAwareUser:
@@ -900,9 +813,6 @@ _user_view = _RequestAwareUser()
 _meta_tools.register(mcp, lambda: mcp.name, _telemetry)
 _notes_tools.register(mcp)
 _registry_tools.register(mcp, registry)
-_attio_tools.register(mcp)  # must register after telemetry patch is applied
-_email_tools.register(mcp)
-_wiza_tools.register(mcp)
 _onboarding_tools.register(mcp, _telemetry, _user_view)
 _skill_manager_tools.register(mcp, _telemetry, _user_view)
 _profile_manager_tools.register(mcp, _telemetry, _user_view)
