@@ -536,6 +536,9 @@ from tools import meta as _meta_tools  # noqa: E402
 from tools import notes as _notes_tools  # noqa: E402
 from tools import registry as _registry_tools  # noqa: E402
 from tools import wiza as _wiza_tools  # noqa: E402
+from tools._core import onboarding as _onboarding_tools  # noqa: E402
+from tools._core import skill_manager as _skill_manager_tools  # noqa: E402
+from tools._core import profile_manager as _profile_manager_tools  # noqa: E402
 
 _meta_tools.register(mcp, lambda: mcp.name, _telemetry)
 _notes_tools.register(mcp)
@@ -543,6 +546,9 @@ _registry_tools.register(mcp, registry)
 _attio_tools.register(mcp)  # must register after telemetry patch is applied
 _email_tools.register(mcp)
 _wiza_tools.register(mcp)
+_onboarding_tools.register(mcp, _telemetry, _current_user)
+_skill_manager_tools.register(mcp, _telemetry, _current_user)
+_profile_manager_tools.register(mcp, _telemetry, _current_user)
 
 
 # ---------------------------------------------------------------------------
