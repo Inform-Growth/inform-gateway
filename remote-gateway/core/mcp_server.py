@@ -278,6 +278,28 @@ def _make_gate_redirect(tool_name: str) -> dict[str, str]:
     }
 
 
+def _enrich_with_hint(result: Any, org_id: str, tool_name: str) -> Any:
+    """Wrap result with tool hint meta if a hint exists for this org+tool.
+
+    Returns the original result unchanged when no hint is configured.
+    """
+    if result is None:
+        return result
+    if not isinstance(org_id, str) or not org_id:
+        return result
+    hint = _telemetry.get_tool_hint(org_id, tool_name)
+    if not hint or not isinstance(hint, dict):
+        return result
+    return {
+        "data": result,
+        "meta": {
+            "interpretation_hint": hint.get("interpretation_hint"),
+            "usage_rules": hint.get("usage_rules"),
+            "data_sensitivity": hint.get("data_sensitivity"),
+        },
+    }
+
+
 class _AuthMiddleware:
     """ASGI middleware: API key → user_id → ContextVar.
 
@@ -398,6 +420,9 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                         input_body=input_body,
                         response_preview=_get_response_preview(result),
                     )
+                    _org = _get_org_id(sid)
+                    if _org:
+                        result = _enrich_with_hint(result, _org, fn.__name__)
                     return result
                 except Exception as exc:
                     _telemetry.record(
@@ -437,6 +462,9 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                     input_body=input_body,
                     response_preview=_get_response_preview(result),
                 )
+                _org = _get_org_id(sid)
+                if _org:
+                    result = _enrich_with_hint(result, _org, fn.__name__)
                 return result
             except Exception as exc:
                 _telemetry.record(
@@ -494,6 +522,9 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
                     input_body=input_body,
                     response_preview=_get_response_preview(result),
                 )
+                _org = _get_org_id(sid)
+                if _org:
+                    result = _enrich_with_hint(result, _org, tool_name)
                 return result
             except Exception as exc:
                 _telemetry.record(
@@ -533,6 +564,9 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
                 input_body=input_body,
                 response_preview=_get_response_preview(result),
             )
+            _org = _get_org_id(sid)
+            if _org:
+                result = _enrich_with_hint(result, _org, tool_name)
             return result
         except Exception as exc:
             _telemetry.record(
