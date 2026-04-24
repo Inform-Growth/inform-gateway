@@ -240,6 +240,43 @@ _current_user: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "_current_user", default=None
 )
 
+_GATE_BYPASS: frozenset[str] = frozenset({
+    "setup_start",
+    "setup_save_profile",
+    "setup_complete",
+    "health_check",
+    "skill_create",
+    "skill_update",
+    "skill_list",
+    "run_skill",
+    "profile_get",
+    "profile_update",
+    "create_user",
+    "get_operator_instructions",
+    "list_prompts",
+    "get_prompt",
+})
+
+
+def _get_org_id(user_id: str | None) -> str | None:
+    """Return org_id for a user, or None for unauthenticated requests."""
+    if user_id is None:
+        return None
+    return _telemetry.get_org_id(user_id)
+
+
+def _make_gate_redirect(tool_name: str) -> dict[str, str]:
+    return {
+        "gateway_status": "not_initialized",
+        "message": (
+            "GATEWAY: Your organization is not configured. "
+            "Call setup_start to begin onboarding. "
+            "Your original request has been noted — retry after setup."
+        ),
+        "blocked_tool": tool_name,
+        "required_action": "setup_start",
+    }
+
 
 class _AuthMiddleware:
     """ASGI middleware: API key → user_id → ContextVar.
@@ -339,6 +376,10 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                 t0 = _time.monotonic()
                 sid, rid = _get_call_ids()
                 input_body = json.dumps(fn_kwargs, default=str)
+                if fn.__name__ not in _GATE_BYPASS:
+                    _org = _get_org_id(sid)
+                    if _org and not _telemetry.is_initialized(_org):
+                        return _make_gate_redirect(fn.__name__)
                 if sid and not _telemetry.has_permission(sid, fn.__name__):
                     _perm_msg = f"Tool '{fn.__name__}' is disabled for your account."
                     _telemetry.record(
@@ -374,6 +415,10 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
             t0 = _time.monotonic()
             sid, rid = _get_call_ids()
             input_body = json.dumps(fn_kwargs, default=str)
+            if fn.__name__ not in _GATE_BYPASS:
+                _org = _get_org_id(sid)
+                if _org and not _telemetry.is_initialized(_org):
+                    return _make_gate_redirect(fn.__name__)
             if sid and not _telemetry.has_permission(sid, fn.__name__):
                 _perm_msg = f"Tool '{fn.__name__}' is disabled for your account."
                 _telemetry.record(
@@ -427,6 +472,10 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
             t0 = _time.monotonic()
             sid, rid = _get_call_ids()
             input_body = json.dumps(fn_kwargs, default=str)
+            if tool_name not in _GATE_BYPASS:
+                _org = _get_org_id(sid)
+                if _org and not _telemetry.is_initialized(_org):
+                    return _make_gate_redirect(tool_name)
             if sid and not _telemetry.has_permission(sid, tool_name):
                 _perm_msg = f"Tool '{tool_name}' is disabled for your account."
                 _telemetry.record(
@@ -462,6 +511,10 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
         t0 = _time.monotonic()
         sid, rid = _get_call_ids()
         input_body = json.dumps(fn_kwargs, default=str)
+        if tool_name not in _GATE_BYPASS:
+            _org = _get_org_id(sid)
+            if _org and not _telemetry.is_initialized(_org):
+                return _make_gate_redirect(tool_name)
         if sid and not _telemetry.has_permission(sid, tool_name):
             _perm_msg = f"Tool '{tool_name}' is disabled for your account."
             _telemetry.record(
