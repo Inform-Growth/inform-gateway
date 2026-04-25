@@ -105,6 +105,18 @@ CREATE TABLE IF NOT EXISTS tool_hints (
     is_active           INTEGER NOT NULL DEFAULT 1,
     UNIQUE(org_id, tool_name)
 );
+
+CREATE TABLE IF NOT EXISTS tasks (
+    task_id      TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL,
+    org_id       TEXT NOT NULL,
+    goal         TEXT NOT NULL,
+    steps        TEXT NOT NULL DEFAULT '[]',
+    status       TEXT NOT NULL DEFAULT 'active',
+    outcome      TEXT,
+    created_at   REAL NOT NULL,
+    completed_at REAL
+);
 """
 
 # Indexes are created after migrations so that columns added via ALTER TABLE
@@ -124,6 +136,7 @@ _MIGRATIONS = [
     ("tool_calls", "error_message",    "TEXT"),
     ("tool_calls", "response_preview", "TEXT"),
     ("api_keys", "org_id",             "TEXT"),
+    ("tool_calls", "task_id",          "TEXT"),
 ]
 
 
@@ -215,15 +228,12 @@ class TelemetryStore:
             org_id = user_id
         if not self._enabled:
             return key
-        try:
-            conn = self._connect()
-            conn.execute(
-                "INSERT INTO api_keys (key, user_id, org_id, created_at) VALUES (?, ?, ?, ?)",
-                (key, user_id, org_id, time.time()),
-            )
-            conn.commit()
-        except Exception:
-            pass
+        conn = self._connect()
+        conn.execute(
+            "INSERT INTO api_keys (key, user_id, org_id, created_at) VALUES (?, ?, ?, ?)",
+            (key, user_id, org_id, time.time()),
+        )
+        conn.commit()
         return key
 
     def revoke_api_key(self, key: str) -> None:
@@ -797,6 +807,145 @@ class TelemetryStore:
         ]
 
     # ------------------------------------------------------------------
+    # Task management
+    # ------------------------------------------------------------------
+
+    def create_task(
+        self,
+        user_id: str,
+        org_id: str,
+        goal: str,
+        steps: list[str],
+    ) -> dict:
+        """Create a new active task and return it.
+
+        Args:
+            user_id: The user declaring intent.
+            org_id: The user's organization.
+            goal: What the agent is trying to accomplish.
+            steps: Planned tool call sequence (list of strings).
+
+        Returns:
+            Task dict with task_id, user_id, org_id, goal, steps, status, created_at.
+        """
+        import json as _json
+        import secrets as _secrets
+        task_id = f"task-{_secrets.token_hex(8)}"
+        now = time.time()
+        if self._enabled:
+            try:
+                conn = self._connect()
+                conn.execute(
+                    "INSERT INTO tasks (task_id, user_id, org_id, goal, steps, status, created_at)"
+                    " VALUES (?, ?, ?, ?, ?, 'active', ?)",
+                    (task_id, user_id, org_id, goal, _json.dumps(steps), now),
+                )
+                conn.commit()
+            except Exception:
+                pass
+        return {
+            "task_id": task_id,
+            "user_id": user_id,
+            "org_id": org_id,
+            "goal": goal,
+            "steps": steps,
+            "status": "active",
+            "created_at": now,
+        }
+
+    def get_task(self, task_id: str) -> dict | None:
+        """Return a task by ID, or None if not found.
+
+        Args:
+            task_id: Task identifier.
+        """
+        import json as _json
+        if not self._enabled:
+            return None
+        try:
+            conn = self._connect()
+            row = conn.execute(
+                "SELECT task_id, user_id, org_id, goal, steps, status, outcome, created_at, completed_at"
+                " FROM tasks WHERE task_id = ?",
+                (task_id,),
+            ).fetchone()
+            if not row:
+                return None
+            return {
+                "task_id": row["task_id"],
+                "user_id": row["user_id"],
+                "org_id": row["org_id"],
+                "goal": row["goal"],
+                "steps": _json.loads(row["steps"] or "[]"),
+                "status": row["status"],
+                "outcome": row["outcome"],
+                "created_at": row["created_at"],
+                "completed_at": row["completed_at"],
+            }
+        except Exception:
+            return None
+
+    def complete_task(self, task_id: str, user_id: str, outcome: str) -> dict | None:
+        """Mark a task complete. Returns updated task or None if not found / wrong user.
+
+        Args:
+            task_id: Task to complete.
+            user_id: Must match task's owner.
+            outcome: Summary of what was accomplished.
+        """
+        if not self._enabled:
+            return None
+        try:
+            conn = self._connect()
+            row = conn.execute(
+                "SELECT user_id FROM tasks WHERE task_id = ? AND status = 'active'",
+                (task_id,),
+            ).fetchone()
+            if not row or row["user_id"] != user_id:
+                return None
+            now = time.time()
+            conn.execute(
+                "UPDATE tasks SET status = 'complete', outcome = ?, completed_at = ? WHERE task_id = ?",
+                (outcome, now, task_id),
+            )
+            conn.commit()
+            return self.get_task(task_id)
+        except Exception:
+            return None
+
+    def list_active_tasks(self, user_id: str) -> list[dict]:
+        """Return all active tasks for a user, newest first.
+
+        Args:
+            user_id: User to query.
+        """
+        import json as _json
+        if not self._enabled:
+            return []
+        try:
+            conn = self._connect()
+            rows = conn.execute(
+                "SELECT task_id, user_id, org_id, goal, steps, status, created_at"
+                " FROM tasks WHERE user_id = ? AND status = 'active'"
+                " ORDER BY created_at DESC",
+                (user_id,),
+            ).fetchall()
+            return [
+                {
+                    "task_id": row["task_id"],
+                    "user_id": row["user_id"],
+                    "org_id": row["org_id"],
+                    "goal": row["goal"],
+                    "steps": _json.loads(row["steps"] or "[]"),
+                    "status": row["status"],
+                    "created_at": row["created_at"],
+                }
+                for row in rows
+            ]
+        except Exception:
+            return []
+
+    # ------------------------------------------------------------------
     # Call recording
     # ------------------------------------------------------------------
 
@@ -812,6 +961,7 @@ class TelemetryStore:
         input_body: str | None = None,
         error_message: str | None = None,
         response_preview: str | None = None,
+        task_id: str | None = None,
     ) -> None:
         """Record a single tool invocation. Silent no-op if disabled.
 
@@ -829,6 +979,7 @@ class TelemetryStore:
                 complementing error_type which holds only the class name. None on success.
             response_preview: First 400 chars of str(result) on success. None on
                 failure or when result is None.
+            task_id: Optional task identifier to attribute this call to a declared intent.
         """
         if not self._enabled:
             return
@@ -838,12 +989,12 @@ class TelemetryStore:
                 "INSERT INTO tool_calls"
                 " (tool_name, called_at, duration_ms, success,"
                 "  error_type, error_message, user_id, request_id, response_size, input_body,"
-                "  response_preview)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "  response_preview, task_id)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     tool_name, time.time(), duration_ms, int(success),
                     error_type, error_message, user_id, request_id, response_size, input_body,
-                    response_preview,
+                    response_preview, task_id,
                 ),
             )
             conn.commit()
