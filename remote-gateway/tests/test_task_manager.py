@@ -53,4 +53,10 @@ def test_list_active_tasks_for_user(store):
 
 def test_tool_calls_can_store_task_id(store):
     store.record("attio__search_records", 42, True, user_id="alice", task_id="task-abc123")
-    # If no exception, the column exists and the value was stored
+    conn = store._connect()
+    row = conn.execute(
+        "SELECT task_id FROM tool_calls WHERE tool_name = ?",
+        ("attio__search_records",),
+    ).fetchone()
+    assert row is not None
+    assert row["task_id"] == "task-abc123"

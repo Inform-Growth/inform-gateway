@@ -827,31 +827,33 @@ class TelemetryStore:
 
         Returns:
             Task dict with task_id, user_id, org_id, goal, steps, status, created_at.
+            Returns {} if telemetry is disabled or the write failed.
         """
         import json as _json
         import secrets as _secrets
         task_id = f"task-{_secrets.token_hex(8)}"
         now = time.time()
-        if self._enabled:
-            try:
-                conn = self._connect()
-                conn.execute(
-                    "INSERT INTO tasks (task_id, user_id, org_id, goal, steps, status, created_at)"
-                    " VALUES (?, ?, ?, ?, ?, 'active', ?)",
-                    (task_id, user_id, org_id, goal, _json.dumps(steps), now),
-                )
-                conn.commit()
-            except Exception:
-                pass
-        return {
-            "task_id": task_id,
-            "user_id": user_id,
-            "org_id": org_id,
-            "goal": goal,
-            "steps": steps,
-            "status": "active",
-            "created_at": now,
-        }
+        if not self._enabled:
+            return {}
+        try:
+            conn = self._connect()
+            conn.execute(
+                "INSERT INTO tasks (task_id, user_id, org_id, goal, steps, status, created_at)"
+                " VALUES (?, ?, ?, ?, ?, 'active', ?)",
+                (task_id, user_id, org_id, goal, _json.dumps(steps), now),
+            )
+            conn.commit()
+            return {
+                "task_id": task_id,
+                "user_id": user_id,
+                "org_id": org_id,
+                "goal": goal,
+                "steps": steps,
+                "status": "active",
+                "created_at": now,
+            }
+        except Exception:
+            return {}
 
     def get_task(self, task_id: str) -> dict | None:
         """Return a task by ID, or None if not found.
