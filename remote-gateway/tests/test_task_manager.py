@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.modules.pop("telemetry", None)
 
 from telemetry import TelemetryStore
@@ -60,3 +61,73 @@ def test_tool_calls_can_store_task_id(store):
     ).fetchone()
     assert row is not None
     assert row["task_id"] == "task-abc123"
+
+
+# --- MCP tool tests ---
+import contextvars
+
+
+@pytest.fixture()
+def user_var():
+    return contextvars.ContextVar("_current_user", default=None)
+
+
+@pytest.fixture()
+def task_tools(store, user_var):
+    tools: dict = {}
+
+    class _MCP:
+        def tool(self):
+            def decorator(fn):
+                tools[fn.__name__] = fn
+                return fn
+            return decorator
+
+    from tools._core import task_manager
+    task_manager.register(_MCP(), store, user_var)
+    return tools
+
+
+def test_declare_intent_returns_task_id(task_tools, store, user_var):
+    store.add_api_key("alice", "sk-test", org_id="acme")
+    user_var.set("alice")
+    result = task_tools["declare_intent"]("Research Salesforce", ["search CRM"])
+    assert "task_id" in result
+    assert result["task_id"].startswith("task-")
+    assert result["status"] == "active"
+
+
+def test_declare_intent_stores_goal(task_tools, store, user_var):
+    store.add_api_key("alice", "sk-test", org_id="acme")
+    user_var.set("alice")
+    result = task_tools["declare_intent"]("Research Salesforce", ["search CRM"])
+    fetched = store.get_task(result["task_id"])
+    assert fetched["goal"] == "Research Salesforce"
+    assert fetched["steps"] == ["search CRM"]
+
+
+def test_complete_task_tool_marks_done(task_tools, store, user_var):
+    store.add_api_key("alice", "sk-test", org_id="acme")
+    user_var.set("alice")
+    created = task_tools["declare_intent"]("Research Salesforce", [])
+    result = task_tools["complete_task"](created["task_id"], "Found 3 contacts")
+    assert result["status"] == "complete"
+
+
+def test_complete_task_wrong_user_returns_error(task_tools, store, user_var):
+    store.add_api_key("alice", "sk-test", org_id="acme")
+    store.add_api_key("bob", "sk-bob", org_id="acme")
+    user_var.set("alice")
+    created = task_tools["declare_intent"]("Research Salesforce", [])
+    user_var.set("bob")
+    result = task_tools["complete_task"](created["task_id"], "sneaky")
+    assert "error" in result
+
+
+def test_get_tasks_returns_active_tasks(task_tools, store, user_var):
+    store.add_api_key("alice", "sk-test", org_id="acme")
+    user_var.set("alice")
+    task_tools["declare_intent"]("Task A", [])
+    task_tools["declare_intent"]("Task B", [])
+    result = task_tools["get_tasks"]()
+    assert len(result["tasks"]) == 2
