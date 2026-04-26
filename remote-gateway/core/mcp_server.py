@@ -255,7 +255,68 @@ _GATE_BYPASS: frozenset[str] = frozenset({
     "get_operator_instructions",
     "list_prompts",
     "get_prompt",
+    "declare_intent",
+    "complete_task",
+    "get_tasks",
 })
+
+
+_TASK_BYPASS: frozenset[str] = frozenset({
+    "setup_start",
+    "setup_save_profile",
+    "setup_complete",
+    "health_check",
+    "skill_create",
+    "skill_update",
+    "skill_list",
+    "run_skill",
+    "profile_get",
+    "profile_update",
+    "create_user",
+    "get_operator_instructions",
+    "list_prompts",
+    "get_prompt",
+    "declare_intent",
+    "complete_task",
+    "get_tasks",
+})
+
+
+def _make_gate_task_redirect(tool_name: str) -> dict:
+    return {
+        "gateway_status": "no_active_task",
+        "message": (
+            "GATEWAY: No active task declared. "
+            "AGENT INSTRUCTION: Call declare_intent with your goal and planned steps "
+            "before using any tools."
+        ),
+        "blocked_tool": tool_name,
+        "required_action": "declare_intent",
+    }
+
+
+def _inject_task_id_param(fn: Any) -> None:
+    """Append optional task_id: str | None = None to fn's __signature__.
+
+    FastMCP reads __signature__ to build the JSON schema advertised in tools/list.
+    Setting it explicitly here overrides functools.wraps' __wrapped__ chain so
+    every tool — built-in and proxied — exposes task_id as an optional parameter.
+    The wrapper pops task_id from kwargs before calling the real function, so
+    proxied tools never see a parameter they don't expect.
+    """
+    import inspect as _inspect
+    sig = _inspect.signature(fn)
+    if "task_id" in sig.parameters:
+        return
+    task_param = _inspect.Parameter(
+        "task_id",
+        _inspect.Parameter.KEYWORD_ONLY,
+        default=None,
+        annotation=str | None,
+    )
+    fn.__signature__ = sig.replace(
+        parameters=list(sig.parameters.values()) + [task_param]
+    )
 
 
 def _get_org_id(user_id: str | None) -> str | None:
@@ -269,9 +330,11 @@ def _make_gate_redirect(tool_name: str) -> dict[str, str]:
     return {
         "gateway_status": "not_initialized",
         "message": (
-            "GATEWAY: Your organization is not configured. "
-            "Call setup_start to begin onboarding. "
-            "Your original request has been noted — retry after setup."
+            "GATEWAY: This organization has not been set up yet. "
+            "AGENT INSTRUCTION: Stop immediately and ask the user: "
+            "'Your gateway needs to be initialized before any tools can be used. "
+            "Would you like me to run setup now?' "
+            "Only call setup_start if the user confirms."
         ),
         "blocked_tool": tool_name,
         "required_action": "setup_start",
@@ -300,29 +363,89 @@ def _enrich_with_hint(result: Any, org_id: str, tool_name: str) -> Any:
     }
 
 
+_PUBLIC_PATH_PREFIXES: tuple[str, ...] = ("/admin",)
+_PUBLIC_EXACT_PATHS: frozenset[str] = frozenset({"/", "/health"})
+
+
+def _is_public_path(path: str) -> bool:
+    """Return True for routes that don't require an authenticated user.
+
+    Admin routes have their own ``ADMIN_TOKEN`` query-param auth; ``/`` and
+    ``/health`` are uptime probes. Everything else (MCP transport routes:
+    ``/mcp``, ``/sse``, ``/messages/``, etc.) requires a Bearer token that
+    resolves to a real user.
+    """
+    if path in _PUBLIC_EXACT_PATHS:
+        return True
+    return any(path == p or path.startswith(p + "/") for p in _PUBLIC_PATH_PREFIXES)
+
+
+_UNAUTHORIZED_BODY: bytes = (
+    b'{"error":"unauthorized",'
+    b'"message":"Missing or invalid API key. '
+    b'Set Authorization: Bearer sk-<key> or pass ?api_key=sk-<key>."}'
+)
+
+
+async def _send_http_unauthorized(send: Any) -> None:
+    """Emit a 401 JSON response — never invokes the inner ASGI app."""
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 401,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"www-authenticate", b'Bearer realm="inform-gateway"'),
+                (b"content-length", str(len(_UNAUTHORIZED_BODY)).encode()),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": _UNAUTHORIZED_BODY})
+
+
+async def _close_websocket_unauthorized(send: Any) -> None:
+    """Close an unauthenticated websocket with policy-violation code 1008."""
+    await send({"type": "websocket.close", "code": 1008, "reason": "missing or invalid api key"})
+
+
 class _AuthMiddleware:
-    """ASGI middleware: API key → user_id → ContextVar.
+    """ASGI middleware: API key → user_id → ContextVar; reject anonymous MCP.
 
     Checks two locations in priority order:
     1. ``Authorization: Bearer <key>`` header  — Claude Code, API clients
     2. ``?api_key=<key>`` query parameter       — Claude Desktop/Web, OpenAI, Gemini
        (clients that set a URL but cannot add custom headers)
+
+    Requests to non-public paths (anything other than ``/``, ``/health``, or
+    ``/admin/...``) without a valid key are rejected with 401 (HTTP) or close
+    code 1008 (WebSocket); the inner ASGI app is never invoked. Stdio
+    transport is unaffected — this middleware only runs in HTTP / WS modes.
     """
 
     def __init__(self, app: Any) -> None:
         self._app = app
 
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
-        if scope["type"] in ("http", "websocket"):
-            key = self._extract_key(scope)
-            user_id = _telemetry.lookup_user(key) if key else None
-            token = _current_user.set(user_id)
-            try:
-                await self._app(scope, receive, send)
-            finally:
-                _current_user.reset(token)
-        else:
+        scope_type = scope["type"]
+        if scope_type not in ("http", "websocket"):
             await self._app(scope, receive, send)
+            return
+
+        key = self._extract_key(scope)
+        user_id = _telemetry.lookup_user(key) if key else None
+
+        if user_id is None and not _is_public_path(scope.get("path", "")):
+            if scope_type == "http":
+                await _send_http_unauthorized(send)
+            else:
+                await _close_websocket_unauthorized(send)
+            return
+
+        token = _current_user.set(user_id)
+        try:
+            await self._app(scope, receive, send)
+        finally:
+            _current_user.reset(token)
 
     @staticmethod
     def _extract_key(scope: Any) -> str | None:
@@ -351,14 +474,53 @@ class _AuthMiddleware:
 # ---------------------------------------------------------------------------
 
 
+def _resolve_user_from_request_ctx() -> str | None:
+    """Return user_id by reading the current Starlette request, or None.
+
+    MCP's streamable-http and SSE transports attach the active Starlette
+    ``Request`` to each JSON-RPC message via ``ServerMessageMetadata``; the
+    low-level server exposes it as ``request_ctx.get().request`` inside the
+    same task that dispatches the tool. Reading auth here — instead of from
+    a ContextVar set in ASGI middleware — sidesteps the long-lived
+    ``run_server`` task created by ``StreamableHTTPSessionManager``, which
+    snapshots its ContextVars at session creation time and therefore never
+    sees per-request auth on follow-up calls.
+    """
+    try:
+        ctx = _request_ctx.get()
+    except LookupError:
+        return None
+
+    request = getattr(ctx, "request", None)
+    if request is None:
+        return None
+
+    key: str | None = None
+    auth = request.headers.get("authorization") if hasattr(request, "headers") else None
+    if auth and auth.lower().startswith("bearer "):
+        key = auth[7:].strip() or None
+
+    if key is None and hasattr(request, "query_params"):
+        key = request.query_params.get("api_key") or None
+
+    if not key:
+        return None
+    return _telemetry.lookup_user(key)
+
+
 def _get_call_ids() -> tuple[str | None, str | None]:
     """Return (user_id, request_id) for the current request.
 
-    user_id comes from _current_user, which _AuthMiddleware sets by resolving
-    the caller's Bearer token. request_id comes from the MCP request context.
-    Both are None outside of an active request (e.g. during tests).
+    user_id is resolved per-call from the live Starlette ``Request`` exposed
+    on ``request_ctx``; this is the source of truth for HTTP transports.
+    Falls back to the ``_current_user`` ContextVar (set by ``_AuthMiddleware``)
+    for stdio and any transport that does not attach the request to message
+    metadata. request_id comes from the MCP request context. Both are None
+    outside of an active request (e.g. during tests).
     """
-    user_id = _current_user.get()
+    user_id = _resolve_user_from_request_ctx()
+    if user_id is None:
+        user_id = _current_user.get()
     try:
         request_id = str(_request_ctx.get().request_id)
     except LookupError:
@@ -402,6 +564,13 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                     _org = _get_org_id(sid)
                     if _org and not _telemetry.is_initialized(_org):
                         return _make_gate_redirect(fn.__name__)
+                task_id = fn_kwargs.pop("task_id", None)
+                if fn.__name__ not in _TASK_BYPASS and sid:
+                    active = _telemetry.list_active_tasks(sid)
+                    if not active and task_id is None:
+                        return _make_gate_task_redirect(fn.__name__)
+                    if task_id is None and active:
+                        task_id = active[0]["task_id"]
                 if sid and not _telemetry.has_permission(sid, fn.__name__):
                     _perm_msg = f"Tool '{fn.__name__}' is disabled for your account."
                     _telemetry.record(
@@ -419,6 +588,7 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                         response_size=_calculate_response_size(result),
                         input_body=input_body,
                         response_preview=_get_response_preview(result),
+                        task_id=task_id,
                     )
                     _org = _get_org_id(sid)
                     if _org:
@@ -433,6 +603,7 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                     )
                     raise
 
+            _inject_task_id_param(tracked_async)
             return fastmcp_decorator(tracked_async)
 
         @functools.wraps(fn)
@@ -444,6 +615,13 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                 _org = _get_org_id(sid)
                 if _org and not _telemetry.is_initialized(_org):
                     return _make_gate_redirect(fn.__name__)
+            task_id = fn_kwargs.pop("task_id", None)
+            if fn.__name__ not in _TASK_BYPASS and sid:
+                active = _telemetry.list_active_tasks(sid)
+                if not active and task_id is None:
+                    return _make_gate_task_redirect(fn.__name__)
+                if task_id is None and active:
+                    task_id = active[0]["task_id"]
             if sid and not _telemetry.has_permission(sid, fn.__name__):
                 _perm_msg = f"Tool '{fn.__name__}' is disabled for your account."
                 _telemetry.record(
@@ -461,6 +639,7 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                     response_size=_calculate_response_size(result),
                     input_body=input_body,
                     response_preview=_get_response_preview(result),
+                    task_id=task_id,
                 )
                 _org = _get_org_id(sid)
                 if _org:
@@ -475,6 +654,7 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                 )
                 raise
 
+        _inject_task_id_param(tracked)
         return fastmcp_decorator(tracked)
 
     return wrapper
@@ -491,8 +671,15 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
     Proxy tools (attio, exa, apollo, etc.) are registered via add_tool() rather
     than the @mcp.tool() decorator, so they bypass _tracked_mcp_tool. This patch
     ensures every tool — decorator or direct — is captured in telemetry.
+
+    Note: FastMCP's ``@mcp.tool()`` decorator internally calls
+    ``self.add_tool(fn, name=None, ...)`` when the caller did not supply a
+    name, so ``kwargs.get("name", fn.__name__)`` can't be relied on — it will
+    return ``None`` whenever ``name`` is present but falsy. Normalize here
+    against ``fn.__name__`` so gate, permission, and telemetry paths always
+    see a real tool name.
     """
-    tool_name: str = kwargs.get("name", fn.__name__)
+    tool_name: str = kwargs.get("name") or getattr(fn, "__name__", "unknown")
 
     if inspect.iscoroutinefunction(fn):
         @functools.wraps(fn)
@@ -504,6 +691,13 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
                 _org = _get_org_id(sid)
                 if _org and not _telemetry.is_initialized(_org):
                     return _make_gate_redirect(tool_name)
+            task_id = fn_kwargs.pop("task_id", None)
+            if tool_name not in _TASK_BYPASS and sid:
+                active = _telemetry.list_active_tasks(sid)
+                if not active and task_id is None:
+                    return _make_gate_task_redirect(tool_name)
+                if task_id is None and active:
+                    task_id = active[0]["task_id"]
             if sid and not _telemetry.has_permission(sid, tool_name):
                 _perm_msg = f"Tool '{tool_name}' is disabled for your account."
                 _telemetry.record(
@@ -521,6 +715,7 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
                     response_size=_calculate_response_size(result),
                     input_body=input_body,
                     response_preview=_get_response_preview(result),
+                    task_id=task_id,
                 )
                 _org = _get_org_id(sid)
                 if _org:
@@ -535,6 +730,7 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
                 )
                 raise
 
+        _inject_task_id_param(tracked_async)
         return _orig_add_tool(tracked_async, *args, **kwargs)
 
     @functools.wraps(fn)
@@ -546,6 +742,13 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
             _org = _get_org_id(sid)
             if _org and not _telemetry.is_initialized(_org):
                 return _make_gate_redirect(tool_name)
+        task_id = fn_kwargs.pop("task_id", None)
+        if tool_name not in _TASK_BYPASS and sid:
+            active = _telemetry.list_active_tasks(sid)
+            if not active and task_id is None:
+                return _make_gate_task_redirect(tool_name)
+            if task_id is None and active:
+                task_id = active[0]["task_id"]
         if sid and not _telemetry.has_permission(sid, tool_name):
             _perm_msg = f"Tool '{tool_name}' is disabled for your account."
             _telemetry.record(
@@ -563,6 +766,7 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
                 response_size=_calculate_response_size(result),
                 input_body=input_body,
                 response_preview=_get_response_preview(result),
+                task_id=task_id,
             )
             _org = _get_org_id(sid)
             if _org:
@@ -577,6 +781,7 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
             )
             raise
 
+    _inject_task_id_param(tracked)
     return _orig_add_tool(tracked, *args, **kwargs)
 
 
@@ -598,7 +803,7 @@ async def _filtered_list_tools() -> list[Any]:
     instead — verify by confirming that filtering applies during a live session.
     """
     tools = await _orig_list_tools()
-    user_id = _current_user.get()
+    user_id = _resolve_user_from_request_ctx() or _current_user.get()
     if not _telemetry._enabled:
         return tools
     visible = _telemetry.filter_visible_tools(user_id, [t.name for t in tools])
@@ -626,6 +831,34 @@ from tools import wiza as _wiza_tools  # noqa: E402
 from tools._core import onboarding as _onboarding_tools  # noqa: E402
 from tools._core import skill_manager as _skill_manager_tools  # noqa: E402
 from tools._core import profile_manager as _profile_manager_tools  # noqa: E402
+from tools._core import task_manager as _task_manager_tools  # noqa: E402
+
+class _RequestAwareUser:
+    """ContextVar-compatible shim whose ``.get()`` resolves the caller per-request.
+
+    Tool modules read ``current_user_var.get()`` inside tool functions. The real
+    ``_current_user`` ContextVar is stale across the streamable-http session's
+    ``run_server`` task boundary, so delegate to the same resolver used by the
+    telemetry wrappers (reads the live Starlette request attached by MCP to
+    each JSON-RPC message, falls back to the ASGI-middleware ContextVar).
+    """
+
+    def get(self, *default: Any) -> str | None:
+        user_id = _resolve_user_from_request_ctx()
+        if user_id is not None:
+            return user_id
+        if default:
+            return _current_user.get(default[0])
+        return _current_user.get()
+
+    def set(self, value: str | None) -> Any:
+        return _current_user.set(value)
+
+    def reset(self, token: Any) -> None:
+        _current_user.reset(token)
+
+
+_user_view = _RequestAwareUser()
 
 _meta_tools.register(mcp, lambda: mcp.name, _telemetry)
 _notes_tools.register(mcp)
@@ -633,9 +866,10 @@ _registry_tools.register(mcp, registry)
 _attio_tools.register(mcp)  # must register after telemetry patch is applied
 _email_tools.register(mcp)
 _wiza_tools.register(mcp)
-_onboarding_tools.register(mcp, _telemetry, _current_user)
-_skill_manager_tools.register(mcp, _telemetry, _current_user)
-_profile_manager_tools.register(mcp, _telemetry, _current_user)
+_onboarding_tools.register(mcp, _telemetry, _user_view)
+_skill_manager_tools.register(mcp, _telemetry, _user_view)
+_profile_manager_tools.register(mcp, _telemetry, _user_view)
+_task_manager_tools.register(mcp, _telemetry, _user_view)
 
 
 # ---------------------------------------------------------------------------

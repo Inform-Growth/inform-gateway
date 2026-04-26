@@ -70,7 +70,7 @@ def _import_mcp_server():
     recorded: list[dict] = []
     mod_tel = types.ModuleType("telemetry")
     mock_tel = MagicMock()
-    mock_tel.record = lambda name, duration_ms, success, exc_type=None, user_id=None, request_id=None, response_size=None, input_body=None, error_message=None, response_preview=None: recorded.append(  # noqa: E501
+    mock_tel.record = lambda name, duration_ms, success, exc_type=None, user_id=None, request_id=None, response_size=None, input_body=None, error_message=None, response_preview=None, task_id=None: recorded.append(  # noqa: E501
         {"name": name, "duration_ms": duration_ms, "success": success, "exc_type": exc_type,
          "user_id": user_id, "request_id": request_id, "error_message": error_message,
          "response_preview": response_preview}
@@ -79,13 +79,20 @@ def _import_mcp_server():
     mod_tel.telemetry = mock_tel
     sys.modules["telemetry"] = mod_tel
 
-    # Stub tools sub-modules
+    # Stub tools sub-modules — track which ones we inject so we can clean up
+    # afterwards.  Leaving fake stubs in sys.modules would corrupt other test
+    # modules that later do ``from tools.wiza import wiza__enrich_person`` etc.
+    _injected: list[str] = []
     for mod_name in ("tools", "tools.meta", "tools.notes", "tools.registry", "tools.attio",
-                     "tools.email_tools"):
+                     "tools.email_tools", "tools.wiza",
+                     "tools._core", "tools._core.onboarding", "tools._core.skill_manager",
+                     "tools._core.profile_manager", "tools._core.task_manager"):
         if mod_name not in sys.modules:
             m = types.ModuleType(mod_name)
+            m.register = MagicMock()  # type: ignore[attr-defined]
             sys.modules[mod_name] = m
-        if not hasattr(sys.modules[mod_name], "register"):
+            _injected.append(mod_name)
+        elif not hasattr(sys.modules[mod_name], "register"):
             sys.modules[mod_name].register = MagicMock()
 
     path = Path(__file__).parent.parent / "core" / "mcp_server.py"
@@ -93,6 +100,12 @@ def _import_mcp_server():
     module = types.ModuleType("_mcp_server_for_test")
     module.__file__ = str(path)
     spec.loader.exec_module(module)  # type: ignore[union-attr]
+
+    # Remove only the modules we injected so real imports in later test files
+    # are not shadowed by our stubs.
+    for mod_name in _injected:
+        sys.modules.pop(mod_name, None)
+
     return module, recorded
 
 
