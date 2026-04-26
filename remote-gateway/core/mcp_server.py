@@ -288,9 +288,9 @@ def _make_gate_task_redirect(tool_name: str) -> dict:
     return {
         "gateway_status": "no_active_task",
         "message": (
-            "GATEWAY: No active task declared. "
-            "AGENT INSTRUCTION: Call declare_intent with your goal and planned steps "
-            "before using any tools."
+            "GATEWAY: No task_id provided. "
+            "AGENT INSTRUCTION: Call declare_intent to start a new task, "
+            "or call get_tasks to retrieve an existing task_id and pass it explicitly."
         ),
         "blocked_tool": tool_name,
         "required_action": "declare_intent",
@@ -305,6 +305,13 @@ def _inject_task_id_param(fn: Any) -> None:
     every tool — built-in and proxied — exposes task_id as an optional parameter.
     The wrapper pops task_id from kwargs before calling the real function, so
     proxied tools never see a parameter they don't expect.
+
+    ``task_id`` is KEYWORD_ONLY, so it must precede any VAR_KEYWORD (``**kwargs``)
+    parameter. Python 3.14's ``inspect.Signature`` enforces this ordering
+    strictly; appending unconditionally raises ``ValueError: wrong parameter
+    order: variadic keyword parameter before keyword-only parameter``. Proxy
+    tools are defined as ``async def proxy_fn(**kwargs)``, so without this
+    handling, every proxied integration fails to register.
     """
     import inspect as _inspect
     sig = _inspect.signature(fn)
@@ -316,8 +323,14 @@ def _inject_task_id_param(fn: Any) -> None:
         default=None,
         annotation=str | None,
     )
+    existing = list(sig.parameters.values())
+    insert_at = len(existing)
+    for i, p in enumerate(existing):
+        if p.kind == _inspect.Parameter.VAR_KEYWORD:
+            insert_at = i
+            break
     fn.__signature__ = sig.replace(
-        parameters=list(sig.parameters.values()) + [task_param]
+        parameters=existing[:insert_at] + [task_param] + existing[insert_at:]
     )
 
 
@@ -556,6 +569,7 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
     fastmcp_decorator = _orig_mcp_tool(*args, **kwargs)
 
     def wrapper(fn: Any) -> Any:
+        _fn_expects_task_id = "task_id" in inspect.signature(fn).parameters
         if inspect.iscoroutinefunction(fn):
             @functools.wraps(fn)
             async def tracked_async(*fn_args: Any, **fn_kwargs: Any) -> Any:
@@ -572,11 +586,8 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                         task_row = _telemetry.get_task(task_id)
                         if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
                             task_id = None
-                    active = _telemetry.list_active_tasks(sid)
-                    if not active and task_id is None:
+                    if task_id is None:
                         return _make_gate_task_redirect(fn.__name__)
-                    if task_id is None and active:
-                        task_id = active[0]["task_id"]
                 if sid and not _telemetry.has_permission(sid, fn.__name__):
                     _perm_msg = f"Tool '{fn.__name__}' is disabled for your account."
                     _telemetry.record(
@@ -588,6 +599,8 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                     )
                     raise PermissionError(_perm_msg)
                 try:
+                    if _fn_expects_task_id and task_id is not None:
+                        fn_kwargs["task_id"] = task_id
                     result = await fn(*fn_args, **fn_kwargs)
                     _telemetry.record(
                         fn.__name__, int((_time.monotonic() - t0) * 1000), True,
@@ -612,6 +625,7 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                     raise
 
             _inject_task_id_param(tracked_async)
+            tracked_async.__gateway_tracked__ = True
             return fastmcp_decorator(tracked_async)
 
         @functools.wraps(fn)
@@ -629,11 +643,8 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                     task_row = _telemetry.get_task(task_id)
                     if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
                         task_id = None
-                active = _telemetry.list_active_tasks(sid)
-                if not active and task_id is None:
+                if task_id is None:
                     return _make_gate_task_redirect(fn.__name__)
-                if task_id is None and active:
-                    task_id = active[0]["task_id"]
             if sid and not _telemetry.has_permission(sid, fn.__name__):
                 _perm_msg = f"Tool '{fn.__name__}' is disabled for your account."
                 _telemetry.record(
@@ -645,6 +656,8 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                 )
                 raise PermissionError(_perm_msg)
             try:
+                if _fn_expects_task_id and task_id is not None:
+                    fn_kwargs["task_id"] = task_id
                 result = fn(*fn_args, **fn_kwargs)
                 _telemetry.record(
                     fn.__name__, int((_time.monotonic() - t0) * 1000), True,
@@ -669,6 +682,7 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                 raise
 
         _inject_task_id_param(tracked)
+        tracked.__gateway_tracked__ = True
         return fastmcp_decorator(tracked)
 
     return wrapper
@@ -693,6 +707,9 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
     against ``fn.__name__`` so gate, permission, and telemetry paths always
     see a real tool name.
     """
+    if getattr(fn, "__gateway_tracked__", False):
+        return _orig_add_tool(fn, *args, **kwargs)
+
     tool_name: str = kwargs.get("name") or getattr(fn, "__name__", "unknown")
 
     if inspect.iscoroutinefunction(fn):
@@ -711,11 +728,8 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
                     task_row = _telemetry.get_task(task_id)
                     if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
                         task_id = None
-                active = _telemetry.list_active_tasks(sid)
-                if not active and task_id is None:
+                if task_id is None:
                     return _make_gate_task_redirect(tool_name)
-                if task_id is None and active:
-                    task_id = active[0]["task_id"]
             if sid and not _telemetry.has_permission(sid, tool_name):
                 _perm_msg = f"Tool '{tool_name}' is disabled for your account."
                 _telemetry.record(
@@ -768,11 +782,8 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
                 task_row = _telemetry.get_task(task_id)
                 if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
                     task_id = None
-            active = _telemetry.list_active_tasks(sid)
-            if not active and task_id is None:
+            if task_id is None:
                 return _make_gate_task_redirect(tool_name)
-            if task_id is None and active:
-                task_id = active[0]["task_id"]
         if sid and not _telemetry.has_permission(sid, tool_name):
             _perm_msg = f"Tool '{tool_name}' is disabled for your account."
             _telemetry.record(
