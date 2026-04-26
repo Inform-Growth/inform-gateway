@@ -350,3 +350,20 @@ def test_timeline_forbidden_without_token(client):
     c, _ = client
     resp = c.get("/api/timeline")
     assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Tasks
+# ---------------------------------------------------------------------------
+
+def test_api_tasks_returns_task_list(client, store):
+    c, store = client
+    store.add_api_key("alice", "sk-test", org_id="acme")
+    store.set_initialized("acme")
+    store.create_task("alice", "acme", "Research Salesforce", ["search CRM"])
+    resp = c.get(f"/api/tasks?token={TOKEN}&org_id=acme")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "tasks" in data
+    assert len(data["tasks"]) >= 1
+    assert data["tasks"][0]["goal"] == "Research Salesforce"

@@ -46,6 +46,22 @@ def _forbidden() -> Response:
     return JSONResponse({"error": "forbidden — invalid admin token"}, status_code=403)
 
 
+def _get_primary_org_id(telemetry: Any) -> str:
+    """Return the first initialized org_id, falling back to 'default'."""
+    if not telemetry._enabled:
+        return "default"
+    try:
+        conn = telemetry._connect()
+        row = conn.execute(
+            "SELECT org_id FROM org_profiles WHERE initialized = 1 ORDER BY created_at LIMIT 1"
+        ).fetchone()
+        if row:
+            return row["org_id"]
+    except Exception:
+        pass
+    return "default"
+
+
 def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
     """Return a Starlette sub-app with all admin routes bound to telemetry.
 
@@ -98,7 +114,11 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         user_id = (body.get("user_id") or "").strip()
         if not user_id:
             return JSONResponse({"error": "user_id is required"}, status_code=400)
-        key = telemetry.add_api_key(user_id)
+        try:
+            key = telemetry.add_api_key(user_id)
+        except Exception as exc:
+            _logger.exception("Failed to create user %r", user_id)
+            return JSONResponse({"error": f"failed to create user: {exc}"}, status_code=500)
         return JSONResponse({"user_id": user_id, "key": key}, status_code=201)
 
     async def api_users_delete(request: Request) -> Response:
@@ -205,30 +225,34 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
     async def api_org_profile_get(request: Request) -> Response:
         if not _is_authorized(request):
             return _forbidden()
-        profile = telemetry.get_org_profile("default")
-        initialized = telemetry.is_initialized("default")
-        return JSONResponse({"org_id": "default", "initialized": initialized, "profile": profile})
+        org_id = request.query_params.get("org_id") or _get_primary_org_id(telemetry)
+        profile = telemetry.get_org_profile(org_id)
+        initialized = telemetry.is_initialized(org_id)
+        return JSONResponse({"org_id": org_id, "initialized": initialized, "profile": profile})
 
     async def api_org_profile_update(request: Request) -> Response:
         if not _is_authorized(request):
             return _forbidden()
+        org_id = request.query_params.get("org_id") or _get_primary_org_id(telemetry)
         try:
             body = await request.json()
         except Exception:
             return JSONResponse({"error": "invalid JSON body"}, status_code=400)
         if not isinstance(body, dict):
             return JSONResponse({"error": "body must be a JSON object"}, status_code=400)
-        updated = telemetry.update_org_profile("default", body)
-        return JSONResponse({"org_id": "default", "profile": updated})
+        updated = telemetry.update_org_profile(org_id, body)
+        return JSONResponse({"org_id": org_id, "profile": updated})
 
     async def api_skills_list(request: Request) -> Response:
         if not _is_authorized(request):
             return _forbidden()
-        return JSONResponse(telemetry.list_skills("default"))
+        org_id = request.query_params.get("org_id") or _get_primary_org_id(telemetry)
+        return JSONResponse(telemetry.list_skills(org_id))
 
     async def api_skills_create(request: Request) -> Response:
         if not _is_authorized(request):
             return _forbidden()
+        org_id = request.query_params.get("org_id") or _get_primary_org_id(telemetry)
         try:
             body = await request.json()
         except Exception:
@@ -237,7 +261,7 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
             if not body.get(required):
                 return JSONResponse({"error": f"{required} is required"}, status_code=400)
         skill = telemetry.create_skill(
-            "default", body["name"], body["description"], body["prompt_template"]
+            org_id, body["name"], body["description"], body["prompt_template"]
         )
         return JSONResponse(skill, status_code=201)
 
@@ -245,12 +269,13 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         if not _is_authorized(request):
             return _forbidden()
         name = request.path_params["name"]
+        org_id = request.query_params.get("org_id") or _get_primary_org_id(telemetry)
         try:
             body = await request.json()
         except Exception:
             return JSONResponse({"error": "invalid JSON body"}, status_code=400)
         fields = {k: v for k, v in body.items() if k in ("description", "prompt_template")}
-        result = telemetry.update_skill("default", name, **fields)
+        result = telemetry.update_skill(org_id, name, **fields)
         if result is None:
             return JSONResponse({"error": f"skill '{name}' not found or is a system skill"}, status_code=404)
         return JSONResponse(result)
@@ -259,7 +284,8 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         if not _is_authorized(request):
             return _forbidden()
         name = request.path_params["name"]
-        deleted = telemetry.delete_skill("default", name)
+        org_id = request.query_params.get("org_id") or _get_primary_org_id(telemetry)
+        deleted = telemetry.delete_skill(org_id, name)
         if not deleted:
             return JSONResponse({"error": f"skill '{name}' not found or is a system skill"}, status_code=404)
         return JSONResponse({"deleted": name})
@@ -267,24 +293,38 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
     async def api_hints_list(request: Request) -> Response:
         if not _is_authorized(request):
             return _forbidden()
-        return JSONResponse(telemetry.list_tool_hints("default"))
+        org_id = request.query_params.get("org_id") or _get_primary_org_id(telemetry)
+        return JSONResponse(telemetry.list_tool_hints(org_id))
 
     async def api_hints_upsert(request: Request) -> Response:
         if not _is_authorized(request):
             return _forbidden()
+        org_id = request.query_params.get("org_id") or _get_primary_org_id(telemetry)
         tool_name = request.path_params["tool_name"]
         try:
             body = await request.json()
         except Exception:
             return JSONResponse({"error": "invalid JSON body"}, status_code=400)
         hint = telemetry.upsert_tool_hint(
-            "default",
+            org_id,
             tool_name,
             interpretation_hint=body.get("interpretation_hint"),
             usage_rules=body.get("usage_rules"),
             data_sensitivity=body.get("data_sensitivity", "internal"),
         )
         return JSONResponse(hint)
+
+    async def api_tasks(request: Request) -> Response:
+        if not _is_authorized(request):
+            return _forbidden()
+        org_id = request.query_params.get("org_id") or _get_primary_org_id(telemetry)
+        status = request.query_params.get("status") or None
+        try:
+            limit = max(1, min(int(request.query_params.get("limit", "100")), 500))
+        except ValueError:
+            limit = 100
+        tasks = telemetry.list_tasks_for_org(org_id, status=status, limit=limit)
+        return JSONResponse({"org_id": org_id, "tasks": tasks, "count": len(tasks)})
 
     routes = [
         Route("/", dashboard),
@@ -306,6 +346,7 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         Route("/api/skills/{name}", api_skills_delete, methods=["DELETE"]),
         Route("/api/tool-hints", api_hints_list, methods=["GET"]),
         Route("/api/tool-hints/{tool_name:path}", api_hints_upsert, methods=["PUT"]),
+        Route("/api/tasks", api_tasks, methods=["GET"]),
     ]
 
     return Starlette(routes=routes)

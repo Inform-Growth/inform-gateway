@@ -915,6 +915,50 @@ class TelemetryStore:
         except Exception:
             return None
 
+    def list_tasks_for_org(self, org_id: str, status: str | None = None, limit: int = 100) -> list[dict]:
+        """Return tasks for an org, optionally filtered by status, newest first.
+
+        Args:
+            org_id: Organization identifier.
+            status: 'active', 'complete', or None for all.
+            limit: Maximum number of tasks to return.
+        """
+        import json as _json
+        if not self._enabled:
+            return []
+        try:
+            conn = self._connect()
+            if status:
+                rows = conn.execute(
+                    "SELECT task_id, user_id, org_id, goal, steps, status, outcome, created_at, completed_at"
+                    " FROM tasks WHERE org_id = ? AND status = ?"
+                    " ORDER BY created_at DESC LIMIT ?",
+                    (org_id, status, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT task_id, user_id, org_id, goal, steps, status, outcome, created_at, completed_at"
+                    " FROM tasks WHERE org_id = ?"
+                    " ORDER BY created_at DESC LIMIT ?",
+                    (org_id, limit),
+                ).fetchall()
+            return [
+                {
+                    "task_id": row["task_id"],
+                    "user_id": row["user_id"],
+                    "org_id": row["org_id"],
+                    "goal": row["goal"],
+                    "steps": _json.loads(row["steps"] or "[]"),
+                    "status": row["status"],
+                    "outcome": row["outcome"],
+                    "created_at": row["created_at"],
+                    "completed_at": row["completed_at"],
+                }
+                for row in rows
+            ]
+        except Exception:
+            return []
+
     def list_active_tasks(self, user_id: str) -> list[dict]:
         """Return all active tasks for a user, newest first.
 
