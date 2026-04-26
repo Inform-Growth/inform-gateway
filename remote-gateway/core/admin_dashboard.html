@@ -773,7 +773,7 @@
             onchange="loadTasks()">
             <option value="">All</option>
             <option value="active">Active</option>
-            <option value="completed">Completed</option>
+            <option value="complete">Completed</option>
           </select>
         </div>
         <div id="tasks-table-wrap">
@@ -1012,7 +1012,7 @@
   }
 
   function fmtDuration(createdAt, completedAt) {
-    if (!completedAt) return '—';
+    if (!completedAt || completedAt < createdAt) return '—';
     const ms = (completedAt - createdAt) * 1000;
     if (ms < 1000) return Math.round(ms) + ' ms';
     if (ms < 60000) return (ms / 1000).toFixed(1) + ' s';
@@ -1895,6 +1895,7 @@
     if (status) url += '&status=' + encodeURIComponent(status);
     try {
       const res  = await fetch(url);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       renderTasksTable(data.tasks || []);
     } catch (e) {
@@ -1921,7 +1922,9 @@
       const truncGoal = goalText.length > 60 ? goalText.slice(0, 60) + '…' : goalText;
       const badge = t.status === 'active'
         ? '<span class="task-badge-active">active</span>'
-        : '<span class="task-badge-completed">completed</span>';
+        : t.status === 'complete'
+          ? '<span class="task-badge-completed">completed</span>'
+          : '<span class="task-badge-completed">' + escHtml(t.status) + '</span>';
       const created = t.created_at ? fmtDate(new Date(t.created_at * 1000).toISOString()) : '—';
       const duration = fmtDuration(t.created_at, t.completed_at);
       return '<tr onclick="selectTask(\'' + escJs(t.task_id) + '\')" data-task-id="' + escHtml(t.task_id) + '">'
