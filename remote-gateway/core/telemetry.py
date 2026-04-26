@@ -1386,6 +1386,7 @@ class TelemetryStore:
         user_id: str | None = None,
         success: bool | None = None,
         error_type: str | None = None,
+        task_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Return recent raw tool call rows, newest first.
 
@@ -1396,10 +1397,12 @@ class TelemetryStore:
             user_id: Filter to an exact user_id.
             success: If True, only successful calls; if False, only errors.
             error_type: Filter to an exact error_type (e.g. "PermissionError").
+            task_id: Filter to calls attributed to a specific task.
 
         Returns:
             List of dicts with id, tool_name, called_at, duration_ms, success,
-            error_type, error_message, user_id, request_id, response_size, input_size, input_body.
+            error_type, error_message, user_id, request_id, response_size, input_size,
+            input_body, task_id.
         """
         if not self._enabled:
             return []
@@ -1419,13 +1422,16 @@ class TelemetryStore:
             if error_type is not None:
                 filters.append("error_type = ?")
                 params.append(error_type)
+            if task_id is not None:
+                filters.append("task_id = ?")
+                params.append(task_id)
             where = ("WHERE " + " AND ".join(filters)) if filters else ""
             params.extend([limit, offset])
             rows = conn.execute(
                 f"""
                 SELECT id, tool_name, called_at, duration_ms, success,
                        error_type, error_message, user_id, request_id, response_size, input_body,
-                       response_preview
+                       response_preview, task_id
                 FROM tool_calls
                 {where}
                 ORDER BY called_at DESC
@@ -1460,6 +1466,7 @@ class TelemetryStore:
                     "input_size": len(row["input_body"]) if row["input_body"] else None,
                     "input_body": row["input_body"],
                     "response_preview": row["response_preview"],
+                    "task_id": row["task_id"],
                 }
             )
         return result
