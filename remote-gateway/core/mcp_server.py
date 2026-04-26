@@ -261,6 +261,8 @@ _GATE_BYPASS: frozenset[str] = frozenset({
 })
 
 
+# _TASK_BYPASS must stay a superset of _GATE_BYPASS — any tool added to _GATE_BYPASS
+# that should also bypass the task gate must be added here too.
 _TASK_BYPASS: frozenset[str] = frozenset({
     "setup_start",
     "setup_save_profile",
