@@ -1937,6 +1937,74 @@
     }).join('');
   }
 
+  function selectTask(taskId) {
+    const task = _tasksMap[taskId];
+    if (!task) return;
+    _selectedTaskId = taskId;
+    document.querySelectorAll('#tasks-tbody tr').forEach(r => {
+      r.classList.toggle('selected', r.dataset.taskId === taskId);
+    });
+    document.getElementById('task-logs-goal').textContent = task.goal || '—';
+    const outcomeEl = document.getElementById('task-logs-outcome');
+    if (task.outcome) {
+      outcomeEl.textContent = task.outcome;
+      outcomeEl.style.display = 'block';
+    } else {
+      outcomeEl.style.display = 'none';
+    }
+    document.getElementById('task-logs-placeholder').style.display = 'none';
+    document.getElementById('task-logs-content').style.display = 'block';
+    loadTaskLogs(taskId);
+  }
+
+  async function loadTaskLogs(taskId) {
+    const url = apiUrl('/api/logs') + '&task_id=' + encodeURIComponent(taskId) + '&limit=100';
+    try {
+      const res  = await fetch(url);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const logs = await res.json();
+      renderTaskLogsPanel(Array.isArray(logs) ? logs : []);
+    } catch (e) {
+      document.getElementById('task-logs-tbody').innerHTML =
+        '<tr><td colspan="4" style="color:var(--orange);font-style:italic;text-align:center;">Failed to load tool calls.</td></tr>';
+      console.error('loadTaskLogs error:', e);
+    }
+  }
+
+  function renderTaskLogsPanel(logs) {
+    // Populate global log maps so openLogDrawer() works for rows in this panel.
+    logs.forEach(row => {
+      if (row.input_body       != null) _logsBodyMap[row.id]         = row.input_body;
+      if (row.error_message    != null) _logsErrorMap[row.id]        = row.error_message;
+      if (row.response_preview != null) _logsResponseMap[row.id]     = row.response_preview;
+      if (row.response_size    != null) _logsResponseSizeMap[row.id] = row.response_size;
+      _logsToolMap[row.id] = row.tool_name || '';
+      _logsTimeMap[row.id] = row.called_at || '';
+    });
+
+    const tbody = document.getElementById('task-logs-tbody');
+    if (!logs.length) {
+      tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted);font-style:italic;text-align:center;">No tool calls recorded for this task.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = logs.map(row => {
+      const statusBadge = row.success
+        ? '<span class="badge badge-green">OK</span>'
+        : row.error_type === 'PermissionError'
+          ? '<span class="badge badge-red" title="Tool blocked by permissions">BLOCKED</span>'
+          : '<span class="badge badge-orange" title="' + escHtml(row.error_type || '') + '">' + escHtml(row.error_type || 'ERR') + '</span>';
+      const hasDetail = row.input_body != null || row.error_message != null || row.response_preview != null;
+      const rowStyle  = hasDetail ? 'cursor:pointer;' : '';
+      const onclick   = hasDetail ? ' onclick="toggleLogDrawer(' + escJs(String(row.id)) + ')"' : '';
+      return '<tr style="' + rowStyle + '" data-log-id="' + escHtml(String(row.id)) + '"' + onclick + '>'
+        + '<td style="white-space:nowrap;font-size:0.75rem;">' + escHtml(row.called_at || '—') + '</td>'
+        + '<td>' + escHtml(row.tool_name) + '</td>'
+        + '<td>' + fmtMs(row.duration_ms) + '</td>'
+        + '<td>' + statusBadge + '</td>'
+        + '</tr>';
+    }).join('');
+  }
+
   // ----------------------------------------------------------------
   // Org Profile
   // ----------------------------------------------------------------
