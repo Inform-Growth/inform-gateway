@@ -445,6 +445,24 @@ class TelemetryStore:
             pass
         return user_id
 
+    def set_user_org_id(self, user_id: str, org_id: str) -> None:
+        """Update the org_id associated with a user's API key.
+
+        Args:
+            user_id: Authenticated user identifier.
+            org_id: New organization identifier to assign.
+        """
+        if not self._enabled:
+            return
+        try:
+            conn = self._connect()
+            conn.execute(
+                "UPDATE api_keys SET org_id = ? WHERE user_id = ?", (org_id, user_id)
+            )
+            conn.commit()
+        except Exception:
+            pass
+
     # ------------------------------------------------------------------
     # Organization profiles
     # ------------------------------------------------------------------

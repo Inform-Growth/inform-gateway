@@ -7,7 +7,15 @@ org profile creation and marks the gateway as initialized.
 from __future__ import annotations
 
 import contextvars
+import re
 from typing import Any
+
+
+def _slugify(name: str) -> str:
+    """Convert a display name to a lowercase hyphenated slug, e.g. 'Camber Core' → 'camber-core'."""
+    slug = name.lower()
+    slug = re.sub(r"[^a-z0-9]+", "-", slug)
+    return slug.strip("-")
 
 
 def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar) -> None:
@@ -33,16 +41,27 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
         org_id = _org_id()
         profile = telemetry.get_org_profile(org_id)
         initialized = telemetry.is_initialized(org_id)
-        next_step = (
-            "Already initialized. Use profile_get to view current settings."
-            if initialized
-            else "Call setup_save_profile with your org details, then setup_complete to go live."
-        )
+        if initialized:
+            next_step = "Already initialized. Use profile_get to view current settings."
+            questions = []
+        else:
+            next_step = (
+                "AGENT INSTRUCTION: Ask the user the questions in 'questions_to_ask' "
+                "conversationally (not as a numbered list). Collect all answers, then call "
+                "setup_save_profile with the gathered fields, and finally call setup_complete."
+            )
+            questions = [
+                "What is your organization's name?",
+                "Who are your ideal customers? (industry, company size, job title)",
+                "What tone should the AI use in communications? (e.g. professional, friendly, direct)",
+                "Any words or phrases the AI should always avoid or always prefer?",
+            ]
         return {
             "org_id": org_id,
             "initialized": initialized,
             "profile": profile,
             "next_step": next_step,
+            "questions_to_ask": questions,
         }
 
     @mcp.tool()
@@ -50,11 +69,18 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
         """Save organization profile fields (merged into existing profile).
 
         Args:
-            fields: Dict of profile fields to set. Common fields:
-                display_name, tone, icp, vocab_rules.
+            fields: Dict of profile fields to set. Map user answers to these keys:
+                display_name (str): Organization name — also sets the org_id slug.
+                tone (str): Communication style, e.g. "professional and direct".
+                icp (str): Ideal customer profile, e.g. "RevOps leaders at mid-market SaaS".
+                vocab_rules (str): Words/phrases to avoid or prefer, e.g. "avoid: leverage, synergies".
 
         Bypasses the init gate.
         """
+        user_id = current_user_var.get()
+        if user_id and "display_name" in fields:
+            new_org_id = _slugify(fields["display_name"])
+            telemetry.set_user_org_id(user_id, new_org_id)
         org_id = _org_id()
         updated = telemetry.update_org_profile(org_id, fields)
         return {
