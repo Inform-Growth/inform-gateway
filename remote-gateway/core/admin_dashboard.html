@@ -1011,6 +1011,14 @@
     } catch { return s; }
   }
 
+  function fmtDuration(createdAt, completedAt) {
+    if (!completedAt) return '—';
+    const ms = (completedAt - createdAt) * 1000;
+    if (ms < 1000) return Math.round(ms) + ' ms';
+    if (ms < 60000) return (ms / 1000).toFixed(1) + ' s';
+    return Math.round(ms / 60000) + ' min';
+  }
+
   // ----------------------------------------------------------------
   // Tab switching
   // ----------------------------------------------------------------
@@ -1709,6 +1717,8 @@
   // ----------------------------------------------------------------
   // Logs view
   // ----------------------------------------------------------------
+  let _selectedTaskId = null;
+  let _tasksMap = {};
   let _logsBodyMap = {};
   let _logsErrorMap = {};
   let _logsToolMap = {};
@@ -1872,6 +1882,54 @@
         + '<td>' + fmtBytes(row.input_size) + '</td>'
         + '<td>' + fmtBytes(row.response_size) + '</td>'
         + '<td>' + statusBadge + '</td>'
+        + '</tr>';
+    }).join('');
+  }
+
+  // ----------------------------------------------------------------
+  // Tasks
+  // ----------------------------------------------------------------
+  async function loadTasks() {
+    const status = document.getElementById('tasks-filter-status').value;
+    let url = apiUrl('/api/tasks') + '&limit=100';
+    if (status) url += '&status=' + encodeURIComponent(status);
+    try {
+      const res  = await fetch(url);
+      const data = await res.json();
+      renderTasksTable(data.tasks || []);
+    } catch (e) {
+      document.getElementById('tasks-tbody').innerHTML =
+        '<tr><td colspan="5" style="color:var(--orange);font-style:italic;text-align:center;">Failed to load tasks.</td></tr>';
+      console.error('loadTasks error:', e);
+    }
+  }
+
+  function renderTasksTable(tasks) {
+    _selectedTaskId = null;
+    _tasksMap = {};
+    document.getElementById('task-logs-placeholder').style.display = 'block';
+    document.getElementById('task-logs-content').style.display = 'none';
+
+    const tbody = document.getElementById('tasks-tbody');
+    if (!tasks.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);font-style:italic;text-align:center;">No tasks found.</td></tr>';
+      return;
+    }
+    tasks.forEach(t => { _tasksMap[t.task_id] = t; });
+    tbody.innerHTML = tasks.map(t => {
+      const goalText = t.goal || '—';
+      const truncGoal = goalText.length > 60 ? goalText.slice(0, 60) + '…' : goalText;
+      const badge = t.status === 'active'
+        ? '<span class="task-badge-active">active</span>'
+        : '<span class="task-badge-completed">completed</span>';
+      const created = t.created_at ? fmtDate(new Date(t.created_at * 1000).toISOString()) : '—';
+      const duration = fmtDuration(t.created_at, t.completed_at);
+      return '<tr onclick="selectTask(\'' + escJs(t.task_id) + '\')" data-task-id="' + escHtml(t.task_id) + '">'
+        + '<td title="' + escHtml(goalText) + '">' + escHtml(truncGoal) + '</td>'
+        + '<td style="font-size:0.78rem;">' + escHtml(t.user_id || '—') + '</td>'
+        + '<td>' + badge + '</td>'
+        + '<td style="font-size:0.75rem;white-space:nowrap;">' + escHtml(created) + '</td>'
+        + '<td>' + escHtml(duration) + '</td>'
         + '</tr>';
     }).join('');
   }
