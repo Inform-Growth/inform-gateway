@@ -1020,13 +1020,14 @@
   function switchTab(tab) {
     closeLogDrawer();
     currentTab = tab;
-    ['exec', 'ops', 'tools', 'logs', 'profile', 'skills', 'hints'].forEach(t => {
+    ['exec', 'ops', 'tools', 'logs', 'tasks', 'profile', 'skills', 'hints'].forEach(t => {
       document.getElementById('tab-' + t).classList.toggle('active', t === tab);
       document.getElementById('view-' + t).classList.toggle('active', t === tab);
     });
     if (tab === 'exec') loadExec();
     else if (tab === 'ops') loadOps();
     else if (tab === 'logs') resetLogsPage();
+    else if (tab === 'tasks') loadTasks();
     else if (tab === 'profile') loadProfile();
     else if (tab === 'skills') loadSkills();
     else if (tab === 'hints') loadHints();
@@ -1037,6 +1038,7 @@
     if (currentTab === 'exec') loadExec();
     else if (currentTab === 'ops') loadOps();
     else if (currentTab === 'logs') resetLogsPage();
+    else if (currentTab === 'tasks') loadTasks();
     else if (currentTab === 'profile') loadProfile();
     else if (currentTab === 'skills') loadSkills();
     else if (currentTab === 'hints') loadHints();
