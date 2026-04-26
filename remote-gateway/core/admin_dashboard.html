@@ -522,6 +522,7 @@
 .drawer-pre.error   { color: var(--orange); }
 .drawer-pre.request { color: var(--text); }
 #logs-tbody tr.log-selected { background: #d8ecd3; outline: 1px solid var(--green); }
+    #task-logs-tbody tr.log-selected { background: #d8ecd3; outline: 1px solid var(--green); }
 
 /* ---- PAGINATION ---- */
 .pagination-bar {
@@ -1789,6 +1790,9 @@
     _selectedLogId = id;
 
     document.querySelectorAll('#logs-tbody tr').forEach(r => {
+      r.classList.toggle('log-selected', r.dataset.logId === String(id));
+    });
+    document.querySelectorAll('#task-logs-tbody tr').forEach(r => {
       r.classList.toggle('log-selected', r.dataset.logId === String(id));
     });
   }
