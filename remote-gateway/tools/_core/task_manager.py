@@ -43,6 +43,8 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
         """
         user_id, org_id = _user_and_org()
         task = telemetry.create_task(user_id, org_id, goal, steps)
+        if not task.get("task_id"):
+            return {"error": "Task creation failed — telemetry may be unavailable."}
         task["agent_instruction"] = (
             f"Task created. Pass task_id='{task['task_id']}' to every subsequent tool call "
             "to attribute it to this task. Call complete_task when done."
