@@ -196,6 +196,7 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         elif success_param == "false":
             success = False
         error_type = request.query_params.get("error_type") or None
+        task_id = request.query_params.get("task_id") or None
         return JSONResponse(
             telemetry.raw_logs(
                 limit=limit,
@@ -204,6 +205,7 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
                 user_id=user,
                 success=success,
                 error_type=error_type,
+                task_id=task_id,
             )
         )
 
