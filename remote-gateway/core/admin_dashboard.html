@@ -1798,6 +1798,7 @@
     document.getElementById('log-drawer').classList.remove('open');
     _selectedLogId = null;
     document.querySelectorAll('#logs-tbody tr').forEach(r => r.classList.remove('log-selected'));
+    document.querySelectorAll('#task-logs-tbody tr').forEach(r => r.classList.remove('log-selected'));
   }
 
   function toggleLogDrawer(id) {
@@ -1958,6 +1959,8 @@
   }
 
   async function loadTaskLogs(taskId) {
+    document.getElementById('task-logs-tbody').innerHTML =
+      '<tr><td colspan="4" style="color:var(--text-muted);font-style:italic;text-align:center;">Loading…</td></tr>';
     const url = apiUrl('/api/logs') + '&task_id=' + encodeURIComponent(taskId) + '&limit=100';
     try {
       const res  = await fetch(url);
