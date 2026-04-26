@@ -54,6 +54,10 @@ def _import_server_with_permission_mock(has_permission_return: bool):
     mock_tel.record = MagicMock()
     mock_tel.lookup_user = MagicMock(return_value="alice")
     mock_tel.has_permission = MagicMock(return_value=has_permission_return)
+    mock_tel.is_initialized = MagicMock(return_value=True)
+    mock_tel.get_task = MagicMock(
+        return_value={"task_id": "t1", "user_id": "alice", "status": "active"}
+    )
     mod_tel = types.ModuleType("telemetry")
     mod_tel.telemetry = mock_tel
     sys.modules["telemetry"] = mod_tel
@@ -85,7 +89,7 @@ def test_permission_denied_sync_raises_permission_error():
     token = server._current_user.set("alice")
     try:
         try:
-            tracked()
+            tracked(task_id="t1")
         except PermissionError as exc:
             assert "my_tool" in str(exc)
         else:
@@ -106,7 +110,7 @@ def test_permission_denied_async_raises_permission_error():
     token = server._current_user.set("alice")
     try:
         try:
-            asyncio.run(tracked())
+            asyncio.run(tracked(task_id="t1"))
         except PermissionError as exc:
             assert "my_async_tool" in str(exc)
         else:
@@ -125,7 +129,7 @@ def test_permission_allowed_sync_calls_through():
     tracked = server._tracked_mcp_tool()(my_tool)
     token = server._current_user.set("alice")
     try:
-        result = tracked()
+        result = tracked(task_id="t1")
         assert result == {"ok": True}
     finally:
         server._current_user.reset(token)
