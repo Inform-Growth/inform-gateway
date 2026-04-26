@@ -561,13 +561,17 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
             async def tracked_async(*fn_args: Any, **fn_kwargs: Any) -> Any:
                 t0 = _time.monotonic()
                 sid, rid = _get_call_ids()
+                task_id = fn_kwargs.pop("task_id", None)
                 input_body = json.dumps(fn_kwargs, default=str)
                 if fn.__name__ not in _GATE_BYPASS:
                     _org = _get_org_id(sid)
                     if _org and not _telemetry.is_initialized(_org):
                         return _make_gate_redirect(fn.__name__)
-                task_id = fn_kwargs.pop("task_id", None)
                 if fn.__name__ not in _TASK_BYPASS and sid:
+                    if task_id is not None:
+                        task_row = _telemetry.get_task(task_id)
+                        if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
+                            task_id = None
                     active = _telemetry.list_active_tasks(sid)
                     if not active and task_id is None:
                         return _make_gate_task_redirect(fn.__name__)
@@ -580,6 +584,7 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                         "PermissionError", user_id=sid, request_id=rid,
                         input_body=input_body,
                         error_message=_perm_msg,
+                        task_id=task_id,
                     )
                     raise PermissionError(_perm_msg)
                 try:
@@ -602,6 +607,7 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                         type(exc).__name__, user_id=sid, request_id=rid,
                         input_body=input_body,
                         error_message=str(exc),
+                        task_id=task_id,
                     )
                     raise
 
@@ -612,13 +618,17 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
         def tracked(*fn_args: Any, **fn_kwargs: Any) -> Any:
             t0 = _time.monotonic()
             sid, rid = _get_call_ids()
+            task_id = fn_kwargs.pop("task_id", None)
             input_body = json.dumps(fn_kwargs, default=str)
             if fn.__name__ not in _GATE_BYPASS:
                 _org = _get_org_id(sid)
                 if _org and not _telemetry.is_initialized(_org):
                     return _make_gate_redirect(fn.__name__)
-            task_id = fn_kwargs.pop("task_id", None)
             if fn.__name__ not in _TASK_BYPASS and sid:
+                if task_id is not None:
+                    task_row = _telemetry.get_task(task_id)
+                    if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
+                        task_id = None
                 active = _telemetry.list_active_tasks(sid)
                 if not active and task_id is None:
                     return _make_gate_task_redirect(fn.__name__)
@@ -631,6 +641,7 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                     "PermissionError", user_id=sid, request_id=rid,
                     input_body=input_body,
                     error_message=_perm_msg,
+                    task_id=task_id,
                 )
                 raise PermissionError(_perm_msg)
             try:
@@ -653,6 +664,7 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                     user_id=sid, request_id=rid,
                     input_body=input_body,
                     error_message=str(exc),
+                    task_id=task_id,
                 )
                 raise
 
@@ -688,13 +700,17 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
         async def tracked_async(*fn_args: Any, **fn_kwargs: Any) -> Any:
             t0 = _time.monotonic()
             sid, rid = _get_call_ids()
+            task_id = fn_kwargs.pop("task_id", None)
             input_body = json.dumps(fn_kwargs, default=str)
             if tool_name not in _GATE_BYPASS:
                 _org = _get_org_id(sid)
                 if _org and not _telemetry.is_initialized(_org):
                     return _make_gate_redirect(tool_name)
-            task_id = fn_kwargs.pop("task_id", None)
             if tool_name not in _TASK_BYPASS and sid:
+                if task_id is not None:
+                    task_row = _telemetry.get_task(task_id)
+                    if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
+                        task_id = None
                 active = _telemetry.list_active_tasks(sid)
                 if not active and task_id is None:
                     return _make_gate_task_redirect(tool_name)
@@ -707,6 +723,7 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
                     "PermissionError", user_id=sid, request_id=rid,
                     input_body=input_body,
                     error_message=_perm_msg,
+                    task_id=task_id,
                 )
                 raise PermissionError(_perm_msg)
             try:
@@ -729,6 +746,7 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
                     user_id=sid, request_id=rid,
                     input_body=input_body,
                     error_message=str(exc),
+                    task_id=task_id,
                 )
                 raise
 
@@ -739,13 +757,17 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
     def tracked(*fn_args: Any, **fn_kwargs: Any) -> Any:
         t0 = _time.monotonic()
         sid, rid = _get_call_ids()
+        task_id = fn_kwargs.pop("task_id", None)
         input_body = json.dumps(fn_kwargs, default=str)
         if tool_name not in _GATE_BYPASS:
             _org = _get_org_id(sid)
             if _org and not _telemetry.is_initialized(_org):
                 return _make_gate_redirect(tool_name)
-        task_id = fn_kwargs.pop("task_id", None)
         if tool_name not in _TASK_BYPASS and sid:
+            if task_id is not None:
+                task_row = _telemetry.get_task(task_id)
+                if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
+                    task_id = None
             active = _telemetry.list_active_tasks(sid)
             if not active and task_id is None:
                 return _make_gate_task_redirect(tool_name)
@@ -758,6 +780,7 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
                 "PermissionError", user_id=sid, request_id=rid,
                 input_body=input_body,
                 error_message=_perm_msg,
+                task_id=task_id,
             )
             raise PermissionError(_perm_msg)
         try:
@@ -780,6 +803,7 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
                 user_id=sid, request_id=rid,
                 input_body=input_body,
                 error_message=str(exc),
+                task_id=task_id,
             )
             raise
 
