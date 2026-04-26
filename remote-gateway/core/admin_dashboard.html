@@ -280,6 +280,18 @@
     #users-table tbody tr:hover { background: var(--cream-dark); outline: 1px solid var(--border); }
     #users-table tbody tr.selected { background: #d8ecd3; outline: 1px solid var(--green); }
 
+    /* Tasks panel */
+    #tasks-table-wrap { overflow-x: auto; margin-bottom: 1rem; }
+    #tasks-table tbody tr { cursor: pointer; }
+    #tasks-table tbody tr:hover { background: var(--cream-dark); outline: 1px solid var(--border); }
+    #tasks-table tbody tr.selected { background: #d8ecd3; outline: 1px solid var(--green); }
+    .task-badge-active    { color: var(--green); font-weight: 700; font-size: 0.78rem; }
+    .task-badge-completed { color: var(--text-muted); font-size: 0.78rem; }
+    #task-logs-placeholder { color: var(--text-muted); font-style: italic; font-size: 0.88rem; padding: 2rem 0; text-align: center; }
+    #task-logs-goal { font-size: 0.88rem; font-weight: 700; margin-bottom: 0.3rem; word-break: break-word; }
+    #task-logs-outcome { font-size: 0.82rem; color: var(--text-muted); font-style: italic; margin-bottom: 1rem; word-break: break-word; }
+    #task-logs-table-wrap { overflow-x: auto; }
+
     .btn {
       border: none;
       padding: 0.3rem 0.7rem;
@@ -556,6 +568,7 @@
   <div class="tab" id="tab-ops" onclick="switchTab('ops')">Ops</div>
   <div class="tab" id="tab-tools" onclick="switchTab('tools')">Tools</div>
   <div class="tab" id="tab-logs" onclick="switchTab('logs')">Logs</div>
+  <div class="tab" id="tab-tasks" onclick="switchTab('tasks')">Tasks</div>
   <div class="tab" id="tab-profile" onclick="switchTab('profile')">Org Profile</div>
   <div class="tab" id="tab-skills" onclick="switchTab('skills')">Skills</div>
   <div class="tab" id="tab-hints" onclick="switchTab('hints')">Tool Hints</div>
@@ -744,6 +757,64 @@
         <span class="page-label" id="logs-page-label">Page 1</span>
         <button class="btn btn-green" id="logs-next" onclick="logsPageNext()" disabled>Next</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ======== TASKS VIEW ======== -->
+  <div class="view" id="view-tasks">
+    <div class="ops-grid">
+
+      <!-- Left: Task list -->
+      <div class="section-box">
+        <div class="section-title">Tasks</div>
+        <div style="margin-bottom:0.75rem;">
+          <select id="tasks-filter-status"
+            style="padding:0.35rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-size:0.82rem;"
+            onchange="loadTasks()">
+            <option value="">All</option>
+            <option value="active">Active</option>
+            <option value="completed">Completed</option>
+          </select>
+        </div>
+        <div id="tasks-table-wrap">
+          <table id="tasks-table">
+            <thead>
+              <tr>
+                <th>Goal</th>
+                <th>User</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Duration</th>
+              </tr>
+            </thead>
+            <tbody id="tasks-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Right: Task tool calls -->
+      <div class="section-box">
+        <div class="section-title">Tool Calls</div>
+        <div id="task-logs-placeholder">Select a task to view its tool calls.</div>
+        <div id="task-logs-content" style="display:none;">
+          <div id="task-logs-goal"></div>
+          <div id="task-logs-outcome"></div>
+          <div id="task-logs-table-wrap">
+            <table id="task-logs-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Tool</th>
+                  <th>Duration</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="task-logs-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 
