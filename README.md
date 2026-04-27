@@ -88,7 +88,7 @@ cp remote-gateway/.env.example remote-gateway/.env
 | `GITHUB_TOKEN` | PAT with Contents read+write on the notes repo |
 | `GITHUB_REPO` | `owner/repo` for the notes repo (e.g. `Inform-Growth/inform-notes`) |
 | `ATTIO_API_KEY` | Attio API key |
-| `APOLLO_ACCESS_TOKEN` | Apollo OAuth access token |
+| `APOLLO_ACCESS_TOKEN` | Apollo OAuth access token (see [Apollo credentials](#apollo-credentials) below) |
 | `APOLLO_REFRESH_TOKEN` | Apollo OAuth refresh token |
 | `APOLLO_CLIENT_ID` | Apollo OAuth client ID |
 | `EXA_API_KEY` | Exa API key |
@@ -168,6 +168,23 @@ export MCP_TRANSPORT=combined
 # Run the server
 python remote-gateway/core/mcp_server.py
 ```
+
+### Apollo Credentials
+
+The gateway proxies Apollo via `https://mcp.apollo.io/mcp` using OAuth tokens that originated from a **Claude Code local MCP connection**. Claude Code stores OAuth tokens for connected MCP servers in the macOS Keychain under `Claude Code-credentials`. The `extract_mcp_tokens.py` script at the repo root reads that keychain entry and formats the values for `.env`.
+
+**Initial setup / token refresh:**
+
+1. In Claude Code settings, add `https://mcp.apollo.io/mcp` as a local MCP server and complete the OAuth consent flow. Claude Code stores the tokens automatically.
+2. Extract the tokens:
+   ```bash
+   python extract_mcp_tokens.py apollo --env
+   ```
+3. Paste the three output lines into `remote-gateway/.env`, replacing any existing `APOLLO_*` values.
+4. Restart the gateway.
+5. Once the gateway is confirmed working you can remove the direct Apollo entry from your local Claude Code MCP settings — the gateway proxies it for all users from that point on.
+
+**If the gateway shows `'apollo' failed to connect`:** the access token has expired. The gateway will attempt an automatic refresh using `APOLLO_REFRESH_TOKEN`, but if the refresh token has also expired you need to repeat steps 1–4 above.
 
 ### Tool Promotion
 New tools are added to `remote-gateway/tools/` and registered in `remote-gateway/core/mcp_server.py`. Each tool should wrap its response with `validated("integration", result)` to ensure field consistency.
