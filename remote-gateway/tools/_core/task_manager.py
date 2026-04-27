@@ -47,13 +47,17 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
             return {"error": "Task creation failed — telemetry may be unavailable."}
         task["agent_instruction"] = (
             f"Task created. Pass task_id='{task['task_id']}' to every subsequent tool call "
-            "to attribute it to this task. Call complete_task when done."
+            "to attribute it to this task. Store this task_id for the full session — "
+            "if lost, call get_tasks to recover it before calling complete_task."
         )
         return task
 
     @mcp.tool()
     def complete_task(task_id: str, outcome: str) -> dict:
         """Mark a task as complete and record the outcome.
+
+        If you don't have a task_id in context, call get_tasks first to retrieve
+        active task IDs, then pass the correct one here.
 
         Args:
             task_id: The task_id returned by declare_intent.
