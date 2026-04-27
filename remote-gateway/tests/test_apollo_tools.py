@@ -423,3 +423,66 @@ def test_enrich_person_strips_nulls_from_person(monkeypatch):
     assert "title" not in result["person"]
     assert "linkedin_url" not in result["person"]
     assert "employment_history" not in result["person"]
+
+
+# ---------------------------------------------------------------------------
+# apollo__enrich_organization
+# ---------------------------------------------------------------------------
+
+def test_enrich_organization_gets_correct_url(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__enrich_organization
+    mock_client = _mock_client(get_responses=[_mock_response({"organization": {
+        "id": "o1", "name": "Acme Inc", "domain": "acme.com",
+    }})])
+    with patch("httpx.Client", return_value=mock_client):
+        apollo__enrich_organization(domain="acme.com")
+    url = mock_client.get.call_args.args[0]
+    assert "organizations/enrich" in url
+
+
+def test_enrich_organization_passes_domain_as_param(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__enrich_organization
+    mock_client = _mock_client(get_responses=[_mock_response({"organization": {
+        "id": "o1", "name": "Acme Inc", "domain": "acme.com",
+    }})])
+    with patch("httpx.Client", return_value=mock_client):
+        apollo__enrich_organization(domain="acme.com")
+    params = mock_client.get.call_args.kwargs.get("params", {})
+    assert params.get("domain") == "acme.com"
+
+
+def test_enrich_organization_returns_org_attio_values_and_hint(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__enrich_organization
+    apollo_org = {
+        "id": "o1", "name": "Acme Inc", "domain": "acme.com",
+        "industry": "Software", "city": "San Francisco", "state": "California",
+        "num_employees": 250, "funding_stage": "series_b",
+        "latest_funding_amount": 25000000, "annual_revenue": None,
+    }
+    mock_client = _mock_client(get_responses=[_mock_response({"organization": apollo_org})])
+    with patch("httpx.Client", return_value=mock_client):
+        result = apollo__enrich_organization(domain="acme.com")
+    assert "organization" in result
+    assert "attio_values" in result
+    assert "agent_hint" in result
+    av = result["attio_values"]
+    assert av["name"] == [{"value": "Acme Inc"}]
+    assert av["domains"] == [{"domain": "acme.com"}]
+    assert av["primary_location"] == [{"value": "San Francisco, California"}]
+
+
+def test_enrich_organization_strips_nulls(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__enrich_organization
+    apollo_org = {
+        "id": "o1", "name": "Acme Inc", "domain": "acme.com",
+        "annual_revenue": None, "latest_funding_date": None,
+    }
+    mock_client = _mock_client(get_responses=[_mock_response({"organization": apollo_org})])
+    with patch("httpx.Client", return_value=mock_client):
+        result = apollo__enrich_organization(domain="acme.com")
+    assert "annual_revenue" not in result["organization"]
+    assert "latest_funding_date" not in result["organization"]

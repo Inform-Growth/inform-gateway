@@ -430,7 +430,45 @@ def apollo__enrich_person(
     }
 
 
-def apollo__enrich_organization(**_): raise NotImplementedError
+def apollo__enrich_organization(domain: str) -> dict:
+    """Enrich a company's data from Apollo by domain.
+
+    Returns full Apollo organization data (nulls stripped) plus a pre-mapped
+    attio_values dict ready to pass directly to attio__upsert_record.
+
+    Args:
+        domain: Company website domain (e.g. "acme.com"). Required.
+
+    Returns:
+        Dict with 'organization' (raw Apollo data, nulls stripped),
+        'attio_values' (pre-mapped for attio__upsert_record),
+        and 'agent_hint'.
+    """
+    import httpx
+
+    with httpx.Client() as client:
+        resp = client.get(
+            f"{_APOLLO_BASE}/organizations/enrich",
+            headers=_headers(),
+            params={"domain": domain},
+        )
+
+    err = _handle_apollo_error(resp, "apollo__enrich_organization")
+    if err:
+        return err
+
+    org = _strip_nulls(resp.json().get("organization") or {})
+    attio_values = _map_to_attio_values(org, "organization")
+
+    return {
+        "organization": org,
+        "attio_values": attio_values,
+        "agent_hint": (
+            "attio_values is pre-mapped for attio__upsert_record. "
+            "Call attio__upsert_record(object_type='companies', values=attio_values, "
+            "matching_attribute='domains') to write to Attio."
+        ),
+    }
 
 
 def register(mcp: Any) -> None:
