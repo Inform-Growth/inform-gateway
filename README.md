@@ -175,16 +175,20 @@ The gateway proxies Apollo via `https://mcp.apollo.io/mcp` using OAuth tokens th
 
 **Initial setup / token refresh:**
 
-Apollo is **not** available as a built-in plugin in Claude Desktop's plugin store. The tokens in `.env` must be obtained directly from Apollo's developer portal (app.apollo.io → Settings → Integrations → API / MCP). Copy the access token, refresh token, and client ID from there and paste them into `.env`.
+Apollo's tokens must come from **Apollo's developer portal** — not from Claude Desktop or the claude.ai web connectors.
+
+- The **claude.ai web connectors** panel (apollo.io listed there) is your personal claude.ai connection. Those tokens are managed server-side by Anthropic and are never stored on your machine — `extract_mcp_tokens.py` cannot access them.
+- The gateway needs its **own** Apollo API credentials, obtained directly from Apollo.
+
+To get gateway credentials: log in to app.apollo.io → Settings → Integrations → API, and generate an API key or OAuth client. Paste the resulting values into `.env`.
 
 **`extract_mcp_tokens.py` — what it actually covers:**
 
-This script searches all Claude keychain entries (`Claude Code-credentials` and all `Claude Code-credentials-<hash>` entries written by Claude Desktop) for MCP OAuth tokens. It is useful for integrations that were connected via Claude Desktop's plugin store (Notion, Figma, Slack, HubSpot, ZoomInfo, Clay, etc.) but **not** for Apollo, which is not in that store.
+This script reads from the macOS Keychain entries written by Claude Code and the Claude Desktop app for locally-configured MCP servers. It is useful for integrations connected as local MCP servers (not web connectors), such as Notion, Figma, Slack, HubSpot, ZoomInfo, and Clay, which Claude Desktop stores in `Claude Code-credentials-<hash>` keychain entries.
 
-To see what integrations are available in the keychain:
 ```bash
-python extract_mcp_tokens.py        # list all
-python extract_mcp_tokens.py slack --env  # extract a specific one
+python extract_mcp_tokens.py        # list all locally-stored MCP tokens
+python extract_mcp_tokens.py slack --env  # extract one as .env lines
 ```
 
 **If the gateway shows `'apollo' failed to connect`:** the access token has expired. Refresh it in Apollo's developer portal and update the three `APOLLO_*` values in `.env`, then restart the gateway.
