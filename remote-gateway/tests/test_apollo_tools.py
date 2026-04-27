@@ -145,3 +145,136 @@ def test_map_org_falls_back_to_primary_domain(monkeypatch):
     org = {"name": "Acme Inc", "primary_domain": "acme.com"}
     result = _map_to_attio_values(org, "organization")
     assert result["domains"] == [{"domain": "acme.com"}]
+
+
+from unittest.mock import patch
+
+# ---------------------------------------------------------------------------
+# apollo__search_people
+# ---------------------------------------------------------------------------
+
+def test_search_people_posts_to_correct_url(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__search_people
+    mock_client = _mock_client(post_responses=[_mock_response({
+        "people": [], "pagination": {"total_entries": 0}
+    })])
+    with patch("httpx.Client", return_value=mock_client):
+        apollo__search_people()
+    url = mock_client.post.call_args.args[0]
+    assert "mixed_people/search" in url
+
+
+def test_search_people_sends_api_key_header(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "my-secret-key")
+    from tools.apollo import apollo__search_people
+    mock_client = _mock_client(post_responses=[_mock_response({
+        "people": [], "pagination": {"total_entries": 0}
+    })])
+    with patch("httpx.Client", return_value=mock_client):
+        apollo__search_people()
+    headers = mock_client.post.call_args.kwargs["headers"]
+    assert headers["X-Api-Key"] == "my-secret-key"
+
+
+def test_search_people_includes_filters_in_body(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__search_people
+    mock_client = _mock_client(post_responses=[_mock_response({
+        "people": [], "pagination": {"total_entries": 0}
+    })])
+    with patch("httpx.Client", return_value=mock_client):
+        apollo__search_people(
+            person_titles=["VP of Sales"],
+            person_seniorities=["vp"],
+            funding_stage=["series_b"],
+            per_page=10,
+        )
+    body = mock_client.post.call_args.kwargs["json"]
+    assert body["person_titles"] == ["VP of Sales"]
+    assert body["person_seniorities"] == ["vp"]
+    assert body["funding_stage"] == ["series_b"]
+    assert body["per_page"] == 10
+
+
+def test_search_people_omits_none_filters_from_body(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__search_people
+    mock_client = _mock_client(post_responses=[_mock_response({
+        "people": [], "pagination": {"total_entries": 0}
+    })])
+    with patch("httpx.Client", return_value=mock_client):
+        apollo__search_people()
+    body = mock_client.post.call_args.kwargs["json"]
+    assert "person_titles" not in body
+    assert "funding_stage" not in body
+
+
+def test_search_people_strips_nulls_from_results(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__search_people
+    raw_person = {
+        "id": "p1", "name": "Jane Doe", "first_name": "Jane", "last_name": "Doe",
+        "title": None, "email": "jane@acme.com", "linkedin_url": None,
+        "city": "SF", "state": "CA", "country": "US",
+        "organization_name": "Acme", "organization_id": "o1",
+        "funding_stage": None, "estimated_num_employees": 200,
+    }
+    mock_client = _mock_client(post_responses=[_mock_response({
+        "people": [raw_person], "pagination": {"total_entries": 1}
+    })])
+    with patch("httpx.Client", return_value=mock_client):
+        result = apollo__search_people()
+    person = result["people"][0]
+    assert "title" not in person
+    assert "linkedin_url" not in person
+    assert "funding_stage" not in person
+    assert person["email"] == "jane@acme.com"
+
+
+def test_search_people_returns_pagination_and_agent_hint(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__search_people
+    mock_client = _mock_client(post_responses=[_mock_response({
+        "people": [{"id": "p1", "name": "Jane"}],
+        "pagination": {"total_entries": 500}
+    })])
+    with patch("httpx.Client", return_value=mock_client):
+        result = apollo__search_people(page=1, per_page=25)
+    assert result["pagination"]["total"] == 500
+    assert result["pagination"]["has_more"] is True
+    assert "500" in result["pagination"]["summary"]
+    assert "agent_hint" in result
+
+
+def test_search_people_raises_permission_error_on_401(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "bad-key")
+    from tools.apollo import apollo__search_people
+    import pytest
+    mock_client = _mock_client(post_responses=[_mock_response({}, status_code=401)])
+    with patch("httpx.Client", return_value=mock_client):
+        with pytest.raises(PermissionError, match="APOLLO_API_KEY"):
+            apollo__search_people()
+
+
+def test_search_people_returns_error_dict_on_422(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__search_people
+    mock_client = _mock_client(post_responses=[
+        _mock_response({"error": "invalid seniority"}, status_code=422)
+    ])
+    with patch("httpx.Client", return_value=mock_client):
+        result = apollo__search_people(person_seniorities=["bogus"])
+    assert "error" in result
+    assert "detail" in result
+
+
+def test_search_people_raises_runtime_error_on_429(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__search_people
+    import pytest
+    resp = _mock_response({}, status_code=429, headers={"Retry-After": "30"})
+    mock_client = _mock_client(post_responses=[resp])
+    with patch("httpx.Client", return_value=mock_client):
+        with pytest.raises(RuntimeError, match="30"):
+            apollo__search_people()

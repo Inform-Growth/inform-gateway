@@ -126,7 +126,125 @@ def _handle_apollo_error(resp: Any, tool_name: str) -> dict | None:
     return None
 
 
-def apollo__search_people(**_): raise NotImplementedError
+def apollo__search_people(
+    person_titles: list[str] | None = None,
+    person_seniorities: list[str] | None = None,
+    person_locations: list[str] | None = None,
+    q_keywords: str | None = None,
+    q_organization_name: str | None = None,
+    organization_domains: list[str] | None = None,
+    organization_num_employees_ranges: list[str] | None = None,
+    organization_industry_tag_ids: list[str] | None = None,
+    organization_keywords: list[str] | None = None,
+    funding_stage: list[str] | None = None,
+    organization_latest_funding_amount_min: int | None = None,
+    organization_latest_funding_amount_max: int | None = None,
+    contact_email_status: list[str] | None = None,
+    page: int = 1,
+    per_page: int = 25,
+) -> dict:
+    """Search Apollo for people matching demographic filters.
+
+    All filter parameters are optional and combined with AND logic.
+    Returns trimmed results with only populated fields. Nulls are stripped
+    from each person record so agents only see meaningful data.
+
+    person_seniorities valid values: "owner", "founder", "c_suite", "partner",
+        "vp", "head", "director", "manager", "senior", "entry", "intern"
+    organization_num_employees_ranges format: ["1,10", "11,50", "51,200",
+        "201,500", "501,1000", "1001,5000", "5001,10000", "10001,"]
+    funding_stage valid values: "seed", "series_a", "series_b", "series_c",
+        "series_d", "series_e_plus", "ipo"
+    contact_email_status valid values: "verified", "guessed", "unavailable",
+        "bounced", "pending_manual_fulfillment"
+
+    Args:
+        person_titles: Job title keywords (e.g. ["VP of Sales"]).
+        person_seniorities: Seniority levels.
+        person_locations: Location strings (e.g. ["San Francisco, California, United States"]).
+        q_keywords: Free-text keyword search across all fields.
+        q_organization_name: Company name substring.
+        organization_domains: Company domains (e.g. ["acme.com"]).
+        organization_num_employees_ranges: Employee count ranges.
+        organization_industry_tag_ids: Apollo industry IDs.
+        organization_keywords: Keywords in company description.
+        funding_stage: Company funding stages.
+        organization_latest_funding_amount_min: Min latest funding amount (USD).
+        organization_latest_funding_amount_max: Max latest funding amount (USD).
+        contact_email_status: Email verification statuses to include.
+        page: Page number (1-indexed).
+        per_page: Results per page (max 100).
+
+    Returns:
+        Dict with 'people' list, 'pagination' summary, and 'agent_hint'.
+    """
+    import httpx
+
+    body: dict[str, Any] = {"page": page, "per_page": per_page}
+    if person_titles:
+        body["person_titles"] = person_titles
+    if person_seniorities:
+        body["person_seniorities"] = person_seniorities
+    if person_locations:
+        body["person_locations"] = person_locations
+    if q_keywords:
+        body["q_keywords"] = q_keywords
+    if q_organization_name:
+        body["q_organization_name"] = q_organization_name
+    if organization_domains:
+        body["organization_domains"] = organization_domains
+    if organization_num_employees_ranges:
+        body["organization_num_employees_ranges"] = organization_num_employees_ranges
+    if organization_industry_tag_ids:
+        body["organization_industry_tag_ids"] = organization_industry_tag_ids
+    if organization_keywords:
+        body["organization_keywords"] = organization_keywords
+    if funding_stage:
+        body["funding_stage"] = funding_stage
+    if organization_latest_funding_amount_min is not None:
+        body["organization_latest_funding_amount_min"] = organization_latest_funding_amount_min
+    if organization_latest_funding_amount_max is not None:
+        body["organization_latest_funding_amount_max"] = organization_latest_funding_amount_max
+    if contact_email_status:
+        body["contact_email_status"] = contact_email_status
+
+    with httpx.Client() as client:
+        resp = client.post(
+            f"{_APOLLO_BASE}/mixed_people/search",
+            headers=_headers(),
+            json=body,
+        )
+
+    err = _handle_apollo_error(resp, "apollo__search_people")
+    if err:
+        return err
+
+    data = resp.json()
+    people = [_pick(p, _PERSON_SEARCH_FIELDS) for p in data.get("people", [])]
+
+    pagination_data = data.get("pagination", {})
+    total = pagination_data.get("total_entries", 0)
+    has_more = total > page * per_page
+    pagination = {
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "has_more": has_more,
+        "summary": (
+            f"Showing {len(people)} of {total:,} matches"
+            + (" — refine filters or increment page to continue." if has_more else ".")
+        ),
+    }
+
+    return {
+        "people": people,
+        "pagination": pagination,
+        "agent_hint": (
+            "Review results above. To enrich a person and get Attio-ready values, "
+            "call apollo__enrich_person with their id. To search again with refined "
+            "filters, call apollo__search_people with updated parameters."
+        ),
+    }
 def apollo__search_companies(**_): raise NotImplementedError
 def apollo__enrich_person(**_): raise NotImplementedError
 def apollo__enrich_organization(**_): raise NotImplementedError
