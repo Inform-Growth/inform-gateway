@@ -83,8 +83,8 @@ def _import_mcp_server():
     # afterwards.  Leaving fake stubs in sys.modules would corrupt other test
     # modules that later do ``from tools.wiza import wiza__enrich_person`` etc.
     _injected: list[str] = []
-    for mod_name in ("tools", "tools.meta", "tools.notes", "tools.registry", "tools.attio",
-                     "tools.email_tools", "tools.wiza",
+    for mod_name in ("tools", "tools.apollo", "tools.meta", "tools.notes", "tools.registry",
+                     "tools.attio", "tools.email_tools", "tools.wiza",
                      "tools._core", "tools._core.onboarding", "tools._core.skill_manager",
                      "tools._core.profile_manager", "tools._core.task_manager"):
         if mod_name not in sys.modules:
