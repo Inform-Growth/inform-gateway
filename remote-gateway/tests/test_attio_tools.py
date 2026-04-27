@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from core.field_registry import FieldRegistry
-from tools.attio import attio__create_record, attio__search_records
+from tools.attio import attio__create_record, attio__search_records, attio__upsert_record
 
 # ---------------------------------------------------------------------------
 # Helpers for pre-flight validation tests
@@ -325,3 +325,87 @@ def test_create_record_skips_validation_when_no_yaml(monkeypatch, tmp_path):
     # No error — validation was skipped, HTTP call was made
     assert "error" not in result
     assert result["record_id"] == "rec-skip-456"
+
+
+# ---------------------------------------------------------------------------
+# attio__upsert_record
+# ---------------------------------------------------------------------------
+
+
+def test_upsert_record_raises_for_invalid_matching_attribute(monkeypatch):
+    """upsert_record raises ValueError for unsupported matching_attribute."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    import pytest
+    with pytest.raises(ValueError, match="matching_attribute"):
+        attio__upsert_record("people", {}, matching_attribute="bogus_field")
+
+
+def test_upsert_record_posts_with_matching_attribute(monkeypatch):
+    """upsert_record includes matching_attribute in the POST body."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    mock_client = _mock_client(
+        post_responses=[_mock_response(
+            {"data": {"id": {"record_id": "rec-upserted"}, "values": {}}},
+            status_code=200,
+        )]
+    )
+    values = {"email_addresses": [{"email_address": "jane@acme.com"}]}
+    with patch("httpx.Client", return_value=mock_client):
+        attio__upsert_record("people", values, matching_attribute="email_addresses")
+    posted_body = mock_client.post.call_args.kwargs["json"]
+    assert posted_body["matching_attribute"] == "email_addresses"
+    assert posted_body["data"]["values"] == values
+
+
+def test_upsert_record_returns_upserted_true_on_200(monkeypatch):
+    """upsert_record returns upserted=True when Attio returns 200 (existing record updated)."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    mock_client = _mock_client(
+        post_responses=[_mock_response(
+            {"data": {"id": {"record_id": "rec-existing"}, "values": {}}},
+            status_code=200,
+        )]
+    )
+    with patch("httpx.Client", return_value=mock_client):
+        result = attio__upsert_record(
+            "people",
+            {"email_addresses": [{"email_address": "jane@acme.com"}]},
+            matching_attribute="email_addresses",
+        )
+    assert result["upserted"] is True
+    assert result["record_id"] == "rec-existing"
+
+
+def test_upsert_record_returns_upserted_false_on_201(monkeypatch):
+    """upsert_record returns upserted=False when Attio returns 201 (new record created)."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    mock_client = _mock_client(
+        post_responses=[_mock_response(
+            {"data": {"id": {"record_id": "rec-new"}, "values": {}}},
+            status_code=201,
+        )]
+    )
+    with patch("httpx.Client", return_value=mock_client):
+        result = attio__upsert_record(
+            "companies",
+            {"domains": [{"domain": "acme.com"}]},
+            matching_attribute="domains",
+        )
+    assert result["upserted"] is False
+    assert result["record_id"] == "rec-new"
+
+
+def test_upsert_record_returns_error_on_attio_failure(monkeypatch):
+    """upsert_record returns error dict on non-2xx Attio response."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    resp = _mock_response({"message": "bad request"}, status_code=400)
+    resp.is_success = False
+    resp.text = '{"message": "bad request"}'
+    mock_client = _mock_client(post_responses=[resp])
+    with patch("httpx.Client", return_value=mock_client):
+        result = attio__upsert_record(
+            "people",
+            {"email_addresses": [{"email_address": "x@y.com"}]},
+            matching_attribute="email_addresses",
+        )
+    assert "error" in result

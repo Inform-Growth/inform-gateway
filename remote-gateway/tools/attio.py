@@ -150,6 +150,72 @@ def attio__create_record(
     return {"record_id": record_id, "object_type": object_type, "data": record}
 
 
+_VALID_MATCHING_ATTRIBUTES = frozenset({"email_addresses", "domains"})
+
+
+def attio__upsert_record(
+    object_type: str,
+    values: dict[str, Any],
+    matching_attribute: str,
+) -> dict[str, Any]:
+    """Create or update an Attio record, matching on a unique attribute.
+
+    Uses Attio's native upsert: if a record with the given matching_attribute
+    value already exists, it is updated; otherwise a new record is created.
+
+    matching_attribute must be one of:
+        "email_addresses" — for object_type "people" (matches on email)
+        "domains"         — for object_type "companies" (matches on domain)
+
+    Values format is identical to attio__create_record. Examples:
+        people:    {"email_addresses": [{"email_address": "jane@acme.com"}],
+                    "name": [{"first_name": "Jane", "last_name": "Doe",
+                               "full_name": "Jane Doe"}]}
+        companies: {"domains": [{"domain": "acme.com"}],
+                    "name": [{"value": "Acme Inc"}]}
+
+    Args:
+        object_type: Record type — "people" or "companies".
+        values: Attribute values in Attio REST API write format.
+        matching_attribute: Attribute to match on for upsert logic.
+
+    Returns:
+        Dict with 'record_id', 'object_type', 'upserted' (True if existing
+        record was updated, False if a new record was created), and 'data'.
+    """
+    import httpx
+
+    if matching_attribute not in _VALID_MATCHING_ATTRIBUTES:
+        raise ValueError(
+            f"Invalid matching_attribute '{matching_attribute}'. "
+            f"Must be one of: {sorted(_VALID_MATCHING_ATTRIBUTES)}"
+        )
+
+    url = f"{_ATTIO_BASE}/objects/{object_type}/records"
+    body: dict[str, Any] = {
+        "data": {"values": values},
+        "matching_attribute": matching_attribute,
+    }
+
+    with httpx.Client() as client:
+        resp = client.post(url, headers=_headers(), json=body)
+
+    if not resp.is_success:
+        return {
+            "error": f"Attio API error {resp.status_code}: {resp.text}",
+            "object_type": object_type,
+        }
+
+    record = resp.json().get("data", {})
+    record_id = record.get("id", {}).get("record_id", "")
+    return {
+        "record_id": record_id,
+        "object_type": object_type,
+        "upserted": resp.status_code == 200,
+        "data": record,
+    }
+
+
 def register(mcp: Any) -> None:
     """Register Attio override tools on the FastMCP server.
 
@@ -163,3 +229,4 @@ def register(mcp: Any) -> None:
     """
     mcp.tool()(attio__search_records)
     mcp.tool()(attio__create_record)
+    mcp.tool()(attio__upsert_record)
