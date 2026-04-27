@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import os
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -36,8 +38,6 @@ def _mock_client(post_responses=None, get_responses=None) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 def test_headers_raises_without_key(monkeypatch):
-    import pytest
-
     monkeypatch.delenv("APOLLO_API_KEY", raising=False)
     from tools.apollo import _headers
 
@@ -147,8 +147,6 @@ def test_map_org_falls_back_to_primary_domain(monkeypatch):
     assert result["domains"] == [{"domain": "acme.com"}]
 
 
-from unittest.mock import patch
-
 # ---------------------------------------------------------------------------
 # apollo__search_people
 # ---------------------------------------------------------------------------
@@ -250,11 +248,12 @@ def test_search_people_returns_pagination_and_agent_hint(monkeypatch):
 def test_search_people_raises_permission_error_on_401(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "bad-key")
     from tools.apollo import apollo__search_people
-    import pytest
     mock_client = _mock_client(post_responses=[_mock_response({}, status_code=401)])
-    with patch("httpx.Client", return_value=mock_client):
-        with pytest.raises(PermissionError, match="APOLLO_API_KEY"):
-            apollo__search_people()
+    with (
+        patch("httpx.Client", return_value=mock_client),
+        pytest.raises(PermissionError, match="APOLLO_API_KEY"),
+    ):
+        apollo__search_people()
 
 
 def test_search_people_returns_error_dict_on_422(monkeypatch):
@@ -272,9 +271,7 @@ def test_search_people_returns_error_dict_on_422(monkeypatch):
 def test_search_people_raises_runtime_error_on_429(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
     from tools.apollo import apollo__search_people
-    import pytest
     resp = _mock_response({}, status_code=429, headers={"Retry-After": "30"})
     mock_client = _mock_client(post_responses=[resp])
-    with patch("httpx.Client", return_value=mock_client):
-        with pytest.raises(RuntimeError, match="30"):
-            apollo__search_people()
+    with patch("httpx.Client", return_value=mock_client), pytest.raises(RuntimeError, match="30"):
+        apollo__search_people()

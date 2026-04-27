@@ -245,8 +245,14 @@ def apollo__search_people(
             "filters, call apollo__search_people with updated parameters."
         ),
     }
+
+
 def apollo__search_companies(**_): raise NotImplementedError
+
+
 def apollo__enrich_person(**_): raise NotImplementedError
+
+
 def apollo__enrich_organization(**_): raise NotImplementedError
 
 
