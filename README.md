@@ -175,16 +175,18 @@ The gateway proxies Apollo via `https://mcp.apollo.io/mcp` using OAuth tokens th
 
 **Initial setup / token refresh:**
 
-1. In Claude Code settings, add `https://mcp.apollo.io/mcp` as a local MCP server and complete the OAuth consent flow. Claude Code stores the tokens automatically.
-2. Extract the tokens:
+The `extract_mcp_tokens.py` script only works if you have previously connected Apollo to Claude Code via its MCP OAuth flow. That flow creates an `mcpOAuth` entry in the macOS Keychain that the script reads. If you run the script and see `No MCP OAuth tokens found`, you need to trigger that flow first:
+
+1. In Claude Code → Settings → MCP Servers, add `https://mcp.apollo.io/mcp` as a new server.
+2. Claude Code opens a browser for Apollo's OAuth consent — log in and approve. The tokens are stored in Keychain automatically.
+3. Extract and paste into `.env`:
    ```bash
    python extract_mcp_tokens.py apollo --env
    ```
-3. Paste the three output lines into `remote-gateway/.env`, replacing any existing `APOLLO_*` values.
 4. Restart the gateway.
-5. Once the gateway is confirmed working you can remove the direct Apollo entry from your local Claude Code MCP settings — the gateway proxies it for all users from that point on.
+5. Once confirmed working, remove the direct Apollo entry from Claude Code MCP settings — the gateway proxies it for all users from that point on.
 
-**If the gateway shows `'apollo' failed to connect`:** the access token has expired. The gateway will attempt an automatic refresh using `APOLLO_REFRESH_TOKEN`, but if the refresh token has also expired you need to repeat steps 1–4 above.
+**If the gateway shows `'apollo' failed to connect`:** the access token has expired. The gateway will attempt an automatic refresh using `APOLLO_REFRESH_TOKEN`, but if the refresh token has also expired you need to repeat steps 1–5 above.
 
 ### Tool Promotion
 New tools are added to `remote-gateway/tools/` and registered in `remote-gateway/core/mcp_server.py`. Each tool should wrap its response with `validated("integration", result)` to ensure field consistency.
