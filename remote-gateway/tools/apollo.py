@@ -247,7 +247,105 @@ def apollo__search_people(
     }
 
 
-def apollo__search_companies(**_): raise NotImplementedError
+def apollo__search_companies(
+    q_keywords: str | None = None,
+    q_organization_name: str | None = None,
+    organization_locations: list[str] | None = None,
+    organization_num_employees_ranges: list[str] | None = None,
+    organization_revenue_ranges: list[str] | None = None,
+    organization_industry_tag_ids: list[str] | None = None,
+    organization_keywords: list[str] | None = None,
+    funding_stage: list[str] | None = None,
+    organization_latest_funding_amount_min: int | None = None,
+    organization_latest_funding_amount_max: int | None = None,
+    page: int = 1,
+    per_page: int = 25,
+) -> dict:
+    """Search Apollo for companies matching demographic filters.
+
+    organization_num_employees_ranges format: ["1,10", "51,200", "1001,5000", "10001,"]
+    organization_revenue_ranges format: ["1000000,10000000"] (USD)
+    funding_stage valid values: "seed", "series_a", "series_b", "series_c",
+        "series_d", "series_e_plus", "ipo"
+
+    Args:
+        q_keywords: Free-text search across all fields.
+        q_organization_name: Company name substring.
+        organization_locations: Location strings (e.g. ["United States"]).
+        organization_num_employees_ranges: Employee count ranges.
+        organization_revenue_ranges: Annual revenue ranges in USD.
+        organization_industry_tag_ids: Apollo industry IDs.
+        organization_keywords: Keywords in company description.
+        funding_stage: Funding stage filter.
+        organization_latest_funding_amount_min: Min latest funding amount (USD).
+        organization_latest_funding_amount_max: Max latest funding amount (USD).
+        page: Page number (1-indexed).
+        per_page: Results per page (max 100).
+
+    Returns:
+        Dict with 'companies' list, 'pagination' summary, and 'agent_hint'.
+    """
+    import httpx
+
+    body: dict[str, Any] = {"page": page, "per_page": per_page}
+    if q_keywords:
+        body["q_keywords"] = q_keywords
+    if q_organization_name:
+        body["q_organization_name"] = q_organization_name
+    if organization_locations:
+        body["organization_locations"] = organization_locations
+    if organization_num_employees_ranges:
+        body["organization_num_employees_ranges"] = organization_num_employees_ranges
+    if organization_revenue_ranges:
+        body["organization_revenue_ranges"] = organization_revenue_ranges
+    if organization_industry_tag_ids:
+        body["organization_industry_tag_ids"] = organization_industry_tag_ids
+    if organization_keywords:
+        body["organization_keywords"] = organization_keywords
+    if funding_stage:
+        body["funding_stage"] = funding_stage
+    if organization_latest_funding_amount_min is not None:
+        body["organization_latest_funding_amount_min"] = organization_latest_funding_amount_min
+    if organization_latest_funding_amount_max is not None:
+        body["organization_latest_funding_amount_max"] = organization_latest_funding_amount_max
+
+    with httpx.Client() as client:
+        resp = client.post(
+            f"{_APOLLO_BASE}/mixed_companies/search",
+            headers=_headers(),
+            json=body,
+        )
+
+    err = _handle_apollo_error(resp, "apollo__search_companies")
+    if err:
+        return err
+
+    data = resp.json()
+    companies = [_pick(c, _COMPANY_SEARCH_FIELDS) for c in data.get("organizations", [])]
+
+    pagination_data = data.get("pagination", {})
+    total = pagination_data.get("total_entries", 0)
+    has_more = total > page * per_page
+    pagination = {
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "has_more": has_more,
+        "summary": (
+            f"Showing {len(companies)} of {total:,} matches"
+            + (" — refine filters or increment page to continue." if has_more else ".")
+        ),
+    }
+
+    return {
+        "companies": companies,
+        "pagination": pagination,
+        "agent_hint": (
+            "Review results above. To enrich a company and get Attio-ready values, "
+            "call apollo__enrich_organization with its domain. To search again with "
+            "refined filters, call apollo__search_companies with updated parameters."
+        ),
+    }
 
 
 def apollo__enrich_person(**_): raise NotImplementedError

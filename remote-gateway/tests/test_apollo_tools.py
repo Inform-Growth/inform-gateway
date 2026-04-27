@@ -275,3 +275,74 @@ def test_search_people_raises_runtime_error_on_429(monkeypatch):
     mock_client = _mock_client(post_responses=[resp])
     with patch("httpx.Client", return_value=mock_client), pytest.raises(RuntimeError, match="30"):
         apollo__search_people()
+
+
+# ---------------------------------------------------------------------------
+# apollo__search_companies
+# ---------------------------------------------------------------------------
+
+def test_search_companies_posts_to_correct_url(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__search_companies
+    mock_client = _mock_client(post_responses=[_mock_response({
+        "organizations": [], "pagination": {"total_entries": 0}
+    })])
+    with patch("httpx.Client", return_value=mock_client):
+        apollo__search_companies()
+    url = mock_client.post.call_args.args[0]
+    assert "mixed_companies/search" in url
+
+
+def test_search_companies_includes_filters_in_body(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__search_companies
+    mock_client = _mock_client(post_responses=[_mock_response({
+        "organizations": [], "pagination": {"total_entries": 0}
+    })])
+    with patch("httpx.Client", return_value=mock_client):
+        apollo__search_companies(
+            q_organization_name="Acme",
+            organization_num_employees_ranges=["51,200"],
+            funding_stage=["series_a"],
+            organization_latest_funding_amount_min=1000000,
+        )
+    body = mock_client.post.call_args.kwargs["json"]
+    assert body["q_organization_name"] == "Acme"
+    assert body["organization_num_employees_ranges"] == ["51,200"]
+    assert body["funding_stage"] == ["series_a"]
+    assert body["organization_latest_funding_amount_min"] == 1000000
+
+
+def test_search_companies_strips_nulls_from_results(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__search_companies
+    raw_org = {
+        "id": "o1", "name": "Acme Inc", "domain": "acme.com",
+        "industry": None, "city": "SF", "state": "CA",
+        "num_employees": 200, "estimated_annual_revenue": None,
+        "funding_stage": "series_b", "latest_funding_amount": 25000000,
+        "latest_funding_date": None,
+    }
+    mock_client = _mock_client(post_responses=[_mock_response({
+        "organizations": [raw_org], "pagination": {"total_entries": 1}
+    })])
+    with patch("httpx.Client", return_value=mock_client):
+        result = apollo__search_companies()
+    org = result["companies"][0]
+    assert "industry" not in org
+    assert "estimated_annual_revenue" not in org
+    assert "latest_funding_date" not in org
+    assert org["name"] == "Acme Inc"
+
+
+def test_search_companies_returns_pagination_and_agent_hint(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__search_companies
+    mock_client = _mock_client(post_responses=[_mock_response({
+        "organizations": [], "pagination": {"total_entries": 250}
+    })])
+    with patch("httpx.Client", return_value=mock_client):
+        result = apollo__search_companies(page=1, per_page=25)
+    assert result["pagination"]["total"] == 250
+    assert result["pagination"]["has_more"] is True
+    assert "agent_hint" in result
