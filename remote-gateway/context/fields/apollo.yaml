@@ -1,92 +1,110 @@
 integration: apollo
 fields:
   id:
-    display_name: Id
-    description: 'TODO: Add business description for ''id''.'
+    display_name: Apollo Person ID
+    description: Unique Apollo identifier for this person record.
     type: string
-    notes: ''
+    notes: Use this id with apollo__enrich_person to get full contact data.
     nullable: false
   first_name:
     display_name: First Name
-    description: 'TODO: Add business description for ''first_name''.'
+    description: Person's first name.
     type: string
     notes: ''
-    nullable: false
+    nullable: true
   last_name:
     display_name: Last Name
-    description: 'TODO: Add business description for ''last_name''.'
+    description: Person's last name.
     type: string
     notes: ''
-    nullable: false
+    nullable: true
   name:
-    display_name: Name
-    description: 'TODO: Add business description for ''name''.'
+    display_name: Full Name
+    description: Person's full name (first + last).
     type: string
     notes: ''
-    nullable: false
+    nullable: true
   title:
-    display_name: Title
-    description: 'TODO: Add business description for ''title''.'
+    display_name: Job Title
+    description: Person's current job title at their organization.
     type: string
     notes: ''
-    nullable: false
+    nullable: true
   organization_name:
-    display_name: Organization Name
-    description: 'TODO: Add business description for ''organization_name''.'
+    display_name: Company Name
+    description: Name of the company this person currently works at.
     type: string
-    notes: ''
-    nullable: false
+    notes: Use organization_id to look up the company record in Apollo.
+    nullable: true
+  organization_id:
+    display_name: Apollo Organization ID
+    description: Apollo's unique identifier for the person's current employer.
+    type: string
+    notes: Use with apollo__enrich_organization (via domain lookup) for full company data.
+    nullable: true
   email:
-    display_name: Email
-    description: 'TODO: Add business description for ''email''.'
+    display_name: Work Email
+    description: Person's primary work email address.
     type: string
     notes: ''
-    nullable: false
+    nullable: true
   email_status:
     display_name: Email Status
-    description: 'TODO: Add business description for ''email_status''.'
+    description: Verification status of the work email address.
+    type: string
+    notes: "Values: verified, guessed, unavailable, bounced, pending_manual_fulfillment"
+    nullable: true
+  linkedin_url:
+    display_name: LinkedIn URL
+    description: Full URL to the person's LinkedIn profile.
     type: string
     notes: ''
-    nullable: false
+    nullable: true
   city:
     display_name: City
-    description: 'TODO: Add business description for ''city''.'
+    description: City where this person is located.
     type: string
     notes: ''
-    nullable: false
+    nullable: true
   state:
-    display_name: State
-    description: 'TODO: Add business description for ''state''.'
+    display_name: State / Region
+    description: State or region where this person is located.
     type: string
     notes: ''
-    nullable: false
+    nullable: true
   country:
     display_name: Country
-    description: 'TODO: Add business description for ''country''.'
+    description: Country where this person is located.
     type: string
     notes: ''
-    nullable: false
-  linkedin_uid:
-    display_name: Linkedin Uid
-    description: 'TODO: Add business description for ''linkedin_uid''.'
+    nullable: true
+  funding_stage:
+    display_name: Company Funding Stage
+    description: Current funding stage of the person's employer.
     type: string
+    notes: "Values: seed, series_a, series_b, series_c, series_d, series_e_plus, ipo"
+    nullable: true
+  estimated_num_employees:
+    display_name: Company Employee Count
+    description: Estimated number of employees at the person's current employer.
+    type: integer
     notes: ''
-    nullable: false
+    nullable: true
   created_at:
     display_name: Created At
-    description: 'TODO: Add business description for ''created_at''.'
+    description: Timestamp when this Apollo record was created.
     type: timestamp
     notes: ''
-    nullable: false
+    nullable: true
   updated_at:
     display_name: Updated At
-    description: 'TODO: Add business description for ''updated_at''.'
+    description: Timestamp when this Apollo record was last updated.
     type: timestamp
     notes: ''
-    nullable: false
+    nullable: true
   existence_level:
     display_name: Existence Level
-    description: 'TODO: Add business description for ''existence_level''.'
+    description: Apollo's confidence level that this person record is current and accurate.
     type: string
     notes: ''
-    nullable: false
+    nullable: true

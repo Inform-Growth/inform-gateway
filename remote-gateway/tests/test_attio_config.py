@@ -82,60 +82,29 @@ def test_attio_has_no_url():
 
 # ---------------------------------------------------------------------------
 # Apollo migration validation
+# Apollo is now a direct Python REST tool — it must NOT appear in mcp_connections.json.
 # ---------------------------------------------------------------------------
 
 
-def _load_apollo() -> dict:
-    """Load and return the apollo connection entry from mcp_connections.json.
-
-    Calls pytest.fail() immediately if the config file is missing or the
-    apollo key is absent, producing a clear FAILED result rather than an error.
-    """
+def _load_connections() -> dict:
+    """Load and return the full connections dict from mcp_connections.json."""
     if not CONNECTIONS_FILE.exists():
         pytest.fail(f"Config file not found: {CONNECTIONS_FILE}")
-    data = json.loads(CONNECTIONS_FILE.read_text())
-    if "apollo" not in data.get("connections", {}):
-        pytest.fail("No 'apollo' entry found in connections")
-    return data["connections"]["apollo"]
+    return json.loads(CONNECTIONS_FILE.read_text()).get("connections", {})
 
 
-def test_apollo_uses_http_transport():
-    """Apollo uses http transport."""
-    apollo = _load_apollo()
-    assert apollo.get("transport") == "http", (
-        f"Expected 'http', got '{apollo.get('transport')}'"
-    )
+def test_apollo_not_in_proxy_connections():
+    """Apollo must not be in mcp_connections.json — it is now a direct Python REST tool.
 
-
-def test_apollo_auth_type_is_oauth():
-    """Apollo auth.type is 'oauth'."""
-    apollo = _load_apollo()
-    assert apollo.get("auth", {}).get("type") == "oauth", (
-        "Apollo auth.type must be 'oauth'"
-    )
-
-
-def test_apollo_auth_has_access_token():
-    """Apollo auth block has access_token with correct env var reference."""
-    apollo = _load_apollo()
-    assert apollo.get("auth", {}).get("access_token") == "${APOLLO_ACCESS_TOKEN}", (
-        f"Expected '${{APOLLO_ACCESS_TOKEN}}', got: {apollo.get('auth', {}).get('access_token')}"
-    )
-
-
-def test_apollo_has_no_top_level_headers():
-    """Apollo must not have a top-level 'headers' key."""
-    apollo = _load_apollo()
-    assert "headers" not in apollo, (
-        "Apollo must not have a top-level 'headers' key — auth moved to auth block"
-    )
-
-
-def test_apollo_has_no_top_level_oauth():
-    """Apollo must not have a top-level 'oauth' key."""
-    apollo = _load_apollo()
-    assert "oauth" not in apollo, (
-        "Apollo must not have a top-level 'oauth' key — auth moved to auth block"
+    The broken OAuth proxy entry has been replaced by tools/apollo.py, which
+    authenticates via APOLLO_API_KEY (plain REST).  Keeping an 'apollo' entry
+    in mcp_connections.json would shadow the Python tools with a broken OAuth
+    proxy that cannot connect.
+    """
+    connections = _load_connections()
+    assert "apollo" not in connections, (
+        "Found 'apollo' in mcp_connections.json. "
+        "Apollo is now a direct Python REST tool — remove the proxy entry."
     )
 
 

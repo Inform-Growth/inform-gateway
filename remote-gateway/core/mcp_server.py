@@ -859,6 +859,7 @@ import sys as _sys  # noqa: E402
 
 _sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from tools import apollo as _apollo_tools  # noqa: E402
 from tools import attio as _attio_tools  # noqa: E402
 from tools import email_tools as _email_tools  # noqa: E402
 from tools import meta as _meta_tools  # noqa: E402
@@ -866,9 +867,10 @@ from tools import notes as _notes_tools  # noqa: E402
 from tools import registry as _registry_tools  # noqa: E402
 from tools import wiza as _wiza_tools  # noqa: E402
 from tools._core import onboarding as _onboarding_tools  # noqa: E402
-from tools._core import skill_manager as _skill_manager_tools  # noqa: E402
 from tools._core import profile_manager as _profile_manager_tools  # noqa: E402
+from tools._core import skill_manager as _skill_manager_tools  # noqa: E402
 from tools._core import task_manager as _task_manager_tools  # noqa: E402
+
 
 class _RequestAwareUser:
     """ContextVar-compatible shim whose ``.get()`` resolves the caller per-request.
@@ -903,6 +905,7 @@ _registry_tools.register(mcp, registry)
 _attio_tools.register(mcp)  # must register after telemetry patch is applied
 _email_tools.register(mcp)
 _wiza_tools.register(mcp)
+_apollo_tools.register(mcp)
 _onboarding_tools.register(mcp, _telemetry, _user_view)
 _skill_manager_tools.register(mcp, _telemetry, _user_view)
 _profile_manager_tools.register(mcp, _telemetry, _user_view)

@@ -55,7 +55,7 @@ def _start_reveal(linkedin_url: str) -> str:
                 "individual_reveal": {
                     "profile_url": linkedin_url,
                     "enrichment_level": "full",
-                }
+                },
             },
         )
 
