@@ -1,3 +1,13 @@
 {
-  "connections": {}
+  "_comment": "Mature integrations the admin has chosen to centralize on the gateway. Employees whose local MCP connections for these integrations have been retired will use these gateway-proxied versions instead. Tools appear as <integration>__<tool_name>. Credentials are server-side env vars only.",
+  "connections": {
+    "hubspot": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@hubspot/mcp-server"],
+      "env": {
+        "PRIVATE_APP_ACCESS_TOKEN": "${HUBSPOT_PRIVATE_APP_ACCESS_TOKEN}"
+      }
+    }
+  }
 }
