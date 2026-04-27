@@ -348,7 +348,86 @@ def apollo__search_companies(
     }
 
 
-def apollo__enrich_person(**_): raise NotImplementedError
+def apollo__enrich_person(
+    id: str | None = None,
+    email: str | None = None,
+    linkedin_url: str | None = None,
+    first_name: str | None = None,
+    last_name: str | None = None,
+    organization_name: str | None = None,
+    domain: str | None = None,
+    reveal_personal_emails: bool = False,
+    reveal_phone_number: bool = False,
+) -> dict:
+    """Enrich a person's contact data from Apollo.
+
+    At least one of id, email, or linkedin_url must be provided.
+    Returns full Apollo person data (nulls stripped) plus a pre-mapped
+    attio_values dict ready to pass directly to attio__upsert_record.
+
+    Args:
+        id: Apollo person ID (from apollo__search_people results).
+        email: Person's work email address.
+        linkedin_url: Person's LinkedIn profile URL.
+        first_name: First name (improves match accuracy).
+        last_name: Last name (improves match accuracy).
+        organization_name: Company name (improves match accuracy).
+        domain: Company domain (improves match accuracy).
+        reveal_personal_emails: Also return personal email addresses (uses credits).
+        reveal_phone_number: Also return phone number (uses credits).
+
+    Returns:
+        Dict with 'person' (raw Apollo data, nulls stripped),
+        'attio_values' (pre-mapped for attio__upsert_record),
+        and 'agent_hint'.
+    """
+    if not any([id, email, linkedin_url]):
+        raise ValueError("Provide at least one of: id, email, linkedin_url")
+
+    import httpx
+
+    body: dict[str, Any] = {
+        "reveal_personal_emails": reveal_personal_emails,
+        "reveal_phone_number": reveal_phone_number,
+    }
+    if id:
+        body["id"] = id
+    if email:
+        body["email"] = email
+    if linkedin_url:
+        body["linkedin_url"] = linkedin_url
+    if first_name:
+        body["first_name"] = first_name
+    if last_name:
+        body["last_name"] = last_name
+    if organization_name:
+        body["organization_name"] = organization_name
+    if domain:
+        body["domain"] = domain
+
+    with httpx.Client() as client:
+        resp = client.post(
+            f"{_APOLLO_BASE}/people/match",
+            headers=_headers(),
+            json=body,
+        )
+
+    err = _handle_apollo_error(resp, "apollo__enrich_person")
+    if err:
+        return err
+
+    person = _strip_nulls(resp.json().get("person") or {})
+    attio_values = _map_to_attio_values(person, "person")
+
+    return {
+        "person": person,
+        "attio_values": attio_values,
+        "agent_hint": (
+            "attio_values is pre-mapped for attio__upsert_record. "
+            "Call attio__upsert_record(object_type='people', values=attio_values, "
+            "matching_attribute='email_addresses') to write to Attio."
+        ),
+    }
 
 
 def apollo__enrich_organization(**_): raise NotImplementedError

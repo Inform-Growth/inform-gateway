@@ -346,3 +346,80 @@ def test_search_companies_returns_pagination_and_agent_hint(monkeypatch):
     assert result["pagination"]["total"] == 250
     assert result["pagination"]["has_more"] is True
     assert "agent_hint" in result
+
+
+# ---------------------------------------------------------------------------
+# apollo__enrich_person
+# ---------------------------------------------------------------------------
+
+def test_enrich_person_raises_without_identifier(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__enrich_person
+    with pytest.raises(ValueError, match="id, email, linkedin_url"):
+        apollo__enrich_person()
+
+
+def test_enrich_person_posts_to_correct_url(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__enrich_person
+    mock_client = _mock_client(post_responses=[_mock_response({"person": {
+        "id": "p1", "first_name": "Jane", "last_name": "Doe", "name": "Jane Doe",
+        "email": "jane@acme.com", "title": "VP of Sales",
+    }})])
+    with patch("httpx.Client", return_value=mock_client):
+        apollo__enrich_person(email="jane@acme.com")
+    url = mock_client.post.call_args.args[0]
+    assert "people/match" in url
+
+
+def test_enrich_person_posts_identifier_in_body(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__enrich_person
+    mock_client = _mock_client(post_responses=[_mock_response({"person": {
+        "id": "p1", "first_name": "Jane", "last_name": "Doe", "name": "Jane Doe",
+    }})])
+    with patch("httpx.Client", return_value=mock_client):
+        apollo__enrich_person(id="p1", reveal_phone_number=True)
+    body = mock_client.post.call_args.kwargs["json"]
+    assert body["id"] == "p1"
+    assert body["reveal_phone_number"] is True
+
+
+def test_enrich_person_returns_person_attio_values_and_hint(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__enrich_person
+    apollo_person = {
+        "id": "p1", "first_name": "Jane", "last_name": "Doe", "name": "Jane Doe",
+        "email": "jane@acme.com", "title": "VP of Sales",
+        "linkedin_url": "https://linkedin.com/in/janedoe",
+        "phone_numbers": [{"raw_number": "+1-555-0100", "type": "work"}],
+        "city": "San Francisco", "state": "California",
+        "employment_history": None,
+    }
+    mock_client = _mock_client(post_responses=[_mock_response({"person": apollo_person})])
+    with patch("httpx.Client", return_value=mock_client):
+        result = apollo__enrich_person(email="jane@acme.com")
+    assert "person" in result
+    assert "attio_values" in result
+    assert "agent_hint" in result
+    # attio_values should be pre-mapped
+    av = result["attio_values"]
+    assert av["email_addresses"] == [{"email_address": "jane@acme.com"}]
+    assert av["job_title"] == [{"value": "VP of Sales"}]
+    assert av["phone_numbers"] == [{"phone_number": "+1-555-0100"}]
+
+
+def test_enrich_person_strips_nulls_from_person(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__enrich_person
+    apollo_person = {
+        "id": "p1", "first_name": "Jane", "last_name": "Doe", "name": "Jane Doe",
+        "email": "jane@acme.com", "title": None, "linkedin_url": None,
+        "employment_history": None,
+    }
+    mock_client = _mock_client(post_responses=[_mock_response({"person": apollo_person})])
+    with patch("httpx.Client", return_value=mock_client):
+        result = apollo__enrich_person(email="jane@acme.com")
+    assert "title" not in result["person"]
+    assert "linkedin_url" not in result["person"]
+    assert "employment_history" not in result["person"]
