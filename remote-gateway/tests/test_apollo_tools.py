@@ -160,7 +160,20 @@ def test_search_people_posts_to_correct_url(monkeypatch):
     with patch("httpx.Client", return_value=mock_client):
         apollo__search_people()
     url = mock_client.post.call_args.args[0]
-    assert "mixed_people/search" in url
+    assert "mixed_people/api_search" in url
+
+
+def test_search_people_accepts_contacts_key_in_response(monkeypatch):
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.apollo import apollo__search_people
+    mock_client = _mock_client(post_responses=[_mock_response({
+        "contacts": [{"id": "p1", "name": "Jane Doe", "email": "jane@acme.com"}],
+        "pagination": {"total_entries": 1}
+    })])
+    with patch("httpx.Client", return_value=mock_client):
+        result = apollo__search_people()
+    assert len(result["people"]) == 1
+    assert result["people"][0]["email"] == "jane@acme.com"
 
 
 def test_search_people_sends_api_key_header(monkeypatch):

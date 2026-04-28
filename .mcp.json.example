@@ -1,7 +1,8 @@
 {
   "mcpServers": {
     "inform-gateway": {
-      "url": "https://your-gateway.railway.app/sse",
+      "type": "http",
+      "url": "https://your-gateway.railway.app/mcp",
       "headers": {
         "Authorization": "Bearer ${GATEWAY_USER_API_KEY}"
       }

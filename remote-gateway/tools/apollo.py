@@ -210,7 +210,7 @@ def apollo__search_people(
 
     with httpx.Client() as client:
         resp = client.post(
-            f"{_APOLLO_BASE}/mixed_people/search",
+            f"{_APOLLO_BASE}/mixed_people/api_search",
             headers=_headers(),
             json=body,
         )
@@ -220,7 +220,7 @@ def apollo__search_people(
         return err
 
     data = resp.json()
-    people = [_pick(p, _PERSON_SEARCH_FIELDS) for p in data.get("people", [])]
+    people = [_pick(p, _PERSON_SEARCH_FIELDS) for p in (data.get("people") or data.get("contacts") or [])]
 
     pagination_data = data.get("pagination", {})
     total = pagination_data.get("total_entries", 0)
