@@ -900,7 +900,10 @@
         <div class="section-title" style="margin-bottom:0;">Tool Hints</div>
         <button id="hint-new-btn" class="btn btn-green">+ Add Hint</button>
       </div>
-      <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:1rem;">Hints are injected into tool responses as <code>meta</code> fields to guide interpretation.</p>
+      <div style="background:var(--cream-dark);border-left:3px solid var(--green-mid);padding:0.75rem 1rem;margin-bottom:1rem;font-size:0.82rem;line-height:1.6;">
+        <strong style="display:block;margin-bottom:0.3rem;">What are Tool Hints?</strong>
+        When an agent calls a tool through the gateway, the response is automatically wrapped with a <code>meta</code> block containing your hint. The agent reads this on every call — like a sticky note attached to each tool response. Use hints to correct misinterpretations, enforce call discipline, and tag data sensitivity, without touching any code.
+      </div>
       <div id="hints-table-wrap"></div>
     </div>
 
@@ -913,11 +916,13 @@
         </div>
         <div style="margin-bottom:0.75rem;">
           <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Interpretation Hint</label>
-          <textarea id="hint-modal-hint" rows="3" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;"></textarea>
+          <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.3rem;">How should the agent read this data?</p>
+          <textarea id="hint-modal-hint" rows="3" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;" placeholder="score > 80 = high priority. Ignore 'seniority' field — unreliable for VP-level titles."></textarea>
         </div>
         <div style="margin-bottom:0.75rem;">
           <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Usage Rules</label>
-          <textarea id="hint-modal-rules" rows="3" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;"></textarea>
+          <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.3rem;">When and how should this tool be called?</p>
+          <textarea id="hint-modal-rules" rows="3" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;" placeholder="Always pass company domain when searching by name. Never call more than once per person in a session."></textarea>
         </div>
         <div style="margin-bottom:0.75rem;">
           <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Data Sensitivity</label>
@@ -926,6 +931,7 @@
             <option value="internal" selected>internal</option>
             <option value="confidential">confidential</option>
           </select>
+          <p style="font-size:0.75rem;color:var(--text-muted);margin-top:0.3rem;"><strong>public</strong> = can be shared freely · <strong>internal</strong> = do not surface in external-facing outputs · <strong>confidential</strong> = treat like PII; do not log or quote directly</p>
         </div>
         <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1rem;">
           <button id="hint-modal-cancel" class="btn" style="background:var(--cream-dark);color:var(--text);">Cancel</button>
