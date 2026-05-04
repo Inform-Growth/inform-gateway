@@ -700,6 +700,7 @@
   <div class="view" id="view-tools">
     <div class="section-box">
       <div class="section-title">Registered Tools</div>
+      <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.75rem;">All tools registered to this gateway, including proxied integrations. Use the Global toggle to disable a tool for every user at once — no restart required.</p>
       <table id="tools-table">
         <thead>
           <tr>
@@ -725,6 +726,7 @@
   <div class="view" id="view-logs">
     <div class="section-box">
       <div class="section-title">Raw Tool Logs</div>
+      <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.75rem;">Every tool call logged in real time. Click any row to inspect the full request and response. Use filters to isolate errors or activity from a specific user.</p>
       <div style="display:flex;gap:0.6rem;margin-bottom:1rem;flex-wrap:wrap;">
         <input type="text" id="logs-filter-tool" placeholder="Filter by tool…"
           style="padding:0.35rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;flex:1;min-width:160px;"
@@ -772,6 +774,7 @@
       <!-- Left: Task list -->
       <div class="section-box">
         <div class="section-title">Tasks</div>
+        <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.75rem;">Tasks are declared by agents at session start via <code>declare_intent</code>. Each represents one user goal. Click a task to see every tool call made while working toward it.</p>
         <div style="margin-bottom:0.75rem;">
           <select id="tasks-filter-status"
             style="padding:0.35rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-size:0.82rem;"
