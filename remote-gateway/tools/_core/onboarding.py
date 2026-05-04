@@ -39,8 +39,20 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
         Bypasses the init gate — safe to call on an unconfigured gateway.
         """
         org_id = _org_id()
-        profile = telemetry.get_org_profile(org_id)
         initialized = telemetry.is_initialized(org_id)
+
+        # If this user's org isn't initialized, check whether another org already
+        # is. If so, auto-assign the user to that org instead of starting a new setup.
+        if not initialized:
+            primary_org = telemetry.get_primary_initialized_org()
+            if primary_org and primary_org != org_id:
+                user_id = current_user_var.get()
+                if user_id:
+                    telemetry.set_user_org_id(user_id, primary_org)
+                org_id = primary_org
+                initialized = True
+
+        profile = telemetry.get_org_profile(org_id)
         if initialized:
             next_step = "Already initialized. Use profile_get to view current settings."
             questions = []
