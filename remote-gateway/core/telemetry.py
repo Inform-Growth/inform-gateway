@@ -211,13 +211,31 @@ class TelemetryStore:
     # API key management
     # ------------------------------------------------------------------
 
+    def get_primary_initialized_org(self) -> str | None:
+        """Return the org_id of the first initialized org, or None if none exist.
+
+        Used to auto-assign new users to the existing org rather than creating
+        isolated per-user orgs when a workspace has already been set up.
+        """
+        if not self._enabled:
+            return None
+        try:
+            conn = self._connect()
+            row = conn.execute(
+                "SELECT org_id FROM org_profiles WHERE initialized = 1 ORDER BY created_at LIMIT 1"
+            ).fetchone()
+            return row["org_id"] if row else None
+        except Exception:
+            return None
+
     def add_api_key(self, user_id: str, key: str | None = None, org_id: str | None = None) -> str:
         """Create an API key for a user and store it. Returns the key.
 
         Args:
             user_id: Opaque user identifier (email, username, UUID, etc.).
             key: The key value to store. Generated securely if omitted.
-            org_id: Organization identifier. Defaults to user_id if omitted.
+            org_id: Organization identifier. Defaults to the existing initialized
+                org if one exists, otherwise falls back to user_id.
 
         Returns:
             The API key string (``sk-<32 random hex chars>``).
@@ -225,7 +243,7 @@ class TelemetryStore:
         if key is None:
             key = f"sk-{secrets.token_hex(16)}"
         if org_id is None:
-            org_id = user_id
+            org_id = self.get_primary_initialized_org() or user_id
         if not self._enabled:
             return key
         conn = self._connect()
