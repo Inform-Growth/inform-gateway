@@ -837,15 +837,18 @@
       </div>
       <div style="margin-bottom:1rem;">
         <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Tone</label>
+        <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:0.3rem;">How agents should communicate in outputs and drafted messages.</p>
         <input id="profile-tone" type="text" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;" placeholder="professional, concise">
       </div>
       <div style="margin-bottom:1rem;">
         <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">ICP</label>
-        <input id="profile-icp" type="text" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;" placeholder="B2B SaaS, 10-200 employees">
+        <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:0.3rem;">Ideal Customer Profile. Agents use this to filter and prioritize prospects.</p>
+        <input id="profile-icp" type="text" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;" placeholder="B2B SaaS, 10–200 employees, US-based">
       </div>
       <div style="margin-bottom:1rem;">
         <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Vocab Rules</label>
-        <textarea id="profile-vocab_rules" rows="3" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;" placeholder="Always say 'prospect' not 'lead'..."></textarea>
+        <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:0.3rem;">Terminology rules applied to all agent output.</p>
+        <textarea id="profile-vocab_rules" rows="3" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;" placeholder="Say 'prospect' not 'lead'. Use first name only in emails."></textarea>
       </div>
       <div style="display:flex;align-items:center;gap:0.75rem;">
         <button type="submit" class="btn btn-green">Save Profile</button>
