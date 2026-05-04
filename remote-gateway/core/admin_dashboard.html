@@ -864,6 +864,7 @@
         <div class="section-title" style="margin-bottom:0;">Skills</div>
         <button id="skill-new-btn" class="btn btn-green">+ New Skill</button>
       </div>
+      <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.75rem;">Skills are reusable prompt templates agents can invoke via <code>run_skill</code>. Use them for recurring workflows like morning briefings or prospect research.</p>
       <div id="skills-table-wrap"></div>
     </div>
 
@@ -881,7 +882,7 @@
         </div>
         <div style="margin-bottom:0.75rem;">
           <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Prompt Template</label>
-          <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.3rem;">Use {variable} for placeholders filled by run_skill.</p>
+          <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.3rem;">Use <code>{variable}</code> for runtime inputs. Example: <code>Research {company} and draft a 3-bullet outreach for {contact_name}.</code></p>
           <textarea id="skill-modal-template" rows="5" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;"></textarea>
         </div>
         <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1rem;">
