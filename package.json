@@ -1,5 +1,5 @@
 {
-  "name": "inform-gateway-mcp-tools",
+  "name": "[[ project_slug ]]-mcp-tools",
   "version": "0.1.0",
   "private": true,
   "description": "Vendored MCP tools for the Agent Gateway",

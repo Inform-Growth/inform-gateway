@@ -1,7 +1,7 @@
 [project]
-name = "inform-gateway"
+name = "[[ project_slug ]]"
 version = "0.1.0"
-description = "Agentic GitOps monorepo: local R&D sandbox + centralized MCP gateway"
+description = "Agent gateway — centralized MCP server with governed proxied integrations and shadow note-taking"
 requires-python = ">=3.11"
 dependencies = [
     "mcp[cli]",
