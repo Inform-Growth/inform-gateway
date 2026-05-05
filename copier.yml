@@ -49,7 +49,7 @@ project_name:
 project_slug:
   type: str
   help: "URL/package-safe identifier (e.g. 'acme-agent-gateway')"
-  default: "{{ project_name | lower | replace(' ', '-') }}"
+  default: "<< project_name | lower | replace(' ', '-') >>"
 
 gateway_url:
   type: str
@@ -64,5 +64,5 @@ github_org:
 admin_token:
   type: str
   help: "Initial admin dashboard token. Default is randomly generated at scaffold time. In production, override via the ADMIN_TOKEN env var."
-  default: "{{ '%04x' % (range(65536) | random) }}{{ '%04x' % (range(65536) | random) }}{{ '%04x' % (range(65536) | random) }}{{ '%04x' % (range(65536) | random) }}{{ '%04x' % (range(65536) | random) }}{{ '%04x' % (range(65536) | random) }}{{ '%04x' % (range(65536) | random) }}{{ '%04x' % (range(65536) | random) }}"
+  default: "<< '%04x' % (range(65536) | random) >><< '%04x' % (range(65536) | random) >><< '%04x' % (range(65536) | random) >><< '%04x' % (range(65536) | random) >><< '%04x' % (range(65536) | random) >><< '%04x' % (range(65536) | random) >><< '%04x' % (range(65536) | random) >><< '%04x' % (range(65536) | random) >>"
   secret: true
