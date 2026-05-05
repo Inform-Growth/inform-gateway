@@ -21,6 +21,14 @@ dev = [
     "httpx",
 ]
 
+[tool.setuptools]
+# The gateway runs as scripts (python remote-gateway/core/mcp_server.py),
+# not as an installed package. pyproject.toml exists for dev deps + tooling.
+# Empty py-modules avoids setuptools' flat-layout auto-discovery, which
+# otherwise trips on the root-level utility scripts (debug_mcp.py,
+# extract_mcp_tokens.py).
+py-modules = []
+
 [tool.ruff]
 target-version = "py314"
 line-length = 100
