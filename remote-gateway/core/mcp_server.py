@@ -326,7 +326,7 @@ async def _send_http_unauthorized(send: Any) -> None:
             "status": 401,
             "headers": [
                 (b"content-type", b"application/json"),
-                (b"www-authenticate", b'Bearer realm="inform-gateway"'),
+                (b"www-authenticate", b'Bearer realm="agent-gateway"'),
                 (b"content-length", str(len(_UNAUTHORIZED_BODY)).encode()),
             ],
         }

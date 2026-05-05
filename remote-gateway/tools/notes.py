@@ -6,7 +6,7 @@ persistent notes store that survives gateway redeployments.
 
 Required env vars:
     GITHUB_TOKEN  — fine-grained PAT with Contents read+write on the repo
-    GITHUB_REPO   — owner/repo slug, e.g. "acme/inform-notes"
+    GITHUB_REPO   — owner/repo slug, e.g. "acme/agent-notes"
     GITHUB_BRANCH — branch to read/write (default: "main")
     NOTES_PATH    — folder inside GITHUB_REPO (default: "notes")
 """
