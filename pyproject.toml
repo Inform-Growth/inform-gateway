@@ -17,6 +17,8 @@ dev = [
     "pytest",
     "python-dotenv",
     "ruff",
+    "starlette",
+    "httpx",
 ]
 
 [tool.ruff]
