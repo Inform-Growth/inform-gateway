@@ -40,3 +40,9 @@ htmlcov/
 # Telemetry — runtime SQLite database, never committed
 remote-gateway/data/
 data/
+
+# Local MCP config — contains API keys; copy .mcp.json.example to .mcp.json
+.mcp.json
+
+# Data exports
+*.csv
