@@ -97,7 +97,6 @@ Configured in `remote-gateway/.env`. The gateway reads all of these via `os.envi
 | `GITHUB_REPO` | For notes tools | `owner/repo` slug (e.g. `[[ github_org ]]/agent-notes`). |
 | `GITHUB_BRANCH` | No | Branch for notes read/write. Defaults to `main`. |
 | `NOTES_PATH` | No | Folder inside `GITHUB_REPO`. Defaults to `notes`. |
-| `OPENAI_API_KEY` | For CI/CD | Used by the QA agent in `.github/workflows/qa_agent_review.yml`. |
 
 Per-integration env vars (e.g. `HUBSPOT_PRIVATE_APP_ACCESS_TOKEN`) are referenced from `mcp_connections.json` via `${VAR_NAME}` substitution. See `mcp_connections.example.json` and the integration recipes below.
 
