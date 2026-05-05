@@ -41,12 +41,14 @@ from mcp.server.fastmcp import FastMCP  # noqa: E402
 from mcp.server.lowlevel.server import lifespan as _noop_lifespan  # noqa: E402
 from mcp.server.lowlevel.server import request_ctx as _request_ctx  # noqa: E402
 from mcp_proxy import mount_all_proxies  # noqa: E402
+from system_skills import seed_system_skills  # noqa: E402
 from telemetry import telemetry as _telemetry  # noqa: E402
 
 
 @asynccontextmanager
 async def lifespan(server: FastMCP):
     """Start upstream MCP proxy connections on startup; clean up on shutdown."""
+    seed_system_skills(_telemetry)
     proxy_tasks = await mount_all_proxies(server)
     yield
     for task in proxy_tasks:
