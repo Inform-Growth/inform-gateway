@@ -14,7 +14,7 @@
 # Python type hints (Callable[[], dict]) and JS array literals; the
 # << >> pair has zero collisions in this codebase.
 
-_jinja_env:
+_envops:
   block_start_string: "<?"
   block_end_string: "?>"
   variable_start_string: "<<"
