@@ -2,8 +2,9 @@
 Gateway Admin API — Starlette sub-app mounted at /admin.
 
 All routes require ?token=<ADMIN_TOKEN>. The token is read from the
-ADMIN_TOKEN environment variable; it defaults to "inform-admin-2026" for
-local development.
+ADMIN_TOKEN environment variable. If unset, the server falls back to a
+loudly-warned placeholder default — production deployments MUST set
+ADMIN_TOKEN to a real secret.
 
 Mount in mcp_server.py:
     from admin_api import create_admin_app
@@ -24,7 +25,7 @@ from starlette.routing import Route
 _logger = logging.getLogger(__name__)
 
 _DASHBOARD_HTML = Path(__file__).parent / "admin_dashboard.html"
-_DEFAULT_TOKEN = "inform-admin-2026"
+_DEFAULT_TOKEN = "change-me-or-set-ADMIN_TOKEN"
 
 if not os.environ.get("ADMIN_TOKEN"):
     print(
