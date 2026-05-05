@@ -8,34 +8,59 @@
 #   Pull in upstream template improvements later:
 #     cd my-agent-gateway && copier update
 #
-# NOTE: Template files use [[ ]] delimiters (not {{ }}) to avoid
-# conflicts with GitHub Actions ${{ }} syntax.
+# NOTE: Template files use << >> delimiters (not the Jinja default
+# {{ }}) to avoid conflicts with GitHub Actions ${{ }} syntax. The
+# variable delimiters were originally [[ ]] but those collide with
+# Python type hints (Callable[[], dict]) and JS array literals; the
+# << >> pair has zero collisions in this codebase.
 
 _jinja_env:
-  block_start_string: "[%"
-  block_end_string: "%]"
-  variable_start_string: "[["
-  variable_end_string: "]]"
-  comment_start_string: "[#"
-  comment_end_string: "#]"
+  block_start_string: "<?"
+  block_end_string: "?>"
+  variable_start_string: "<<"
+  variable_end_string: ">>"
+  comment_start_string: "<#"
+  comment_end_string: "#>"
 
-questions:
-  project_name:
-    type: str
-    help: "Human-readable name for your gateway (e.g. 'Acme Agent Gateway')"
-    default: My Agent Gateway
+# Template every file in-place rather than only .jinja-suffixed files.
+# Combined with the << >> delimiter override above, files like
+# pyproject.toml and admin_api.py can carry placeholders directly.
+_templates_suffix: ""
 
-  project_slug:
-    type: str
-    help: "URL/package-safe identifier (e.g. 'acme-agent-gateway')"
-    default: "{{ project_name | lower | replace(' ', '-') }}"
+# Exclude this config from output (it lives in the template repo, not
+# scaffolded copies) and skip files that would otherwise need
+# templating but contain no placeholders.
+_exclude:
+  - "copier.yml"
+  - "docs/superpowers/plans/2026-05-05-template-branch-prep.md"
+  - "remote-gateway/data/"
+  - "**/__pycache__"
+  - "*.pyc"
+  - ".pytest_cache"
+  - ".ruff_cache"
 
-  gateway_url:
-    type: str
-    help: "URL where your remote gateway will be deployed (e.g. 'https://gateway.acme.com')"
-    default: https://your-gateway.example.com
+project_name:
+  type: str
+  help: "Human-readable name for your gateway (e.g. 'Acme Agent Gateway')"
+  default: My Agent Gateway
 
-  github_org:
-    type: str
-    help: "Your GitHub organization or username"
-    default: your-org
+project_slug:
+  type: str
+  help: "URL/package-safe identifier (e.g. 'acme-agent-gateway')"
+  default: "{{ project_name | lower | replace(' ', '-') }}"
+
+gateway_url:
+  type: str
+  help: "URL where your remote gateway will be deployed (e.g. 'https://gateway.acme.com')"
+  default: https://your-gateway.example.com
+
+github_org:
+  type: str
+  help: "Your GitHub organization or username"
+  default: your-org
+
+admin_token:
+  type: str
+  help: "Initial admin dashboard token. Default is randomly generated at scaffold time. In production, override via the ADMIN_TOKEN env var."
+  default: "{{ '%04x' % (range(65536) | random) }}{{ '%04x' % (range(65536) | random) }}{{ '%04x' % (range(65536) | random) }}{{ '%04x' % (range(65536) | random) }}{{ '%04x' % (range(65536) | random) }}{{ '%04x' % (range(65536) | random) }}{{ '%04x' % (range(65536) | random) }}{{ '%04x' % (range(65536) | random) }}"
+  secret: true

@@ -25,12 +25,13 @@ from starlette.routing import Route
 _logger = logging.getLogger(__name__)
 
 _DASHBOARD_HTML = Path(__file__).parent / "admin_dashboard.html"
-_DEFAULT_TOKEN = "change-me-or-set-ADMIN_TOKEN"
+_DEFAULT_TOKEN = "<< admin_token >>"
 
 if not os.environ.get("ADMIN_TOKEN"):
     print(
-        "[admin] WARNING: ADMIN_TOKEN env var not set — using insecure default token."
-        " Set ADMIN_TOKEN in production.",
+        "[admin] WARNING: ADMIN_TOKEN env var not set — falling back to "
+        f"scaffold-generated default '{_DEFAULT_TOKEN}'. Use this for "
+        "first login, then set ADMIN_TOKEN to your own secret in production.",
         flush=True,
     )
 

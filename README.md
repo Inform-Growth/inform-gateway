@@ -1,4 +1,4 @@
-# [[ project_name ]]
+# << project_name >>
 
 > Distributed agent work. Governed through middleware. One source of truth.
 
@@ -28,7 +28,7 @@ This repo is a template. Scaffold a deployment with [Copier](https://copier.read
 
 ```bash
 pip install copier
-copier copy gh:[[ github_org ]]/[[ project_slug ]] ./my-gateway
+copier copy gh:<< github_org >>/<< project_slug >> ./my-gateway
 cd my-gateway
 ```
 
@@ -94,7 +94,7 @@ Configured in `remote-gateway/.env`. The gateway reads all of these via `os.envi
 | `TELEMETRY_DB_PATH` | No | SQLite path. Defaults to `data/telemetry.db`. Mount `/data` as a persistent volume on Railway/Render. |
 | `ADMIN_TOKEN` | **Production: yes** | Admin dashboard token. The `_DEFAULT_TOKEN` placeholder in `core/admin_api.py` is a loud sentinel — set this to a real secret in production. |
 | `GITHUB_TOKEN` | For notes tools | Fine-grained PAT with Contents read+write on the notes repo. |
-| `GITHUB_REPO` | For notes tools | `owner/repo` slug (e.g. `[[ github_org ]]/agent-notes`). |
+| `GITHUB_REPO` | For notes tools | `owner/repo` slug (e.g. `<< github_org >>/agent-notes`). |
 | `GITHUB_BRANCH` | No | Branch for notes read/write. Defaults to `main`. |
 | `NOTES_PATH` | No | Folder inside `GITHUB_REPO`. Defaults to `notes`. |
 
@@ -177,13 +177,13 @@ Use this when replacing a proxied MCP tool with a Python tool: disable the proxy
 The gateway is a Python FastMCP server. It runs on any host that supports Python 3.11+ — Railway, Fly.io, Render, a VPS. The shipped Dockerfile is a self-contained image with Node 20 (for stdio MCP subprocesses) and the gateway code.
 
 ```bash
-docker build -t [[ project_slug ]] .
+docker build -t << project_slug >> .
 docker run -p 8000:8000 \
   -e ADMIN_TOKEN=... \
   -e GITHUB_TOKEN=... \
   -e GITHUB_REPO=... \
   -v /opt/data:/app/data \
-  [[ project_slug ]]
+  << project_slug >>
 ```
 
 Mount a persistent volume for `data/telemetry.db` so telemetry and skills survive redeploys.
@@ -193,7 +193,7 @@ Mount a persistent volume for `data/telemetry.db` so telemetry and skills surviv
 ## Repository structure
 
 ```
-[[ project_slug ]]/
+<< project_slug >>/
 ├── remote-gateway/
 │   ├── core/
 │   │   ├── mcp_server.py         ← FastMCP server entrypoint
