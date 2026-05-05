@@ -662,6 +662,58 @@ class TelemetryStore:
         except Exception:
             return {}
 
+    def create_system_skill(
+        self,
+        org_id: str,
+        name: str,
+        description: str,
+        prompt_template: str,
+    ) -> dict | None:
+        """Insert or update a system skill (is_system=1). Idempotent.
+
+        System skills are immutable from the operator surface — skill_update
+        and skill_delete refuse to touch is_system=1 rows. This method is the
+        only write path that maintains them; it's called by the startup seeder
+        which reconciles ``remote-gateway/system_skills.json`` against the DB
+        on every boot.
+
+        Args:
+            org_id: Organization identifier.
+            name: Unique skill name within the org.
+            description: Description shown in skill_list.
+            prompt_template: Prompt string with optional {variable} placeholders.
+
+        Returns:
+            The inserted or updated skill dict, or None if telemetry is disabled.
+        """
+        if not self._enabled:
+            return None
+        now = time.time()
+        try:
+            conn = self._connect()
+            row = conn.execute(
+                "SELECT id FROM skills WHERE org_id = ? AND name = ? AND is_active = 1",
+                (org_id, name),
+            ).fetchone()
+            if row:
+                conn.execute(
+                    "UPDATE skills SET description = ?, prompt_template = ?, "
+                    "is_system = 1, updated_at = ? WHERE id = ?",
+                    (description, prompt_template, now, row["id"]),
+                )
+            else:
+                sid = secrets.token_hex(8)
+                conn.execute(
+                    "INSERT INTO skills (id, org_id, name, description, prompt_template, "
+                    "is_active, is_system, created_by, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?, ?)",
+                    (sid, org_id, name, description, prompt_template, "system", now, now),
+                )
+            conn.commit()
+            return self.get_skill(org_id, name)
+        except Exception:
+            return None
+
     def update_skill(self, org_id: str, name: str, **fields: Any) -> dict | None:
         """Update a non-system skill's fields. Returns updated row or None on failure.
 
