@@ -281,7 +281,9 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         fields = {k: v for k, v in body.items() if k in ("description", "prompt_template")}
         result = telemetry.update_skill(org_id, name, **fields)
         if result is None:
-            return JSONResponse({"error": f"skill '{name}' not found or is a system skill"}, status_code=404)
+            return JSONResponse(
+                {"error": f"skill '{name}' not found or is a system skill"}, status_code=404
+            )
         return JSONResponse(result)
 
     async def api_skills_delete(request: Request) -> Response:
@@ -291,7 +293,9 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         org_id = request.query_params.get("org_id") or _get_primary_org_id(telemetry)
         deleted = telemetry.delete_skill(org_id, name)
         if not deleted:
-            return JSONResponse({"error": f"skill '{name}' not found or is a system skill"}, status_code=404)
+            return JSONResponse(
+                {"error": f"skill '{name}' not found or is a system skill"}, status_code=404
+            )
         return JSONResponse({"deleted": name})
 
     async def api_hints_list(request: Request) -> Response:

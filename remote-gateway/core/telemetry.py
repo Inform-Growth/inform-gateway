@@ -596,7 +596,8 @@ class TelemetryStore:
         try:
             conn = self._connect()
             rows = conn.execute(
-                "SELECT id, name, description, prompt_template, is_system, created_by, created_at, updated_at "
+                "SELECT id, name, description, prompt_template, is_system, "
+                "created_by, created_at, updated_at "
                 "FROM skills WHERE org_id = ? AND is_active = 1 ORDER BY name",
                 (org_id,),
             ).fetchall()
@@ -616,7 +617,8 @@ class TelemetryStore:
         try:
             conn = self._connect()
             row = conn.execute(
-                "SELECT id, name, description, prompt_template, is_system, created_by, created_at, updated_at "
+                "SELECT id, name, description, prompt_template, is_system, "
+                "created_by, created_at, updated_at "
                 "FROM skills WHERE org_id = ? AND name = ? AND is_active = 1",
                 (org_id, name),
             ).fetchone()
@@ -955,7 +957,8 @@ class TelemetryStore:
         try:
             conn = self._connect()
             row = conn.execute(
-                "SELECT task_id, user_id, org_id, goal, steps, status, outcome, created_at, completed_at"
+                "SELECT task_id, user_id, org_id, goal, steps, status, outcome, "
+                "created_at, completed_at"
                 " FROM tasks WHERE task_id = ?",
                 (task_id,),
             ).fetchone()
@@ -995,7 +998,8 @@ class TelemetryStore:
                 return None
             now = time.time()
             conn.execute(
-                "UPDATE tasks SET status = 'complete', outcome = ?, completed_at = ? WHERE task_id = ?",
+                "UPDATE tasks SET status = 'complete', outcome = ?, completed_at = ? "
+                "WHERE task_id = ?",
                 (outcome, now, task_id),
             )
             conn.commit()
@@ -1003,7 +1007,12 @@ class TelemetryStore:
         except Exception:
             return None
 
-    def list_tasks_for_org(self, org_id: str, status: str | None = None, limit: int = 100) -> list[dict]:
+    def list_tasks_for_org(
+        self,
+        org_id: str,
+        status: str | None = None,
+        limit: int = 100,
+    ) -> list[dict]:
         """Return tasks for an org, optionally filtered by status, newest first.
 
         Args:
@@ -1018,14 +1027,16 @@ class TelemetryStore:
             conn = self._connect()
             if status:
                 rows = conn.execute(
-                    "SELECT task_id, user_id, org_id, goal, steps, status, outcome, created_at, completed_at"
+                    "SELECT task_id, user_id, org_id, goal, steps, status, outcome, "
+                "created_at, completed_at"
                     " FROM tasks WHERE org_id = ? AND status = ?"
                     " ORDER BY created_at DESC LIMIT ?",
                     (org_id, status, limit),
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT task_id, user_id, org_id, goal, steps, status, outcome, created_at, completed_at"
+                    "SELECT task_id, user_id, org_id, goal, steps, status, outcome, "
+                "created_at, completed_at"
                     " FROM tasks WHERE org_id = ?"
                     " ORDER BY created_at DESC LIMIT ?",
                     (org_id, limit),

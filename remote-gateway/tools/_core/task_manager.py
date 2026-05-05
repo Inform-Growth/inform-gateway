@@ -36,7 +36,8 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
 
         Args:
             goal: One sentence describing what you are trying to accomplish.
-            steps: Ordered list of planned tool calls or actions (e.g. ["search CRM", "enrich with Apollo"]).
+            steps: Ordered list of planned tool calls or actions
+                (e.g. ["search CRM", "enrich with Apollo"]).
 
         Returns:
             Dict with task_id, goal, steps, status, and agent_instruction.

@@ -49,10 +49,10 @@ def _load_extract_key():
     spec = importlib.util.spec_from_file_location("mcp_server_isolated", path)
     mod = types.ModuleType("mcp_server_isolated")
     mod.__file__ = str(path)
-    try:
+    import contextlib
+    with contextlib.suppress(Exception):
+        # startup side-effects may fail; we only need _AuthMiddleware
         spec.loader.exec_module(mod)  # type: ignore[union-attr]
-    except Exception:
-        pass  # startup side-effects may fail; we only need _AuthMiddleware
 
     extract_key = mod._AuthMiddleware._extract_key
 

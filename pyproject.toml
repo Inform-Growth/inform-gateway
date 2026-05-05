@@ -28,5 +28,11 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM"]
 
+[tool.ruff.lint.per-file-ignores]
+# Tests use the sys.path.insert(...) + late-import pattern to load modules
+# from remote-gateway/core/ without installing the package. E402 (module-
+# level import not at top) is intentional in this layout.
+"remote-gateway/tests/*.py" = ["E402"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

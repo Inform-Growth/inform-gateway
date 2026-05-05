@@ -56,7 +56,7 @@ def test_completed_task_does_not_count_as_active(store):
 
 
 def test_task_gate_bypassed_for_declare_intent():
-    _TASK_BYPASS = {
+    _TASK_BYPASS = {  # noqa: N806 — mirrors the constant name in mcp_server.py
         "declare_intent", "complete_task", "get_tasks",
         "setup_start", "setup_save_profile", "setup_complete",
         "health_check", "create_user", "get_operator_instructions",

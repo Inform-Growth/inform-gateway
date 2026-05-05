@@ -502,7 +502,11 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                 if fn.__name__ not in _TASK_BYPASS and sid:
                     if task_id is not None:
                         task_row = _telemetry.get_task(task_id)
-                        if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
+                        if (
+                            task_row is None
+                            or task_row["user_id"] != sid
+                            or task_row["status"] != "active"
+                        ):
                             task_id = None
                     if task_id is None:
                         return _make_gate_task_redirect(fn.__name__)
@@ -559,7 +563,11 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
             if fn.__name__ not in _TASK_BYPASS and sid:
                 if task_id is not None:
                     task_row = _telemetry.get_task(task_id)
-                    if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
+                    if (
+                        task_row is None
+                        or task_row["user_id"] != sid
+                        or task_row["status"] != "active"
+                    ):
                         task_id = None
                 if task_id is None:
                     return _make_gate_task_redirect(fn.__name__)
@@ -644,7 +652,11 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
             if tool_name not in _TASK_BYPASS and sid:
                 if task_id is not None:
                     task_row = _telemetry.get_task(task_id)
-                    if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
+                    if (
+                        task_row is None
+                        or task_row["user_id"] != sid
+                        or task_row["status"] != "active"
+                    ):
                         task_id = None
                 if task_id is None:
                     return _make_gate_task_redirect(tool_name)
@@ -698,7 +710,11 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
         if tool_name not in _TASK_BYPASS and sid:
             if task_id is not None:
                 task_row = _telemetry.get_task(task_id)
-                if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
+                if (
+                    task_row is None
+                    or task_row["user_id"] != sid
+                    or task_row["status"] != "active"
+                ):
                     task_id = None
             if task_id is None:
                 return _make_gate_task_redirect(tool_name)

@@ -46,7 +46,9 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
         """
         user_id = current_user_var.get()
         org_id = _org_id()
-        return telemetry.create_skill(org_id, name, description, prompt_template, created_by=user_id)
+        return telemetry.create_skill(
+            org_id, name, description, prompt_template, created_by=user_id
+        )
 
     @mcp.tool()
     def skill_update(

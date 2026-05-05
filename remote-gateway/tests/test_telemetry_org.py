@@ -65,7 +65,8 @@ def test_delete_skill_blocked_for_system_skills(store):
     sid = _secrets.token_hex(8)
     now = __import__("time").time()
     conn.execute(
-        "INSERT INTO skills (id, org_id, name, description, prompt_template, is_system, created_at, updated_at) "
+        "INSERT INTO skills (id, org_id, name, description, prompt_template, is_system, "
+        "created_at, updated_at) "
         "VALUES (?, 'acme', 'protected', 'system skill', 'template', 1, ?, ?)",
         (sid, now, now),
     )
