@@ -785,6 +785,7 @@ from tools._core import profile_manager as _profile_manager_tools  # noqa: E402
 from tools._core import skill_manager as _skill_manager_tools  # noqa: E402
 from tools._core import task_manager as _task_manager_tools  # noqa: E402
 
+
 class _RequestAwareUser:
     """ContextVar-compatible shim whose ``.get()`` resolves the caller per-request.
 

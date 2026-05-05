@@ -1,10 +1,14 @@
 from __future__ import annotations
+
 import sys
 from pathlib import Path
+
 import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 sys.modules.pop("telemetry", None)
 from telemetry import TelemetryStore
+
 
 @pytest.fixture()
 def store(tmp_path):
@@ -42,6 +46,7 @@ def test_update_org_profile_merges_not_replaces(store):
     assert profile["icp"] == "SaaS"
 
 import secrets as _secrets
+
 
 def test_create_skill_and_list(store):
     store.create_skill("acme", "daily_briefing", "Run morning summary", "Summarize {topic}")

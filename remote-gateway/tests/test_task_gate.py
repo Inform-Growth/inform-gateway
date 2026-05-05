@@ -1,7 +1,9 @@
 """Verify task gate logic: no active task → redirect, active task → pass."""
 from __future__ import annotations
+
 import sys
 from pathlib import Path
+
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
