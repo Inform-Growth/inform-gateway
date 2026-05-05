@@ -1,7 +1,7 @@
 {
   "mcpServers": {
-    "inform-gateway": {
-      "url": "https://your-gateway.railway.app/sse",
+    "[[ project_slug ]]": {
+      "url": "[[ gateway_url ]]/sse",
       "headers": {
         "Authorization": "Bearer ${GATEWAY_USER_API_KEY}"
       }
