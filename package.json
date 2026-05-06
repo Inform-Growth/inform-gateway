@@ -1,7 +1,13 @@
 {
-  "name": "<< project_slug >>-mcp-tools",
+  "name": "inform-gateway-mcp-tools",
   "version": "0.1.0",
   "private": true,
-  "description": "Node MCP server packages used by stdio integrations. Add per-integration packages here as needed (see remote-gateway/docs/integrations/stdio.md).",
-  "dependencies": {}
+  "description": "Vendored MCP tools for the Agent Gateway",
+  "dependencies": {
+    "attio-mcp": "latest",
+    "@modelcontextprotocol/server-github": "latest"
+  },
+  "scripts": {
+    "postinstall": "echo 'MCP tools installed successfully'"
+  }
 }

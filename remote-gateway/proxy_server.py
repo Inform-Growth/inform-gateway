@@ -8,11 +8,11 @@ running on Railway via SSE (Server-Sent Events).
 
 Usage (add to claude_desktop_config.json):
     "mcpServers": {
-        "agent-gateway": {
+        "inform-gateway": {
             "command": "python3",
             "args": ["/path/to/proxy_server.py"],
             "env": {
-                "GATEWAY_URL": "https://your-gateway.example.com",
+                "GATEWAY_URL": "https://your-gateway.railway.app",
                 "GATEWAY_API_KEY": "sk-your-key"
             }
         }

@@ -18,28 +18,21 @@ from unittest.mock import MagicMock
 
 def _load_extract_key():
     """Extract _AuthMiddleware._extract_key without triggering server startup."""
-    # Stub every heavy import mcp_server.py touches at module level.
-    # Track which modules we inject so we can remove them afterwards and avoid
-    # polluting sys.modules for other test files (e.g. test_delete_note_retry.py
-    # imports the real tools.notes; leaving a stub would break it).
+    # Stub every heavy import mcp_server.py touches at module level
     stubs = [
         "mcp", "mcp.server", "mcp.server.fastmcp",
         "mcp.server.lowlevel", "mcp.server.lowlevel.server",
         "field_registry", "mcp_proxy", "telemetry",
-        "tools", "tools.meta", "tools.notes", "tools.registry",
-        "tools._core", "tools._core.onboarding", "tools._core.profile_manager",
-        "tools._core.skill_manager", "tools._core.task_manager",
+        "tools", "tools.attio", "tools.email_tools",
+        "tools.meta", "tools.notes", "tools.registry",
     ]
-    _injected: list[str] = []
     for mod in stubs:
         if mod not in sys.modules:
             sys.modules[mod] = types.ModuleType(mod)
-            _injected.append(mod)
 
     sys.modules["telemetry"].telemetry = MagicMock()
     sys.modules["field_registry"].registry = MagicMock()
     sys.modules["mcp.server.lowlevel.server"].request_ctx = MagicMock()
-    sys.modules["mcp.server.lowlevel.server"].lifespan = MagicMock()
     fastmcp_mock = MagicMock(return_value=MagicMock())
     sys.modules["mcp.server.fastmcp"].FastMCP = fastmcp_mock
     sys.modules["mcp_proxy"].mount_all_proxies = MagicMock()
@@ -49,18 +42,11 @@ def _load_extract_key():
     spec = importlib.util.spec_from_file_location("mcp_server_isolated", path)
     mod = types.ModuleType("mcp_server_isolated")
     mod.__file__ = str(path)
-    import contextlib
-    with contextlib.suppress(Exception):
-        # startup side-effects may fail; we only need _AuthMiddleware
+    try:
         spec.loader.exec_module(mod)  # type: ignore[union-attr]
-
-    extract_key = mod._AuthMiddleware._extract_key
-
-    # Clean up injected stubs so later test files can import real modules.
-    for mod_name in _injected:
-        sys.modules.pop(mod_name, None)
-
-    return extract_key
+    except Exception:
+        pass  # startup side-effects may fail; we only need _AuthMiddleware
+    return mod._AuthMiddleware._extract_key
 
 
 _extract_key = _load_extract_key()

@@ -1,78 +1,151 @@
-# << project_name >>
+# Agent Gateway
 
 > Distributed agent work. Governed through middleware. One source of truth.
 
-A centralized MCP server that hosts curated tools and proxies upstream MCP servers behind one authenticated endpoint. Operators connect once with an API key; the gateway resolves auth, enforces per-user and global permissions, records every tool call to SQLite telemetry, and surfaces shadow notes + issue logs to a dedicated GitHub repo.
+The Agent Gateway is a centralized MCP server that bridges the gap between raw data sources (Apollo, Attio, Exa, etc.) and AI agents. It provides a unified, governed interface for all business data, ensuring that every agent in the organization has access to clean, pre-labeled, and documented fields.
 
-This repo is a template. Scaffold a deployment with [Copier](https://copier.readthedocs.io/), wire your integrations into `mcp_connections.json`, and ship.
+## Core Mandates
 
-## Why this template
-
-- **One credential surface.** Operators hold one Bearer token; vendor credentials stay server-side.
-- **Per-user + global permissions.** Disable a tool for one operator or for everyone — runtime, no restart.
-- **Telemetry by default.** Every tool call is timed, attributed, and stored in SQLite.
-- **Field registry.** YAML schemas under `remote-gateway/context/fields/` document every integration's response shape and surface drift when vendors change schemas.
-- **Hot-reloaded skills.** Reusable prompt templates live in SQLite; agents create new ones at runtime via the seeded `skill-creator` skill.
-
-## Core mandates
-
-1. **Shadow note-taking.** Every operator session is shadow-recorded to a GitHub notes repo via `write_note`. Institutional memory of what agents did and how well the gateway served them.
-2. **Proactive maintenance.** Errors, auth failures, and noisy data get logged as issues via `write_issue`.
-3. **Context efficiency.** Purposeful tools beat raw API access — fewer tokens, better responses.
+1. **Shadow Note-taking**: Every session's value is automatically captured in a dedicated GitHub "Write Notes" repository. This serves as the institutional memory of the gateway's usage and performance.
+2. **Proactive Maintenance**: Errors, auth failures, and "noisy" data are automatically logged as issues to be addressed by administrators.
+3. **Context Efficiency**: By providing purposeful tools rather than raw API access, the gateway reduces token usage and improves response quality.
 
 ---
 
-## Quickstart
+## Getting Started
 
-### Scaffold the template
+### 1. Connect to the Gateway
 
-```bash
-pip install copier
-copier copy gh:<< github_org >>/<< project_slug >> ./my-gateway
-cd my-gateway
+Add the gateway's URL to your MCP client (Claude for Work, Claude Desktop, etc.):
+
+```json
+{
+  "mcpServers": {
+    "inform-gateway": {
+      "url": "https://your-gateway.railway.app/sse",
+      "headers": {
+        "Authorization": "Bearer sk-your-api-key"
+      }
+    }
+  }
+}
 ```
 
-### Install + configure
+### 2. Initialize your Session
+
+At the start of every session, use the `/operator_init` slash command (or call the `operator_init` tool if your client does not support slash commands). This will:
+- Initialize the **Gateway Operator** persona.
+- Activate the **Shadow Note-taking** and **Issue Logging** rules.
+
+---
+
+## Features
+
+### Prompt Discovery
+The gateway provides several high-level prompts for common workflows. If your client supports slash commands, you can invoke these directly by typing `/`:
+- `/operator_init`: Set up your session context.
+- `/morning_briefing`: Get a summary of Attio deals and Apollo contacts.
+- `/weekly_pipeline_review`: Cross-reference Attio deals with Apollo activity.
+- `/research_prospect`: Deep research on a company using Exa, Attio, and Apollo.
+- `/add_prospect`: Enrich a contact in Apollo and create records in Attio.
+
+**If you don't see slash commands:** Use the `list_prompts` tool to see available templates and `get_prompt` to execute them.
+
+### Shadow Note-taking
+When you use the gateway, the agent acting on your behalf is instructed to "shadow" your work. After significant tasks, it calls `write_note` to record:
+- What you were trying to do.
+- Whether the gateway provided a "good job".
+- Specific opportunities for improvement.
+
+### Issue Logging
+If a tool fails or returns suboptimal data, the agent automatically calls `write_issue`. This ensures that technical debt and API degradations are surfaced immediately to the gateway admins.
+
+### Persistence
+All notes and issues are stored in a dedicated GitHub repository, ensuring they survive gateway redeployments and are accessible across different client sessions.
+
+---
+
+## Local Development
+
+### 1. Install dependencies
 
 ```bash
-pip install -e ".[dev]"
+pip install -e .
+pip install -e ".[dev]"   # adds pytest and ruff
+```
+
+### 2. Configure environment
+
+Copy the example env file and fill in your keys:
+
+```bash
 cp remote-gateway/.env.example remote-gateway/.env
-# Edit remote-gateway/.env — see "Environment variables" below
+# Edit remote-gateway/.env — all vars listed below are required
 ```
 
-### Run
+| Variable | Purpose |
+|---|---|
+| `GITHUB_TOKEN` | PAT with Contents read+write on the notes repo |
+| `GITHUB_REPO` | `owner/repo` for the notes repo (e.g. `Inform-Growth/inform-notes`) |
+| `ATTIO_API_KEY` | Attio API key |
+| `APOLLO_ACCESS_TOKEN` | Apollo OAuth access token |
+| `APOLLO_REFRESH_TOKEN` | Apollo OAuth refresh token |
+| `APOLLO_CLIENT_ID` | Apollo OAuth client ID |
+| `EXA_API_KEY` | Exa API key |
+| `ADMIN_TOKEN` | Admin dashboard token (optional — defaults to `inform-admin-2026` locally) |
+
+### 3. Start the server
 
 ```bash
 # Combined SSE + streamable-HTTP on port 8000 (recommended for local testing)
 MCP_TRANSPORT=combined python remote-gateway/core/mcp_server.py
+
+# Stdio only (for Claude Code / mcp CLI, no browser dashboard)
+python remote-gateway/core/mcp_server.py
 ```
 
-### Verify
+### 4. Verify it's running
 
 ```bash
 curl http://localhost:8000/health
 # → {"status": "ok", "transport": "combined"}
 ```
 
-### Open the admin dashboard
+### 5. Open the admin dashboard
 
 ```
-http://localhost:8000/admin?token=$ADMIN_TOKEN
+http://localhost:8000/admin?token=inform-admin-2026
 ```
 
-Live tool stats, registered users, per-user permissions, telemetry charts.
+The dashboard shows live tool stats, registered users, per-user permissions, and a Sankey chart of tool call flows.
 
-### Connect a client
+### 6. Connect Claude Code
 
-Copy `.mcp.json.example` → `.mcp.json` and replace `${GATEWAY_USER_API_KEY}` with a real key. Create the first key via the admin dashboard's Users tab, or:
+Add to your `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "inform-gateway": {
+      "url": "http://localhost:8000/sse",
+      "headers": {
+        "Authorization": "Bearer sk-your-api-key"
+      }
+    }
+  }
+}
+```
+
+Create an API key first via the admin dashboard → Users → Create, or run:
 
 ```bash
-curl -X POST "http://localhost:8000/admin/api/users?token=$ADMIN_TOKEN" \
+# Call the create_user tool via curl (no auth required for the first key in dev)
+curl -X POST "http://localhost:8000/admin/api/users?token=inform-admin-2026" \
   -H "Content-Type: application/json" \
   -d '{"user_id": "you@example.com"}'
 ```
 
-### Run tests
+### 7. Run tests
 
 ```bash
 pytest
@@ -81,151 +154,44 @@ ruff check .
 
 ---
 
-## Environment variables
+## Administration
 
-Configured in `remote-gateway/.env`. The gateway reads all of these via `os.environ`; nothing is hardcoded.
-
-| Variable | Required | Purpose |
-|---|---|---|
-| `MCP_SERVER_NAME` | No | Display name for the gateway. Defaults to `agent-gateway`. |
-| `MCP_SERVER_HOST` | No | SSE bind address. Defaults to `0.0.0.0`. |
-| `MCP_SERVER_PORT` | No | SSE port. Defaults to `8000`. |
-| `MCP_TRANSPORT` | No | `combined`, `sse`, `streamable-http`, or omit for stdio. |
-| `TELEMETRY_DB_PATH` | No | SQLite path. Defaults to `data/telemetry.db`. Mount `/data` as a persistent volume on Railway/Render. |
-| `ADMIN_TOKEN` | **Production: yes** | Admin dashboard token. The `_DEFAULT_TOKEN` placeholder in `core/admin_api.py` is a loud sentinel — set this to a real secret in production. |
-| `GITHUB_TOKEN` | For notes tools | Fine-grained PAT with Contents read+write on the notes repo. |
-| `GITHUB_REPO` | For notes tools | `owner/repo` slug (e.g. `<< github_org >>/agent-notes`). |
-| `GITHUB_BRANCH` | No | Branch for notes read/write. Defaults to `main`. |
-| `NOTES_PATH` | No | Folder inside `GITHUB_REPO`. Defaults to `notes`. |
-
-Per-integration env vars (e.g. `HUBSPOT_PRIVATE_APP_ACCESS_TOKEN`) are referenced from `mcp_connections.json` via `${VAR_NAME}` substitution. See `mcp_connections.example.json` and the integration recipes below.
-
----
-
-## Built-in capabilities
-
-Available via MCP tools and (where applicable) admin HTTP routes.
-
-| Tool | Description |
-|---|---|
-| `health_check` | Verify server is running. |
-| `get_tool_stats` | Per-tool call counts, error rates, latency. |
-| `get_session_usage` | Tool call sequences, per-user breakdown. |
-| `create_user` | Admin — issue an API key for a new operator. |
-| `get_operator_instructions` | Load the Gateway Operator persona. |
-| `list_prompts` / `get_prompt` | Discover and render prompt templates. |
-| `write_note` / `read_note` / `list_notes` / `delete_note` | GitHub-backed markdown notes. |
-| `write_issue` / `list_issues` | Issue tracking in the same repo. |
-| `skill_list` / `skill_create` / `skill_update` / `skill_delete` / `run_skill` | SQLite-backed reusable prompt templates. |
-| `setup_start` / `setup_save_profile` / `setup_complete` | Org onboarding flow. |
-| `profile_get` / `profile_update` | Org profile CRUD. |
-| `declare_intent` / `complete_task` / `get_tasks` | Task gate — agents declare intent before tool use; calls are attributed to a task. |
-| `check_field_drift` / `discover_fields` / `get_field_definitions` / `lookup_field` / `list_field_integrations` | Field registry queries. |
-
-### Available prompts
-
-| Prompt | Description |
-|---|---|
-| `operator_init` | Initialize the Gateway Operator persona. |
-| `qa_agent_instructions` | Instructions for QA agents reviewing tool usage. |
-| `how_to_use_prompts` | Guide for invoking prompts in your client. |
-
-For workflow-style prompts (weekly reviews, daily briefings, etc.), use SQLite-backed skills — see [Adding a custom prompt](remote-gateway/docs/custom-prompts.md). The seeded `skill-creator` skill walks an agent through designing and registering a new one.
-
----
-
-## Adding integrations
-
-Pick the recipe that matches your transport:
-
-- **stdio** (local Node/Python CLI MCP servers): [remote-gateway/docs/integrations/stdio.md](remote-gateway/docs/integrations/stdio.md). Worked example: HubSpot.
-- **SSE pass-through** (older long-lived remote MCPs): [remote-gateway/docs/integrations/sse-passthrough.md](remote-gateway/docs/integrations/sse-passthrough.md).
-- **Streamable-HTTP** (modern remote MCPs): [remote-gateway/docs/integrations/streamable-http.md](remote-gateway/docs/integrations/streamable-http.md).
-
-`remote-gateway/mcp_connections.example.json` ships one example per transport. Copy entries into `mcp_connections.json` to enable.
-
-## Adding tools and prompts
-
-- **Custom Python tool**: [remote-gateway/docs/custom-tools.md](remote-gateway/docs/custom-tools.md). Module under `remote-gateway/tools/`, `register(mcp)` function, wired from `core/mcp_server.py`. Telemetry, gates, and task-id wrapping are auto-applied via `_tracked_mcp_tool`.
-- **Custom prompt or skill**: [remote-gateway/docs/custom-prompts.md](remote-gateway/docs/custom-prompts.md). Static prompts via `@mcp.prompt()`; skills via `skill_create` (runtime) or `system_skills.json` (deploy-time seed).
-
----
-
-## Permissions
-
-### Per-user
-
-Per-user tool permissions live in the `tool_permissions` SQLite table. The admin dashboard's Users tab toggles them at runtime; the gateway's `_AuthMiddleware` enforces them on every call and reflects them in `tools/list`.
-
-### Global toggle
-
-Disable a tool for *all* users at runtime — no restart:
-
-```
-PUT /admin/api/permissions/*/<tool_name>
-Body: {"enabled": false}
-```
-
-`user_id = "*"` is the global sentinel. Globally disabled tools are hidden from `tools/list` and blocked at call time. View all toggles via `GET /admin/api/permissions/*`.
-
-Use this when replacing a proxied MCP tool with a Python tool: disable the proxy route globally, register the Python replacement via `@mcp.tool()`, and the swap is live.
-
----
-
-## Deployment
-
-The gateway is a Python FastMCP server. It runs on any host that supports Python 3.11+ — Railway, Fly.io, Render, a VPS. The shipped Dockerfile is a self-contained image with Node 20 (for stdio MCP subprocesses) and the gateway code.
+### Deployment
+The gateway is a Python FastMCP server. It can be deployed to any host supporting Python (Railway, Fly.io, VPS).
 
 ```bash
-docker build -t << project_slug >> .
-docker run -p 8000:8000 \
-  -e ADMIN_TOKEN=... \
-  -e GITHUB_TOKEN=... \
-  -e GITHUB_REPO=... \
-  -v /opt/data:/app/data \
-  << project_slug >>
+# Set required env vars (see local dev table above)
+export GITHUB_TOKEN=...
+export GITHUB_REPO=...
+export MCP_TRANSPORT=combined
+
+# Run the server
+python remote-gateway/core/mcp_server.py
 ```
 
-Mount a persistent volume for `data/telemetry.db` so telemetry and skills survive redeploys.
+### Tool Promotion
+New tools are added to `remote-gateway/tools/` and registered in `remote-gateway/core/mcp_server.py`. Each tool should wrap its response with `validated("integration", result)` to ensure field consistency.
 
 ---
 
-## Repository structure
+## Repository Structure
 
 ```
-<< project_slug >>/
+inform-gateway/
 ├── remote-gateway/
 │   ├── core/
-│   │   ├── mcp_server.py         ← FastMCP server entrypoint
-│   │   ├── mcp_proxy.py          ← Upstream MCP proxy (stdio / sse / http)
-│   │   ├── admin_api.py          ← Admin HTTP routes
-│   │   ├── system_skills.py      ← System skill seeder
-│   │   ├── telemetry.py          ← SQLite store
-│   │   └── field_registry.py     ← YAML field schema loader
+│   │   ├── mcp_server.py         ← Central FastMCP server
+│   │   ├── field_registry.py     ← Field definition loader
+│   │   └── mcp_proxy.py          ← Upstream MCP proxy logic
 │   ├── tools/
-│   │   ├── meta.py               ← health_check, stats, user mgmt
-│   │   ├── notes.py              ← GitHub-backed notes/issues
-│   │   ├── registry.py           ← Field registry query tools
-│   │   └── _core/                ← Onboarding, profile, skills, tasks
-│   ├── docs/
-│   │   ├── integrations/         ← Per-transport recipes
-│   │   ├── custom-tools.md
-│   │   └── custom-prompts.md
-│   ├── prompts/
-│   │   ├── init.md               ← Gateway Operator persona
-│   │   └── qa_agent_instructions.md
-│   ├── context/fields/           ← YAML field schemas (none ship by default)
-│   ├── tests/                    ← pytest suite
-│   ├── mcp_connections.json      ← Active proxy configs (empty by default)
-│   ├── mcp_connections.example.json  ← One example per transport
-│   ├── system_skills.json        ← Seed file for is_system=1 skills
-│   └── .env.example
-├── AGENTS.md                     ← Top-level guide for agents
-├── CLAUDE.md                     ← Claude Code dev guidance
-├── .mcp.json.example             ← Client connection template
-├── copier.yml                    ← Template scaffolding config
-├── Dockerfile
-└── pyproject.toml
+│   │   ├── attio.py              ← Attio-specific tools
+│   │   ├── notes.py              ← GitHub-backed notes/issues tools
+│   │   └── meta.py               ← Health check and init tools
+│   └── prompts/
+│       └── init.md               ← The "Gateway Operator" system prompt
+├── .github/
+│   └── workflows/                ← CI/CD and automated QA
+└── README.md
 ```
 
 ## License

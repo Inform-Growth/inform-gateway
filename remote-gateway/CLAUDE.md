@@ -31,18 +31,19 @@ MCP_TRANSPORT=sse python remote-gateway/core/mcp_server.py
 
 | Variable | Required | Description |
 |---|---|---|
-| `MCP_SERVER_NAME` | No | Gateway display name (e.g., `agent-gateway`) |
-| `MCP_TRANSPORT` | No | `combined`, `sse`, `streamable-http`, or omit for stdio |
+| `MCP_SERVER_NAME` | No | Gateway display name (e.g., `inform-gateway`) |
+| `MCP_TRANSPORT` | No | `sse` for remote deployment, omit for stdio |
 | `MCP_SERVER_HOST` | No | SSE bind address (default: `0.0.0.0`) |
 | `MCP_SERVER_PORT` | No | SSE port (default: `8000`) |
 | `TELEMETRY_DB_PATH` | No | Path to SQLite telemetry file (default: `data/telemetry.db`) |
-| `ADMIN_TOKEN` | Production: yes | Admin dashboard token. Default in `core/admin_api.py` is a loud sentinel; set to a real secret in production. |
-| `GITHUB_TOKEN` | For notes tools | PAT with Contents read+write on the notes repo |
-| `GITHUB_REPO` | For notes tools | `owner/repo` slug for the notes repo |
+| `GITHUB_TOKEN` | Yes | PAT with Contents read+write on the notes repo |
+| `GITHUB_REPO` | Yes | `owner/repo` slug for the notes repo |
 | `GITHUB_BRANCH` | No | Branch for notes read/write (default: `main`) |
 | `NOTES_PATH` | No | Folder inside `GITHUB_REPO` to store notes (default: `notes`) |
-
-Per-integration env vars (e.g. `HUBSPOT_PRIVATE_APP_ACCESS_TOKEN`) are referenced from `mcp_connections.json` via `${VAR_NAME}` substitution. See `mcp_connections.example.json` and `docs/integrations/`.
+| `GMAIL_OAUTH_KEYS_JSON` | Gmail | Raw JSON of `gcp-oauth.keys.json` from GCP Console |
+| `GMAIL_CREDENTIALS_JSON` | Gmail | Raw JSON of `~/.gmail-mcp/credentials.json` after local auth |
+| `GMAIL_OAUTH_PATH` | Gmail | Override path to OAuth keys file (set automatically from `GMAIL_OAUTH_KEYS_JSON`) |
+| `GMAIL_CREDENTIALS_PATH` | Gmail | Override path to credentials file (set automatically from `GMAIL_CREDENTIALS_JSON`) |
 
 ---
 
@@ -58,8 +59,8 @@ Every tool call is recorded automatically via the telemetry patch in `core/mcp_s
 
 ## Field Registry
 
-Wrap structured tool responses with `validated("integration", result)` if a YAML schema exists.
-- **Validation**: Checks response against `context/fields/<integration>.yaml`. None ship by default; add per integration as needed.
+Every tool should wrap its response with `validated("integration", result)`.
+- **Validation**: Checks response against `context/fields/<integration>.yaml`.
 - **Drift Detection**: Call `check_field_drift("integration", sample_data)` to identify schema changes.
 - **Business Logic**: Definitions in YAML include `description` and `notes` to provide semantic context to agents.
 
@@ -67,11 +68,21 @@ Wrap structured tool responses with `validated("integration", result)` if a YAML
 
 ## Proxying Upstream MCPs
 
-The gateway proxies upstream MCP servers at startup, re-exposing their tools as `<integration>__<tool_name>`. Three transports supported (stdio, sse, http).
+The gateway can proxy upstream MCP servers (Apollo, Attio, etc.) at startup, re-exposing their tools as `<integration>__<tool_name>`.
 
-For the recipe per transport, see [docs/integrations/stdio.md](docs/integrations/stdio.md), [docs/integrations/sse-passthrough.md](docs/integrations/sse-passthrough.md), and [docs/integrations/streamable-http.md](docs/integrations/streamable-http.md). One example per transport ships in `mcp_connections.example.json`.
-
-To add a new Python tool (no upstream MCP available), see [docs/custom-tools.md](docs/custom-tools.md). To add a prompt or skill, see [docs/custom-prompts.md](docs/custom-prompts.md).
+Edit `mcp_connections.json`:
+```json
+{
+  "connections": {
+    "stripe": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@stripe/mcp", "--tools=all"],
+      "env": { "STRIPE_API_KEY": "${STRIPE_API_KEY}" }
+    }
+  }
+}
+```
 
 ---
 

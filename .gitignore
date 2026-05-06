@@ -18,6 +18,9 @@ env/
 .env.local
 .env.*.local
 
+# Local-only MCP config (debug / personal overrides)
+local.mcp.json
+
 # IDE
 .vscode/
 .idea/
@@ -41,8 +44,5 @@ htmlcov/
 remote-gateway/data/
 data/
 
-# Local MCP config — contains API keys; copy .mcp.json.example to .mcp.json
-.mcp.json
-
-# Data exports
-*.csv
+# Node — never commit vendored or generated dependency trees
+node_modules/

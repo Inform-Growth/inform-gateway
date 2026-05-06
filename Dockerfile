@@ -8,7 +8,7 @@ ENV PYTHONUNBUFFERED=1 \
     NODE_MAJOR=20 \
     MCP_TRANSPORT=sse \
     MCP_SERVER_HOST=0.0.0.0 \
-    PATH="/app/node_modules/.bin:${PATH}"
+    PATH="/app/node_modules/.bin:/app/remote-gateway/vendor/node_modules/.bin:${PATH}"
 
 # Set working directory
 WORKDIR /app
@@ -35,6 +35,9 @@ RUN pip install --no-cache-dir -e . && \
 
 # Copy the rest of the application
 COPY . .
+
+# Ensure the vendor directory install also runs
+RUN npm install --prefix remote-gateway/vendor attio-mcp @modelcontextprotocol/server-github
 
 # Start the gateway, mapping Railway's PORT to MCP_SERVER_PORT
 # We use python3 for maximum compatibility in the slim image

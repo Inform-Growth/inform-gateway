@@ -65,8 +65,7 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
             questions = [
                 "What is your organization's name?",
                 "Who are your ideal customers? (industry, company size, job title)",
-                "What tone should the AI use in communications? "
-                "(e.g. professional, friendly, direct)",
+                "What tone should the AI use in communications? (e.g. professional, friendly, direct)",
                 "Any words or phrases the AI should always avoid or always prefer?",
             ]
         return {
@@ -86,8 +85,7 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
                 display_name (str): Organization name — also sets the org_id slug.
                 tone (str): Communication style, e.g. "professional and direct".
                 icp (str): Ideal customer profile, e.g. "RevOps leaders at mid-market SaaS".
-                vocab_rules (str): Words/phrases to avoid or prefer,
-                    e.g. "avoid: leverage, synergies".
+                vocab_rules (str): Words/phrases to avoid or prefer, e.g. "avoid: leverage, synergies".
 
         Bypasses the init gate.
         """

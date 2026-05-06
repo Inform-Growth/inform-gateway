@@ -41,14 +41,12 @@ from mcp.server.fastmcp import FastMCP  # noqa: E402
 from mcp.server.lowlevel.server import lifespan as _noop_lifespan  # noqa: E402
 from mcp.server.lowlevel.server import request_ctx as _request_ctx  # noqa: E402
 from mcp_proxy import mount_all_proxies  # noqa: E402
-from system_skills import seed_system_skills  # noqa: E402
 from telemetry import telemetry as _telemetry  # noqa: E402
 
 
 @asynccontextmanager
 async def lifespan(server: FastMCP):
     """Start upstream MCP proxy connections on startup; clean up on shutdown."""
-    seed_system_skills(_telemetry)
     proxy_tasks = await mount_all_proxies(server)
     yield
     for task in proxy_tasks:
@@ -328,7 +326,7 @@ async def _send_http_unauthorized(send: Any) -> None:
             "status": 401,
             "headers": [
                 (b"content-type", b"application/json"),
-                (b"www-authenticate", b'Bearer realm="agent-gateway"'),
+                (b"www-authenticate", b'Bearer realm="inform-gateway"'),
                 (b"content-length", str(len(_UNAUTHORIZED_BODY)).encode()),
             ],
         }
@@ -502,11 +500,7 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                 if fn.__name__ not in _TASK_BYPASS and sid:
                     if task_id is not None:
                         task_row = _telemetry.get_task(task_id)
-                        if (
-                            task_row is None
-                            or task_row["user_id"] != sid
-                            or task_row["status"] != "active"
-                        ):
+                        if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
                             task_id = None
                     if task_id is None:
                         return _make_gate_task_redirect(fn.__name__)
@@ -563,11 +557,7 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
             if fn.__name__ not in _TASK_BYPASS and sid:
                 if task_id is not None:
                     task_row = _telemetry.get_task(task_id)
-                    if (
-                        task_row is None
-                        or task_row["user_id"] != sid
-                        or task_row["status"] != "active"
-                    ):
+                    if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
                         task_id = None
                 if task_id is None:
                     return _make_gate_task_redirect(fn.__name__)
@@ -652,11 +642,7 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
             if tool_name not in _TASK_BYPASS and sid:
                 if task_id is not None:
                     task_row = _telemetry.get_task(task_id)
-                    if (
-                        task_row is None
-                        or task_row["user_id"] != sid
-                        or task_row["status"] != "active"
-                    ):
+                    if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
                         task_id = None
                 if task_id is None:
                     return _make_gate_task_redirect(tool_name)
@@ -710,11 +696,7 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
         if tool_name not in _TASK_BYPASS and sid:
             if task_id is not None:
                 task_row = _telemetry.get_task(task_id)
-                if (
-                    task_row is None
-                    or task_row["user_id"] != sid
-                    or task_row["status"] != "active"
-                ):
+                if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
                     task_id = None
             if task_id is None:
                 return _make_gate_task_redirect(tool_name)
@@ -800,7 +782,6 @@ from tools._core import onboarding as _onboarding_tools  # noqa: E402
 from tools._core import profile_manager as _profile_manager_tools  # noqa: E402
 from tools._core import skill_manager as _skill_manager_tools  # noqa: E402
 from tools._core import task_manager as _task_manager_tools  # noqa: E402
-
 
 class _RequestAwareUser:
     """ContextVar-compatible shim whose ``.get()`` resolves the caller per-request.

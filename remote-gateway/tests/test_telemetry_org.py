@@ -1,14 +1,10 @@
 from __future__ import annotations
-
 import sys
 from pathlib import Path
-
 import pytest
-
 sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 sys.modules.pop("telemetry", None)
 from telemetry import TelemetryStore
-
 
 @pytest.fixture()
 def store(tmp_path):
@@ -47,7 +43,6 @@ def test_update_org_profile_merges_not_replaces(store):
 
 import secrets as _secrets
 
-
 def test_create_skill_and_list(store):
     store.create_skill("acme", "daily_briefing", "Run morning summary", "Summarize {topic}")
     skills = store.list_skills("acme")
@@ -65,8 +60,7 @@ def test_delete_skill_blocked_for_system_skills(store):
     sid = _secrets.token_hex(8)
     now = __import__("time").time()
     conn.execute(
-        "INSERT INTO skills (id, org_id, name, description, prompt_template, is_system, "
-        "created_at, updated_at) "
+        "INSERT INTO skills (id, org_id, name, description, prompt_template, is_system, created_at, updated_at) "
         "VALUES (?, 'acme', 'protected', 'system skill', 'template', 1, ?, ?)",
         (sid, now, now),
     )

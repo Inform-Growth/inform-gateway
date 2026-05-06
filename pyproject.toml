@@ -1,7 +1,7 @@
 [project]
-name = "<< project_slug >>"
+name = "inform-gateway"
 version = "0.1.0"
-description = "Agent gateway — centralized MCP server with governed proxied integrations and shadow note-taking"
+description = "Agentic GitOps monorepo: local R&D sandbox + centralized MCP gateway"
 requires-python = ">=3.11"
 dependencies = [
     "mcp[cli]",
@@ -17,17 +17,7 @@ dev = [
     "pytest",
     "python-dotenv",
     "ruff",
-    "starlette",
-    "httpx",
 ]
-
-[tool.setuptools]
-# The gateway runs as scripts (python remote-gateway/core/mcp_server.py),
-# not as an installed package. pyproject.toml exists for dev deps + tooling.
-# Empty py-modules avoids setuptools' flat-layout auto-discovery, which
-# otherwise trips on the root-level utility scripts (debug_mcp.py,
-# extract_mcp_tokens.py).
-py-modules = []
 
 [tool.ruff]
 target-version = "py314"
@@ -35,12 +25,6 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM"]
-
-[tool.ruff.lint.per-file-ignores]
-# Tests use the sys.path.insert(...) + late-import pattern to load modules
-# from remote-gateway/core/ without installing the package. E402 (module-
-# level import not at top) is intentional in this layout.
-"remote-gateway/tests/*.py" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

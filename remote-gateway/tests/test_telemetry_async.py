@@ -79,18 +79,19 @@ def _import_mcp_server():
     mod_tel.telemetry = mock_tel
     sys.modules["telemetry"] = mod_tel
 
-    # Stub tools sub-modules — track which ones we inject so we can clean up
-    # afterwards. Leaving fake stubs in sys.modules would corrupt other test
-    # modules that later import the real tools package.
-    _injected: list[str] = []
-    for mod_name in ("tools", "tools.meta", "tools.notes", "tools.registry",
-                     "tools._core", "tools._core.onboarding", "tools._core.skill_manager",
-                     "tools._core.profile_manager", "tools._core.task_manager"):
+    # Stub tools sub-modules — only inject names that aren't already real packages
+    _tools_stubs = (
+        "tools", "tools.meta", "tools.notes", "tools.registry",
+        "tools._core", "tools._core.onboarding",
+        "tools._core.skill_manager", "tools._core.profile_manager",
+        "tools._core.task_manager",
+    )
+    _pre_existing_tools = set(sys.modules.keys()) & set(_tools_stubs)
+    for mod_name in _tools_stubs:
         if mod_name not in sys.modules:
             m = types.ModuleType(mod_name)
             m.register = MagicMock()  # type: ignore[attr-defined]
             sys.modules[mod_name] = m
-            _injected.append(mod_name)
         elif not hasattr(sys.modules[mod_name], "register"):
             sys.modules[mod_name].register = MagicMock()
 
@@ -100,10 +101,10 @@ def _import_mcp_server():
     module.__file__ = str(path)
     spec.loader.exec_module(module)  # type: ignore[union-attr]
 
-    # Remove only the modules we injected so real imports in later test files
-    # are not shadowed by our stubs.
-    for mod_name in _injected:
-        sys.modules.pop(mod_name, None)
+    # Clean up tools stubs so other tests can import the real tools package.
+    for mod_name in _tools_stubs:
+        if mod_name not in _pre_existing_tools:
+            sys.modules.pop(mod_name, None)
 
     return module, recorded
 
@@ -205,9 +206,10 @@ def test_error_message_captured_on_failure():
 
     tracked = _server._tracked_mcp_tool()(broken_tool)
 
-    import contextlib
-    with contextlib.suppress(ValueError):
+    try:
         asyncio.run(tracked(x=-1))
+    except ValueError:
+        pass
 
     assert len(_recorded) == 1
     call = _recorded[0]

@@ -690,11 +690,7 @@ async def _run_streamable_http_proxy(
         ready.set()
 
     except Exception as exc:  # noqa: BLE001
-        if isinstance(exc, BaseExceptionGroup):
-            causes = "; ".join(repr(e) for e in exc.exceptions)
-            print(f"  [proxy] '{name}' failed to connect: {causes}")
-        else:
-            print(f"  [proxy] '{name}' failed to connect: {exc}")
+        print(f"  [proxy] '{name}' failed to connect: {exc}")
         ready.set()
         return
 

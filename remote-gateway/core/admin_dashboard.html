@@ -604,7 +604,6 @@
     <div class="charts-row">
       <div class="chart-box">
         <div class="chart-title">Tool Flow Patterns</div>
-        <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.5rem;">Each band shows a tool-to-tool transition sequence in agent sessions. Wider bands = more frequent sequences.</p>
         <div id="sankey-container"></div>
       </div>
       <div class="chart-box">
@@ -622,7 +621,6 @@
     <!-- Tool Health Table -->
     <div class="section-box">
       <div class="section-title">Tool Health</div>
-      <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.75rem;">Click any column header to sort. High Error Rate flags tools with ≥5% errors over ≥10 calls. Click any row to open the full log drawer for that tool.</p>
       <table id="health-table">
         <thead>
           <tr>
@@ -649,7 +647,6 @@
       <!-- Left: Users panel -->
       <div class="section-box">
         <div class="section-title">Users</div>
-        <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.75rem;">Each operator and agent gets its own API key. Copy the key immediately after creation — it won't be shown again.</p>
         <div id="users-table-wrap">
           <table id="users-table">
             <thead>
@@ -678,7 +675,6 @@
       <!-- Right: Permissions panel -->
       <div class="section-box">
         <div class="section-title">Permissions</div>
-        <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.75rem;">Enable or disable individual tools for the selected user. Disabling a tool hides it from their <code>tools/list</code> and blocks calls at runtime.</p>
         <div id="perms-placeholder">Select a user to manage permissions.</div>
         <div id="perms-content" style="display:none;">
           <div id="perms-user-header"></div>
@@ -700,7 +696,6 @@
   <div class="view" id="view-tools">
     <div class="section-box">
       <div class="section-title">Registered Tools</div>
-      <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.75rem;">All tools registered to this gateway, including proxied integrations. Use the Global toggle to disable a tool for every user at once — no restart required.</p>
       <table id="tools-table">
         <thead>
           <tr>
@@ -726,7 +721,6 @@
   <div class="view" id="view-logs">
     <div class="section-box">
       <div class="section-title">Raw Tool Logs</div>
-      <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.75rem;">Every tool call logged in real time. Click any row to inspect the full request and response. Use filters to isolate errors or activity from a specific user.</p>
       <div style="display:flex;gap:0.6rem;margin-bottom:1rem;flex-wrap:wrap;">
         <input type="text" id="logs-filter-tool" placeholder="Filter by tool…"
           style="padding:0.35rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;flex:1;min-width:160px;"
@@ -774,7 +768,6 @@
       <!-- Left: Task list -->
       <div class="section-box">
         <div class="section-title">Tasks</div>
-        <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.75rem;">Tasks are declared by agents at session start via <code>declare_intent</code>. Each represents one user goal. Click a task to see every tool call made while working toward it.</p>
         <div style="margin-bottom:0.75rem;">
           <select id="tasks-filter-status"
             style="padding:0.35rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-size:0.82rem;"
@@ -837,18 +830,15 @@
       </div>
       <div style="margin-bottom:1rem;">
         <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Tone</label>
-        <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:0.3rem;">How agents should communicate in outputs and drafted messages.</p>
         <input id="profile-tone" type="text" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;" placeholder="professional, concise">
       </div>
       <div style="margin-bottom:1rem;">
         <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">ICP</label>
-        <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:0.3rem;">Ideal Customer Profile. Agents use this to filter and prioritize prospects.</p>
-        <input id="profile-icp" type="text" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;" placeholder="B2B SaaS, 10–200 employees, US-based">
+        <input id="profile-icp" type="text" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;" placeholder="B2B SaaS, 10-200 employees">
       </div>
       <div style="margin-bottom:1rem;">
         <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Vocab Rules</label>
-        <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:0.3rem;">Terminology rules applied to all agent output.</p>
-        <textarea id="profile-vocab_rules" rows="3" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;" placeholder="Say 'prospect' not 'lead'. Use first name only in emails."></textarea>
+        <textarea id="profile-vocab_rules" rows="3" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;" placeholder="Always say 'prospect' not 'lead'..."></textarea>
       </div>
       <div style="display:flex;align-items:center;gap:0.75rem;">
         <button type="submit" class="btn btn-green">Save Profile</button>
@@ -864,7 +854,6 @@
         <div class="section-title" style="margin-bottom:0;">Skills</div>
         <button id="skill-new-btn" class="btn btn-green">+ New Skill</button>
       </div>
-      <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.75rem;">Skills are reusable prompt templates agents can invoke via <code>run_skill</code>. Use them for recurring workflows like morning briefings or prospect research.</p>
       <div id="skills-table-wrap"></div>
     </div>
 
@@ -882,7 +871,7 @@
         </div>
         <div style="margin-bottom:0.75rem;">
           <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Prompt Template</label>
-          <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.3rem;">Use <code>{variable}</code> for runtime inputs. Example: <code>Research {company} and draft a 3-bullet outreach for {contact_name}.</code></p>
+          <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.3rem;">Use {variable} for placeholders filled by run_skill.</p>
           <textarea id="skill-modal-template" rows="5" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;"></textarea>
         </div>
         <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1rem;">
@@ -900,10 +889,7 @@
         <div class="section-title" style="margin-bottom:0;">Tool Hints</div>
         <button id="hint-new-btn" class="btn btn-green">+ Add Hint</button>
       </div>
-      <div style="background:var(--cream-dark);border-left:3px solid var(--green-mid);padding:0.75rem 1rem;margin-bottom:1rem;font-size:0.82rem;line-height:1.6;">
-        <strong style="display:block;margin-bottom:0.3rem;">What are Tool Hints?</strong>
-        When an agent calls a tool through the gateway, the response is automatically wrapped with a <code>meta</code> block containing your hint. The agent reads this on every call — like a sticky note attached to each tool response. Use hints to correct misinterpretations, enforce call discipline, and tag data sensitivity, without touching any code.
-      </div>
+      <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:1rem;">Hints are injected into tool responses as <code>meta</code> fields to guide interpretation.</p>
       <div id="hints-table-wrap"></div>
     </div>
 
@@ -916,13 +902,11 @@
         </div>
         <div style="margin-bottom:0.75rem;">
           <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Interpretation Hint</label>
-          <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.3rem;">How should the agent read this data?</p>
-          <textarea id="hint-modal-hint" rows="3" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;" placeholder="score > 80 = high priority. Ignore 'seniority' field — unreliable for VP-level titles."></textarea>
+          <textarea id="hint-modal-hint" rows="3" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;"></textarea>
         </div>
         <div style="margin-bottom:0.75rem;">
           <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Usage Rules</label>
-          <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.3rem;">When and how should this tool be called?</p>
-          <textarea id="hint-modal-rules" rows="3" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;" placeholder="Always pass company domain when searching by name. Never call more than once per person in a session."></textarea>
+          <textarea id="hint-modal-rules" rows="3" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);background:var(--cream);font-family:'Courier New',monospace;font-size:0.82rem;"></textarea>
         </div>
         <div style="margin-bottom:0.75rem;">
           <label style="display:block;font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">Data Sensitivity</label>
@@ -931,7 +915,6 @@
             <option value="internal" selected>internal</option>
             <option value="confidential">confidential</option>
           </select>
-          <p style="font-size:0.75rem;color:var(--text-muted);margin-top:0.3rem;"><strong>public</strong> = can be shared freely · <strong>internal</strong> = do not surface in external-facing outputs · <strong>confidential</strong> = treat like PII; do not log or quote directly</p>
         </div>
         <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1rem;">
           <button id="hint-modal-cancel" class="btn" style="background:var(--cream-dark);color:var(--text);">Cancel</button>

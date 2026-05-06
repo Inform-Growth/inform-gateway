@@ -2,9 +2,8 @@
 Gateway Admin API — Starlette sub-app mounted at /admin.
 
 All routes require ?token=<ADMIN_TOKEN>. The token is read from the
-ADMIN_TOKEN environment variable. If unset, the server falls back to a
-loudly-warned placeholder default — production deployments MUST set
-ADMIN_TOKEN to a real secret.
+ADMIN_TOKEN environment variable; it defaults to "inform-admin-2026" for
+local development.
 
 Mount in mcp_server.py:
     from admin_api import create_admin_app
@@ -25,13 +24,12 @@ from starlette.routing import Route
 _logger = logging.getLogger(__name__)
 
 _DASHBOARD_HTML = Path(__file__).parent / "admin_dashboard.html"
-_DEFAULT_TOKEN = "<< admin_token >>"
+_DEFAULT_TOKEN = "inform-admin-2026"
 
 if not os.environ.get("ADMIN_TOKEN"):
     print(
-        "[admin] WARNING: ADMIN_TOKEN env var not set — falling back to "
-        f"scaffold-generated default '{_DEFAULT_TOKEN}'. Use this for "
-        "first login, then set ADMIN_TOKEN to your own secret in production.",
+        "[admin] WARNING: ADMIN_TOKEN env var not set — using insecure default token."
+        " Set ADMIN_TOKEN in production.",
         flush=True,
     )
 
@@ -281,9 +279,7 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         fields = {k: v for k, v in body.items() if k in ("description", "prompt_template")}
         result = telemetry.update_skill(org_id, name, **fields)
         if result is None:
-            return JSONResponse(
-                {"error": f"skill '{name}' not found or is a system skill"}, status_code=404
-            )
+            return JSONResponse({"error": f"skill '{name}' not found or is a system skill"}, status_code=404)
         return JSONResponse(result)
 
     async def api_skills_delete(request: Request) -> Response:
@@ -293,9 +289,7 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         org_id = request.query_params.get("org_id") or _get_primary_org_id(telemetry)
         deleted = telemetry.delete_skill(org_id, name)
         if not deleted:
-            return JSONResponse(
-                {"error": f"skill '{name}' not found or is a system skill"}, status_code=404
-            )
+            return JSONResponse({"error": f"skill '{name}' not found or is a system skill"}, status_code=404)
         return JSONResponse({"deleted": name})
 
     async def api_hints_list(request: Request) -> Response:
