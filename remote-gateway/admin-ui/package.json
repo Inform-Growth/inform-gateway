@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
@@ -49,10 +51,15 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.5.0",
-    "jsdom": "^29.1.1",
+    "jsdom": "^26.1.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.2",
     "vite": "^5.4.21",
     "vitest": "^4.1.5"
+  },
+  "overrides": {
+    "jsdom": "^26.1.0",
+    "html-encoding-sniffer": "^4.0.0",
+    "whatwg-url": "^14.1.1"
   }
 }
