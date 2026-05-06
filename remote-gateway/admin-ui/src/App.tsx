@@ -4,7 +4,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { queryClient } from '@/lib/queryClient';
 import { captureTokenFromUrl } from '@/lib/auth';
 import { AppShell } from '@/components/layout/AppShell';
-import DashboardPage from '@/routes/DashboardPage';
+import DashboardPage from '@/routes/dashboard/DashboardPage';
 import ToolCallsPage from '@/routes/tool-calls/ToolCallsPage';
 import TasksPage from '@/routes/tasks/TasksPage';
 import OperatorsPage from '@/routes/operators/OperatorsPage';
