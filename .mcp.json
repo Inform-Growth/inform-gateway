@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "inform-gateway": {
-      "url": "https://your-gateway.railway.app/sse",
+      "url": "http://localhost:8000/mcp",
       "headers": {
         "Authorization": "Bearer ${GATEWAY_USER_API_KEY}"
       }
