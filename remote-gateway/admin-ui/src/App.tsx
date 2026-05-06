@@ -9,8 +9,8 @@ import ToolCallsPage from '@/routes/ToolCallsPage';
 import TasksPage from '@/routes/TasksPage';
 import OperatorsPage from '@/routes/operators/OperatorsPage';
 import ToolsPage from '@/routes/tools/ToolsPage';
-import SkillsPage from '@/routes/SkillsPage';
-import ToolHintsPage from '@/routes/ToolHintsPage';
+import SkillsPage from '@/routes/skills/SkillsPage';
+import ToolHintsPage from '@/routes/tool-hints/ToolHintsPage';
 import SettingsPage from '@/routes/SettingsPage';
 import LoginPage from '@/routes/LoginPage';
 
