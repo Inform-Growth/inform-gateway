@@ -6,7 +6,7 @@ import { captureTokenFromUrl } from '@/lib/auth';
 import { AppShell } from '@/components/layout/AppShell';
 import DashboardPage from '@/routes/DashboardPage';
 import ToolCallsPage from '@/routes/tool-calls/ToolCallsPage';
-import TasksPage from '@/routes/TasksPage';
+import TasksPage from '@/routes/tasks/TasksPage';
 import OperatorsPage from '@/routes/operators/OperatorsPage';
 import ToolsPage from '@/routes/tools/ToolsPage';
 import SkillsPage from '@/routes/skills/SkillsPage';
