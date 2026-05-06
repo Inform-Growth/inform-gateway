@@ -125,3 +125,25 @@ jobs:
             });
         env:
           QA_REVIEW: ${{ steps.qa.outputs.review }}
+
+  admin-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: remote-gateway/admin-ui/package-lock.json
+      - name: Install
+        working-directory: remote-gateway/admin-ui
+        run: npm ci
+      - name: Type check
+        working-directory: remote-gateway/admin-ui
+        run: npx tsc -b
+      - name: Build
+        working-directory: remote-gateway/admin-ui
+        run: npm run build
+      - name: Test
+        working-directory: remote-gateway/admin-ui
+        run: npm test
