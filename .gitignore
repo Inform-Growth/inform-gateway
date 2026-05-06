@@ -46,3 +46,8 @@ data/
 
 # Node — never commit vendored or generated dependency trees
 node_modules/
+
+# admin-ui
+remote-gateway/admin-ui/dist/
+remote-gateway/admin-ui/.env.local
+remote-gateway/admin-ui/coverage/

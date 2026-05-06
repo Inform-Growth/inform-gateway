@@ -8,6 +8,10 @@
     "@modelcontextprotocol/server-github": "latest"
   },
   "scripts": {
-    "postinstall": "echo 'MCP tools installed successfully'"
+    "postinstall": "echo 'MCP tools installed successfully'",
+    "dev": "./dev.sh",
+    "build:ui": "cd remote-gateway/admin-ui && npm install && npm run build",
+    "lint:ui": "cd remote-gateway/admin-ui && npm run lint",
+    "test:ui": "cd remote-gateway/admin-ui && npm test"
   }
 }

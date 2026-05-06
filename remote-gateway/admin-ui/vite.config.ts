@@ -16,7 +16,16 @@ const config = defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/admin/api': { target: 'http://localhost:8000', changeOrigin: true },
+      '/admin/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        rewrite: (p: string) => {
+          const tok = process.env.VITE_ADMIN_TOKEN;
+          if (!tok) return p;
+          const sep = p.includes('?') ? '&' : '?';
+          return `${p}${sep}token=${tok}`;
+        },
+      },
       '/mcp': { target: 'http://localhost:8000', changeOrigin: true },
     },
   },
