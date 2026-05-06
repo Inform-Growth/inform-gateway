@@ -4,6 +4,11 @@ on:
   pull_request:
     paths:
       - "local-workspace/.claude/skills/**"
+      - "remote-gateway/admin-ui/**"
+      - "remote-gateway/core/admin_api.py"
+      - "remote-gateway/tests/test_admin_routes.py"
+      - "Dockerfile"
+      - ".github/workflows/qa_agent_review.yml"
 
 permissions:
   contents: read
