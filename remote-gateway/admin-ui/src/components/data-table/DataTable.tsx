@@ -30,6 +30,11 @@ type DataTableProps<T> = {
   emptyMessage?: string;
   /** Initial sort state. */
   initialSorting?: SortingState;
+  /**
+   * Free-text filter applied across all columns (TanStack Table's
+   * `globalFilter`). Owned by the parent so filter UI can live anywhere.
+   */
+  globalFilter?: string;
 };
 
 export function DataTable<T>({
@@ -41,12 +46,13 @@ export function DataTable<T>({
   pageSize = 25,
   emptyMessage = 'No results.',
   initialSorting = [],
+  globalFilter,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>(initialSorting);
   const table = useReactTable({
     data,
     columns,
-    state: { sorting },
+    state: { sorting, globalFilter },
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),

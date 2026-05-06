@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
 import { DataTable } from '@/components/data-table/DataTable';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTools, type ToolMeta } from '@/hooks/useTools';
@@ -17,6 +18,7 @@ export function ToolsTable({ onRowClick }: { onRowClick: (tool: MergedTool) => v
   const stats = useToolStats();
   const globals = usePermissions(GLOBAL);
   const setGlobal = useSetPermission(GLOBAL);
+  const [filter, setFilter] = useState('');
 
   const merged: MergedTool[] = useMemo(() => {
     const statsByName = new Map((stats.data ?? []).map((s) => [s.name, s]));
@@ -36,7 +38,9 @@ export function ToolsTable({ onRowClick }: { onRowClick: (tool: MergedTool) => v
       header: 'Description',
       cell: (c) => {
         const v = c.getValue<string>();
-        return v ? <span className="text-sm">{v}</span> : <span className="text-muted-foreground">—</span>;
+        return v
+          ? <div className="text-sm whitespace-normal max-w-xl">{v}</div>
+          : <span className="text-muted-foreground">—</span>;
       },
     },
     { accessorKey: 'call_count', header: 'Calls',
@@ -71,14 +75,27 @@ export function ToolsTable({ onRowClick }: { onRowClick: (tool: MergedTool) => v
   if (tools.isLoading || globals.isLoading) return <Skeleton className="h-96 w-full" />;
 
   return (
-    <DataTable
-      columns={columns}
-      data={merged}
-      getRowId={(t) => t.name}
-      onRowClick={onRowClick}
-      emptyMessage="No tools registered. Configure mcp_connections.json to add proxied integrations."
-      pageSize={50}
-      initialSorting={[{ id: 'call_count', desc: true }]}
-    />
+    <div className="space-y-3">
+      <Input
+        placeholder="Filter tools by name or description…"
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        className="max-w-sm"
+      />
+      <DataTable
+        columns={columns}
+        data={merged}
+        getRowId={(t) => t.name}
+        onRowClick={onRowClick}
+        emptyMessage={
+          filter
+            ? 'No tools match the filter.'
+            : 'No tools registered. Configure mcp_connections.json to add proxied integrations.'
+        }
+        pageSize={50}
+        initialSorting={[{ id: 'call_count', desc: true }]}
+        globalFilter={filter}
+      />
+    </div>
   );
 }
