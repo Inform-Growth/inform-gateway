@@ -13,7 +13,10 @@ cleanup() {
 trap cleanup INT TERM EXIT
 
 echo "[dev.sh] starting Python gateway on :8000"
-python remote-gateway/core/mcp_server.py &
+# MCP_TRANSPORT=combined exposes SSE + streamable-http on the same TCP port.
+# Without this the server runs in stdio mode and never binds, so the Vite
+# proxy gets ECONNREFUSED on every /admin/api/* call.
+MCP_TRANSPORT="${MCP_TRANSPORT:-combined}" python remote-gateway/core/mcp_server.py &
 PY_PID=$!
 
 if [[ ! -d remote-gateway/admin-ui/node_modules ]]; then
