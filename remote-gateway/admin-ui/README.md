@@ -1,73 +1,50 @@
-# React + TypeScript + Vite
+# Gateway Admin UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite + TypeScript + Tailwind 4 + shadcn (base-ui) dashboard for the Remote Gateway.
 
-Currently, two official plugins are available:
+## Develop
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+# From repo root:
+./dev.sh
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Then open http://localhost:5173/admin. Vite proxies `/admin/api/*` to the
+Python gateway on :8000 and injects `VITE_ADMIN_TOKEN` automatically.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Build
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run build
+# Output: dist/
 ```
+
+The Python gateway serves `dist/` from `/admin/` in production.
+
+## Test
+
+```bash
+npm test
+```
+
+## Configure
+
+Copy `.env.example` to `.env.local` and adjust:
+
+```
+VITE_ADMIN_TOKEN=inform-admin-2026  # must match the Python ADMIN_TOKEN
+```
+
+## Stack
+
+- Vite 5, React 19, TypeScript 6
+- Tailwind 4 (via @tailwindcss/vite plugin, CSS-first config in `src/styles/globals.css`)
+- shadcn/ui primitives backed by `@base-ui/react`
+- TanStack Query 5 + Table 8, react-router-dom 6, react-hook-form 7, zod 3
+- Vitest 4, Testing Library 16
+
+## Spec & Plan
+
+- Spec: `../../docs/superpowers/specs/2026-05-05-admin-ui-react-port-design.md`
+- Phase 0 Plan: `../../docs/superpowers/plans/2026-05-05-admin-ui-phase-0-scaffolding.md`

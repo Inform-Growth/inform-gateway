@@ -35,6 +35,36 @@ MCP_TRANSPORT=sse python remote-gateway/core/mcp_server.py
 MCP_TRANSPORT=streamable-http python remote-gateway/core/mcp_server.py
 ```
 
+## Admin Dashboard
+
+The admin dashboard is a React + Vite + TypeScript + Tailwind 4 + shadcn (base-ui) app at
+`remote-gateway/admin-ui/`. It is built into `dist/` at Docker build time and served by
+Starlette from `/admin/` (same port as the MCP gateway).
+
+### Local development
+
+```bash
+./dev.sh
+# Python gateway on :8000, Vite dev server on :5173 (HMR)
+# Open http://localhost:5173/admin
+```
+
+The Vite dev server proxies `/admin/api/*` to the Python gateway and injects
+`VITE_ADMIN_TOKEN` (from `remote-gateway/admin-ui/.env.local`) automatically.
+
+### Building once locally
+
+```bash
+npm run build:ui
+python remote-gateway/core/mcp_server.py
+# Open http://localhost:8000/admin?token=<ADMIN_TOKEN>
+```
+
+### Legacy HTML dashboard
+
+The pre-React HTML dashboard remains at `/admin/legacy?token=<ADMIN_TOKEN>` through Phase 8
+of the migration as a safety net.
+
 ## Primary Mandate: Gateway Operator
 
 When acting as an agent in this environment, you MUST initialize your session by calling `get_operator_instructions` or using the `initialize-session` prompt. This activates your **Shadow Note-taking** and **Issue Logging** duties.
