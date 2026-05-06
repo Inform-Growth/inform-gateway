@@ -7,7 +7,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import DashboardPage from '@/routes/DashboardPage';
 import ToolCallsPage from '@/routes/ToolCallsPage';
 import TasksPage from '@/routes/TasksPage';
-import OperatorsPage from '@/routes/OperatorsPage';
+import OperatorsPage from '@/routes/operators/OperatorsPage';
 import ToolsPage from '@/routes/ToolsPage';
 import SkillsPage from '@/routes/SkillsPage';
 import ToolHintsPage from '@/routes/ToolHintsPage';
