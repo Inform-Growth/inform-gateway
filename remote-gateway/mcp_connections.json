@@ -44,13 +44,16 @@
         ]
       }
     },
-    "gmail": {
+    "google": {
+      "_comment": "Unified Google Workspace MCP (Gmail + Calendar + Drive/Docs). Replaces the old @gongrzhe gmail proxy that had Gmail SMTP line-folding issues. Uses single-user OAuth: tokens are cached at WORKSPACE_MCP_CREDENTIALS_DIR (mounted on the Railway persistent volume so they survive restarts). First-time auth flow must be run somewhere with browser access; see README.",
       "transport": "stdio",
-      "command": "npx",
-      "args": ["-y", "@gongrzhe/server-gmail-autoauth-mcp"],
+      "command": "uvx",
+      "args": ["workspace-mcp", "--tool-tier", "core"],
       "env": {
-        "GMAIL_OAUTH_PATH": "${GMAIL_OAUTH_PATH}",
-        "GMAIL_CREDENTIALS_PATH": "${GMAIL_CREDENTIALS_PATH}"
+        "GOOGLE_OAUTH_CLIENT_ID": "${GOOGLE_OAUTH_CLIENT_ID}",
+        "GOOGLE_OAUTH_CLIENT_SECRET": "${GOOGLE_OAUTH_CLIENT_SECRET}",
+        "USER_GOOGLE_EMAIL": "${USER_GOOGLE_EMAIL}",
+        "WORKSPACE_MCP_CREDENTIALS_DIR": "${WORKSPACE_MCP_CREDENTIALS_DIR}"
       }
     }
   }

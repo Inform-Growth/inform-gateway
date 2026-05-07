@@ -40,10 +40,10 @@ MCP_TRANSPORT=sse python remote-gateway/core/mcp_server.py
 | `GITHUB_REPO` | Yes | `owner/repo` slug for the notes repo |
 | `GITHUB_BRANCH` | No | Branch for notes read/write (default: `main`) |
 | `NOTES_PATH` | No | Folder inside `GITHUB_REPO` to store notes (default: `notes`) |
-| `GMAIL_OAUTH_KEYS_JSON` | Gmail | Raw JSON of `gcp-oauth.keys.json` from GCP Console |
-| `GMAIL_CREDENTIALS_JSON` | Gmail | Raw JSON of `~/.gmail-mcp/credentials.json` after local auth |
-| `GMAIL_OAUTH_PATH` | Gmail | Override path to OAuth keys file (set automatically from `GMAIL_OAUTH_KEYS_JSON`) |
-| `GMAIL_CREDENTIALS_PATH` | Gmail | Override path to credentials file (set automatically from `GMAIL_CREDENTIALS_JSON`) |
+| `GOOGLE_OAUTH_CLIENT_ID` | Google | OAuth client ID from Google Cloud Console |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Google | OAuth client secret |
+| `USER_GOOGLE_EMAIL` | Google | Account the workspace MCP authenticates as |
+| `WORKSPACE_MCP_CREDENTIALS_DIR` | Google | Persistent directory for cached OAuth tokens (e.g. `/data/google-workspace-creds`) |
 
 ---
 

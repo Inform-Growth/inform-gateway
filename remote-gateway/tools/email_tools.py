@@ -1,10 +1,10 @@
 """
 Email utility tools — HTML conversion for clean email rendering.
 
-Gmail's SMTP layer folds plain-text lines at ~78 characters regardless of
-what is sent, causing mid-sentence line breaks. normalize_email_body converts
-the draft to HTML so Gmail handles word-wrapping on the receiving end and
-never inserts hard breaks mid-sentence.
+Some Gmail-sending paths fold plain-text lines at ~78 characters mid-sentence.
+normalize_email_body converts a draft to HTML so the receiving client
+handles word-wrapping and no hard breaks land mid-sentence. The unified
+google workspace MCP (google__send_gmail_message) accepts HTML directly.
 """
 from __future__ import annotations
 
@@ -24,15 +24,15 @@ def normalize_email_body(body: str) -> dict[str, Any]:
     Single newlines within a paragraph are collapsed to a space first.
     URLs are left as-is (Gmail auto-links them in HTML mode).
 
-    Use this tool on the email draft before calling gmail__send_email.
-    Pass the returned 'body' value directly to gmail__send_email's body field.
+    Use this tool on the email draft before calling google__send_gmail_message.
+    Pass the returned 'body' value directly to that tool's body field.
 
     Args:
         body: Raw email body text with paragraphs separated by blank lines.
 
     Returns:
         Dict with 'body' key containing the HTML string, ready to pass
-        to gmail__send_email.
+        to google__send_gmail_message.
 
     Example:
         Input:  "Hey Sarah,\\n\\nYour work on RevOps tooling\\ncaught my attention."

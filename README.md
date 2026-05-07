@@ -90,6 +90,11 @@ cp remote-gateway/.env.example remote-gateway/.env
 | `ATTIO_API_KEY` | Attio API key |
 | `APOLLO_API_KEY` | Apollo API key (app.apollo.io → Settings → Integrations → API Keys) |
 | `EXA_API_KEY` | Exa API key |
+| `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth client ID (Cloud Console → APIs & Services → Credentials) |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Google OAuth client secret |
+| `USER_GOOGLE_EMAIL` | Google account the workspace MCP authenticates as |
+| `WORKSPACE_MCP_CREDENTIALS_DIR` | Path to cached OAuth tokens (e.g. `/data/google-workspace-creds` on Railway) |
+| `TELEMETRY_DB_PATH` | Path to telemetry SQLite DB (set to a persistent volume; default `data/telemetry.db` is ephemeral) |
 | `ADMIN_TOKEN` | Admin dashboard token (optional — defaults to `inform-admin-2026` locally) |
 
 ### 3. Start the server
@@ -177,6 +182,29 @@ export MCP_TRANSPORT=combined
 # Run the server
 python remote-gateway/core/mcp_server.py
 ```
+
+### Google Workspace OAuth (Gmail + Calendar + Drive/Docs)
+
+The gateway proxies a unified Google Workspace MCP via `uvx workspace-mcp`. First-time auth is browser-based and only needs to happen **once per Google account**; the cached refresh token is then reused on the server.
+
+1. **Create OAuth client in Google Cloud Console**: APIs & Services → Credentials → Create Credentials → OAuth 2.0 Client ID. Application type: Desktop app (or Web with `http://localhost:8000/oauth2callback` as redirect URI). Enable Gmail API, Calendar API, Drive API on the same project. Save the client ID and secret.
+
+2. **Run the OAuth flow locally to mint a refresh token**:
+   ```bash
+   export GOOGLE_OAUTH_CLIENT_ID=...
+   export GOOGLE_OAUTH_CLIENT_SECRET=...
+   export USER_GOOGLE_EMAIL=you@example.com
+   export WORKSPACE_MCP_CREDENTIALS_DIR=$HOME/.google_workspace_mcp/credentials
+   uvx workspace-mcp --tool-tier core
+   ```
+   Make any tool call (e.g. via Claude Code with `workspace-mcp` configured locally). The first call returns an authorization URL; open it, consent, and the server caches tokens to `WORKSPACE_MCP_CREDENTIALS_DIR`.
+
+3. **Move the cached tokens onto the Railway volume**:
+   - Mount your Railway volume at `/data` (already done if telemetry is persisting).
+   - Copy the contents of your local `~/.google_workspace_mcp/credentials/` into `/data/google-workspace-creds/` on the volume (Railway CLI `railway run` or a one-off shell into the container).
+   - Set `WORKSPACE_MCP_CREDENTIALS_DIR=/data/google-workspace-creds` in Railway env vars along with the same `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and `USER_GOOGLE_EMAIL`.
+
+4. **Redeploy.** Look for `[proxy] 'google' connected — N tool(s) registered` in startup logs. Refresh tokens auto-rotate; you should not need to repeat step 2 unless the user revokes access in their Google account settings.
 
 ### Tool Promotion
 New tools are added to `remote-gateway/tools/` and registered in `remote-gateway/core/mcp_server.py`. Each tool should wrap its response with `validated("integration", result)` to ensure field consistency.

@@ -33,6 +33,11 @@ COPY pyproject.toml package.json ./
 RUN pip install --no-cache-dir -e . && \
     npm install
 
+# Install uv (provides `uvx` — used to run the Google Workspace MCP server in
+# an isolated env without polluting the gateway's Python deps).
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
 # Copy the rest of the application
 COPY . .
 
