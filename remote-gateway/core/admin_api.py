@@ -18,12 +18,14 @@ from typing import Any
 
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, Response
-from starlette.routing import Route
+from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from starlette.routing import Mount, Route
+from starlette.staticfiles import StaticFiles
 
 _logger = logging.getLogger(__name__)
 
 _DASHBOARD_HTML = Path(__file__).parent / "admin_dashboard.html"
+DIST = Path(__file__).parent.parent / "admin-ui" / "dist"
 _DEFAULT_TOKEN = "inform-admin-2026"
 
 if not os.environ.get("ADMIN_TOKEN"):
@@ -328,8 +330,30 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         tasks = telemetry.list_tasks_for_org(org_id, status=status, limit=limit)
         return JSONResponse({"org_id": org_id, "tasks": tasks, "count": len(tasks)})
 
+    async def _serve_spa(request: Request) -> Response:
+        if not _is_authorized(request):
+            return HTMLResponse(
+                "<h1>403 Forbidden</h1><p>Invalid or missing admin token.</p>",
+                status_code=403,
+            )
+        index = DIST / "index.html"
+        if not index.exists():
+            return HTMLResponse(
+                "<h1>admin-ui not built</h1>"
+                "<p>Run <code>cd remote-gateway/admin-ui &amp;&amp; npm run build</code> "
+                "or use <code>./dev.sh</code> for development.</p>",
+                status_code=503,
+            )
+        return FileResponse(index)
+
+    asset_routes: list[Mount] = []
+    if (DIST / "assets").exists():
+        asset_routes.append(
+            Mount("/assets", app=StaticFiles(directory=DIST / "assets"), name="admin-assets")
+        )
+
     routes = [
-        Route("/", dashboard),
+        Route("/legacy", dashboard),  # OLD HTML — removed in Phase 8
         Route("/api/stats", api_stats),
         Route("/api/sessions", api_sessions),
         Route("/api/users", api_users_list, methods=["GET"]),
@@ -349,6 +373,8 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         Route("/api/tool-hints", api_hints_list, methods=["GET"]),
         Route("/api/tool-hints/{tool_name:path}", api_hints_upsert, methods=["PUT"]),
         Route("/api/tasks", api_tasks, methods=["GET"]),
+        *asset_routes,
+        Route("/{path:path}", _serve_spa),  # SPA catch-all — MUST be last
     ]
 
     return Starlette(routes=routes)

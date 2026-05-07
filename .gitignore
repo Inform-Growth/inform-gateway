@@ -18,6 +18,9 @@ env/
 .env.local
 .env.*.local
 
+# Local-only MCP config (debug / personal overrides)
+local.mcp.json
+
 # IDE
 .vscode/
 .idea/
@@ -47,3 +50,11 @@ data/
 # Data exports and one-off scripts
 *.csv
 enrich_phones.py
+
+# Node — never commit vendored or generated dependency trees
+node_modules/
+
+# admin-ui
+remote-gateway/admin-ui/dist/
+remote-gateway/admin-ui/.env.local
+remote-gateway/admin-ui/coverage/

@@ -39,6 +39,14 @@ COPY . .
 # Ensure the vendor directory install also runs
 RUN npm install --prefix remote-gateway/vendor attio-mcp @modelcontextprotocol/server-github
 
+# Build the admin-ui (React + Vite) — Node 20 is already installed above.
+COPY remote-gateway/admin-ui/package*.json /app/remote-gateway/admin-ui/
+WORKDIR /app/remote-gateway/admin-ui
+RUN npm install
+COPY remote-gateway/admin-ui /app/remote-gateway/admin-ui
+RUN npm run build
+WORKDIR /app
+
 # Start the gateway, mapping Railway's PORT to MCP_SERVER_PORT
 # We use python3 for maximum compatibility in the slim image
 CMD ["sh", "-c", "MCP_SERVER_PORT=${PORT:-8000} python3 remote-gateway/core/mcp_server.py"]

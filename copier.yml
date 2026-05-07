@@ -39,3 +39,8 @@ questions:
     type: str
     help: "Your GitHub organization or username"
     default: your-org
+
+  admin_ui_title:
+    type: str
+    help: "Title shown in the admin dashboard sidebar/topbar"
+    default: "[[ project_name ]] Admin"

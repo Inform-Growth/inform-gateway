@@ -119,6 +119,17 @@ http://localhost:8000/admin?token=inform-admin-2026
 
 The dashboard shows live tool stats, registered users, per-user permissions, and a Sankey chart of tool call flows.
 
+#### Working on the admin UI
+
+The admin UI is a React + Vite + TypeScript + Tailwind 4 + shadcn (base-ui) app at `remote-gateway/admin-ui/`. For HMR-driven local development, use `./dev.sh` from the repo root — it runs the Python gateway on :8000 and the Vite dev server on :5173 in parallel:
+
+```bash
+./dev.sh
+# Then open http://localhost:5173/admin
+```
+
+The Vite dev server proxies `/admin/api/*` to the Python gateway and injects `VITE_ADMIN_TOKEN` (from `remote-gateway/admin-ui/.env.local`) automatically. The legacy HTML dashboard remains available at `/admin/legacy?token=...` as a safety net during the React migration. See `remote-gateway/admin-ui/README.md` for build/test details.
+
 ### 6. Connect Claude Code
 
 Add to your `.mcp.json`:
