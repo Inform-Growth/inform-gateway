@@ -1,6 +1,7 @@
 {
   "mcpServers": {
-    "inform-gateway": {
+    "local-gateway": {
+      "type": "http",
       "url": "http://localhost:8000/mcp",
       "headers": {
         "Authorization": "Bearer ${GATEWAY_USER_API_KEY}"
