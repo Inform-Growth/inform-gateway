@@ -89,7 +89,7 @@ When acting as an agent in this environment, you MUST initialize your session by
     - `_core/` — onboarding (`setup_*`), profile manager (`profile_get/update`), task manager (`declare_intent`/`complete_task`/`get_tasks` — the **init gate**), skill manager (`skill_*`, `run_skill`).
   - `prompts/` — `init.md` (Gateway Operator persona) and `qa_agent_instructions.md`.
   - `context/fields/` — YAML field schemas (`_template.yaml` ships with the template; consumers add `apollo.yaml`, `attio-*.yaml`, etc.).
-  - `skills/` — Claude Code skill definitions bundled with the template (`gateway-health-check`, `mcp-builder`, `conference-contact`).
+  - `skills/` — Claude Code skill definitions bundled with the template (`gateway-health-check`, `mcp-builder`).
   - `tests/` — Pytest test suite.
   - `mcp_connections.json` — Upstream proxy definitions; **empty by default in the template** (`{"connections": {}}`). Consumers add integrations here.
 - **`.github/workflows/`** — `auto_pr.yml`, `auto_promote.yml`, `qa_agent_review.yml` drive the tool promotion pipeline.
