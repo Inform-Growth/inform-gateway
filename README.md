@@ -88,9 +88,7 @@ cp remote-gateway/.env.example remote-gateway/.env
 | `GITHUB_TOKEN` | PAT with Contents read+write on the notes repo |
 | `GITHUB_REPO` | `owner/repo` for the notes repo (e.g. `Inform-Growth/inform-notes`) |
 | `ATTIO_API_KEY` | Attio API key |
-| `APOLLO_ACCESS_TOKEN` | Apollo OAuth access token (see [Apollo credentials](#apollo-credentials) below) |
-| `APOLLO_REFRESH_TOKEN` | Apollo OAuth refresh token |
-| `APOLLO_CLIENT_ID` | Apollo OAuth client ID |
+| `APOLLO_API_KEY` | Apollo API key (app.apollo.io → Settings → Integrations → API Keys) |
 | `EXA_API_KEY` | Exa API key |
 | `ADMIN_TOKEN` | Admin dashboard token (optional — defaults to `inform-admin-2026` locally) |
 
@@ -179,30 +177,6 @@ export MCP_TRANSPORT=combined
 # Run the server
 python remote-gateway/core/mcp_server.py
 ```
-
-### Apollo Credentials
-
-The gateway proxies Apollo via `https://mcp.apollo.io/mcp` using OAuth tokens that originated from a **Claude Code local MCP connection**. Claude Code stores OAuth tokens for connected MCP servers in the macOS Keychain under `Claude Code-credentials`. The `extract_mcp_tokens.py` script at the repo root reads that keychain entry and formats the values for `.env`.
-
-**Initial setup / token refresh:**
-
-Apollo's tokens must come from **Apollo's developer portal** — not from Claude Desktop or the claude.ai web connectors.
-
-- The **claude.ai web connectors** panel (apollo.io listed there) is your personal claude.ai connection. Those tokens are managed server-side by Anthropic and are never stored on your machine — `extract_mcp_tokens.py` cannot access them.
-- The gateway needs its **own** Apollo API credentials, obtained directly from Apollo.
-
-To get gateway credentials: log in to app.apollo.io → Settings → Integrations → API, and generate an API key or OAuth client. Paste the resulting values into `.env`.
-
-**`extract_mcp_tokens.py` — what it actually covers:**
-
-This script reads from the macOS Keychain entries written by Claude Code and the Claude Desktop app for locally-configured MCP servers. It is useful for integrations connected as local MCP servers (not web connectors), such as Notion, Figma, Slack, HubSpot, ZoomInfo, and Clay, which Claude Desktop stores in `Claude Code-credentials-<hash>` keychain entries.
-
-```bash
-python extract_mcp_tokens.py        # list all locally-stored MCP tokens
-python extract_mcp_tokens.py slack --env  # extract one as .env lines
-```
-
-**If the gateway shows `'apollo' failed to connect`:** the access token has expired. Refresh it in Apollo's developer portal and update the three `APOLLO_*` values in `.env`, then restart the gateway.
 
 ### Tool Promotion
 New tools are added to `remote-gateway/tools/` and registered in `remote-gateway/core/mcp_server.py`. Each tool should wrap its response with `validated("integration", result)` to ensure field consistency.

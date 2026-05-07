@@ -95,7 +95,7 @@ When acting as an agent in this environment, you MUST initialize your session by
 - **`.github/workflows/`** — `auto_pr.yml`, `auto_promote.yml`, `qa_agent_review.yml` drive the tool promotion pipeline.
 - **`copier.yml`** — Copier template config (questions: `project_name`, `project_slug`, `gateway_url`, `github_org`).
 - **`data/`** — SQLite telemetry DB (gitignored in prod; use a mounted volume).
-- **`debug_mcp.py`**, **`extract_mcp_tokens.py`** — Root-level dev utilities.
+- **`debug_mcp.py`** — Root-level dev utility.
 
 ## Authentication
 
