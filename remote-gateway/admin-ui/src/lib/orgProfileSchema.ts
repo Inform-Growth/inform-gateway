@@ -27,12 +27,22 @@ export type OrgProfileUpdateResponse = {
   profile: OrgProfile;
 };
 
-/** Coerce an unknown server profile to a fully-populated form value. */
+/** Coerce an unknown server profile to a fully-populated form value.
+ *
+ * Server data is free-form JSON — fields may be missing, non-string, or
+ * longer than the form's max-length validators. Rather than throwing (which
+ * would make the Settings page unloadable), coerce non-strings to '' and
+ * truncate to the per-field limit. The form's submit-time schema still
+ * enforces the limits when the user saves.
+ */
 export function profileFromServer(p: Partial<OrgProfile> | null | undefined): OrgProfile {
-  return orgProfileSchema.parse({
-    display_name: p?.display_name ?? '',
-    tone:         p?.tone ?? '',
-    icp:          p?.icp ?? '',
-    vocab_rules:  p?.vocab_rules ?? '',
-  });
+  const safeStr = (v: unknown, max: number): string =>
+    typeof v === 'string' ? v.slice(0, max) : '';
+  const raw = (p ?? {}) as Record<string, unknown>;
+  return {
+    display_name: safeStr(raw.display_name, 120),
+    tone:         safeStr(raw.tone, 200),
+    icp:          safeStr(raw.icp, 200),
+    vocab_rules:  safeStr(raw.vocab_rules, 2000),
+  };
 }
