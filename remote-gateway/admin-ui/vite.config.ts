@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'node:path';
@@ -7,6 +7,9 @@ import path from 'node:path';
 // which causes a typecheck mismatch when vite versions differ. We attach
 // the test block via Object.assign to keep `defineConfig` strict-typed
 // while still being read by vitest at runtime.
+// loadEnv reads .env.local from this directory; process.env alone would
+// only see shell-exported vars and miss the local dev token.
+const env = loadEnv(process.env.NODE_ENV ?? 'development', __dirname, '');
 const config = defineConfig({
   base: '/admin/',
   plugins: [react(), tailwindcss()],
@@ -20,7 +23,7 @@ const config = defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
         rewrite: (p: string) => {
-          const tok = process.env.VITE_ADMIN_TOKEN;
+          const tok = env.VITE_ADMIN_TOKEN || process.env.VITE_ADMIN_TOKEN;
           if (!tok) return p;
           const sep = p.includes('?') ? '&' : '?';
           return `${p}${sep}token=${tok}`;
