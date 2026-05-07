@@ -201,10 +201,10 @@ def _extract_env_var_name(ref: str) -> str | None:
     """Extract the variable name from a ``${VAR_NAME}`` reference string.
 
     Args:
-        ref: A string like ``"${APOLLO_ACCESS_TOKEN}"``.
+        ref: A string like ``"${MY_API_TOKEN}"``.
 
     Returns:
-        The variable name (e.g. ``"APOLLO_ACCESS_TOKEN"``), or None if not a
+        The variable name (e.g. ``"MY_API_TOKEN"``), or None if not a
         ``${...}`` reference.
     """
     if isinstance(ref, str) and ref.startswith("${") and ref.endswith("}"):

@@ -88,9 +88,7 @@ cp remote-gateway/.env.example remote-gateway/.env
 | `GITHUB_TOKEN` | PAT with Contents read+write on the notes repo |
 | `GITHUB_REPO` | `owner/repo` for the notes repo (e.g. `Inform-Growth/inform-notes`) |
 | `ATTIO_API_KEY` | Attio API key |
-| `APOLLO_ACCESS_TOKEN` | Apollo OAuth access token |
-| `APOLLO_REFRESH_TOKEN` | Apollo OAuth refresh token |
-| `APOLLO_CLIENT_ID` | Apollo OAuth client ID |
+| `APOLLO_API_KEY` | Apollo API key (app.apollo.io → Settings → Integrations → API Keys) |
 | `EXA_API_KEY` | Exa API key |
 | `ADMIN_TOKEN` | Admin dashboard token (optional — defaults to `inform-admin-2026` locally) |
 
