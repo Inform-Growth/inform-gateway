@@ -1,0 +1,230 @@
+integration: "attio"
+object: "companies"
+source_url: "https://developers.attio.com/reference/get_v2-objects-companies-attributes"
+discovered_at: "2026-04-03"
+last_drift_check: "2026-04-03"
+
+fields:
+  record_id:
+    display_name: "Record ID"
+    description: "Unique identifier for this company record in Attio."
+    type: "id"
+    notes: "System-generated. Read-only."
+    nullable: false
+
+  name:
+    display_name: "Name"
+    description: "The company's display name."
+    type: "string"
+    notes: "Writable. Not unique — Attio deduplicates on domain instead."
+    nullable: true
+
+  domains:
+    display_name: "Domains"
+    description: "Web domains associated with this company (e.g. acme.com)."
+    type: "string"
+    notes: "Multiselect. Unique across workspace — primary deduplication key."
+    nullable: true
+
+  description:
+    display_name: "Description"
+    description: "Free-text description or notes about this company."
+    type: "string"
+    notes: "Writable."
+    nullable: true
+
+  team:
+    display_name: "Team"
+    description: "People at this company who are linked as team members."
+    type: "id"
+    notes: "Multiselect record reference → people."
+    nullable: true
+
+  categories:
+    display_name: "Categories"
+    description: "Industry or sector categories this company belongs to."
+    type: "string"
+    notes: "Multiselect enum. Options include: SAAS, Health Care, Telecommunications, etc."
+    nullable: true
+
+  primary_location:
+    display_name: "Primary Location"
+    description: "Geographic headquarters location of this company."
+    type: "string"
+    notes: "Attio location type — includes city, state, country."
+    nullable: true
+
+  logo_url:
+    display_name: "Logo URL"
+    description: "URL of the company's logo, auto-populated by Attio enrichment."
+    type: "string"
+    notes: "Read-only. Set by enrichment."
+    nullable: true
+
+  angellist:
+    display_name: "AngelList"
+    description: "AngelList company profile URL."
+    type: "string"
+    notes: "Writable."
+    nullable: true
+
+  facebook:
+    display_name: "Facebook"
+    description: "Facebook page URL for this company."
+    type: "string"
+    notes: "Writable."
+    nullable: true
+
+  instagram:
+    display_name: "Instagram"
+    description: "Instagram profile URL for this company."
+    type: "string"
+    notes: "Writable."
+    nullable: true
+
+  linkedin:
+    display_name: "LinkedIn"
+    description: "LinkedIn company page URL."
+    type: "string"
+    notes: "Writable. Often auto-populated by enrichment."
+    nullable: true
+
+  twitter:
+    display_name: "Twitter"
+    description: "Twitter/X handle or profile URL for this company."
+    type: "string"
+    notes: "Writable."
+    nullable: true
+
+  twitter_follower_count:
+    display_name: "Twitter Follower Count"
+    description: "Number of Twitter/X followers this company's account has."
+    type: "number"
+    notes: "Read-only. Auto-populated by enrichment."
+    nullable: true
+
+  estimated_arr_usd:
+    display_name: "Estimated ARR"
+    description: "Estimated annual recurring revenue band for this company."
+    type: "string"
+    notes: "Enum: $0-$1M, $1M-$10M, $10M-$50M, $50M-$100M, $100M-$250M, $250M-$500M, $500M-$1B, $1B-$10B, $10B+. Writable."
+    nullable: true
+
+  funding_raised_usd:
+    display_name: "Funding Raised"
+    description: "Total funding raised by this company in USD."
+    type: "currency_usd"
+    notes: "Writable. Currency field in USD."
+    nullable: true
+
+  foundation_date:
+    display_name: "Foundation Date"
+    description: "Date this company was founded."
+    type: "timestamp"
+    notes: "Writable. Date only (no time component)."
+    nullable: true
+
+  employee_range:
+    display_name: "Employee Range"
+    description: "Approximate headcount band for this company."
+    type: "string"
+    notes: "Enum: 1-10, 11-50, 51-250, 251-1K, 1K-5K, 5K-10K, 10K-50K, 50K-100K, 100K+. Writable."
+    nullable: true
+
+  first_calendar_interaction:
+    display_name: "First Calendar Interaction"
+    description: "Date of the first calendar event with anyone at this company."
+    type: "timestamp"
+    notes: "Read-only. Computed from connected calendar."
+    nullable: true
+
+  last_calendar_interaction:
+    display_name: "Last Calendar Interaction"
+    description: "Date of the most recent calendar event with anyone at this company."
+    type: "timestamp"
+    notes: "Read-only. Computed from connected calendar."
+    nullable: true
+
+  next_calendar_interaction:
+    display_name: "Next Calendar Interaction"
+    description: "Date of the next upcoming calendar event with anyone at this company."
+    type: "timestamp"
+    notes: "Read-only."
+    nullable: true
+
+  first_email_interaction:
+    display_name: "First Email Interaction"
+    description: "Date of the first email exchange with anyone at this company."
+    type: "timestamp"
+    notes: "Read-only. Computed from connected email."
+    nullable: true
+
+  last_email_interaction:
+    display_name: "Last Email Interaction"
+    description: "Date of the most recent email exchange with anyone at this company."
+    type: "timestamp"
+    notes: "Read-only."
+    nullable: true
+
+  first_interaction:
+    display_name: "First Interaction"
+    description: "Date of the first interaction with this company across all channels."
+    type: "timestamp"
+    notes: "Read-only. Aggregated across email and calendar."
+    nullable: true
+
+  last_interaction:
+    display_name: "Last Interaction"
+    description: "Date of the most recent interaction with this company across all channels."
+    type: "timestamp"
+    notes: "Read-only. Useful for relationship health monitoring."
+    nullable: true
+
+  next_interaction:
+    display_name: "Next Interaction"
+    description: "Date of the next scheduled interaction with this company."
+    type: "timestamp"
+    notes: "Read-only."
+    nullable: true
+
+  strongest_connection_strength:
+    display_name: "Connection Strength"
+    description: "How strong the team's relationship with this company is, based on interaction history."
+    type: "string"
+    notes: "Read-only enum: Very weak, Weak, Good, Strong, Very strong."
+    nullable: true
+
+  strongest_connection_user:
+    display_name: "Strongest Connection"
+    description: "The workspace member with the strongest relationship with this company."
+    type: "id"
+    notes: "Read-only. Actor reference."
+    nullable: true
+
+  associated_deals:
+    display_name: "Associated Deals"
+    description: "Deals linked to this company."
+    type: "id"
+    notes: "Multiselect record reference → deals."
+    nullable: true
+
+  associated_workspaces:
+    display_name: "Associated Workspaces"
+    description: "Product workspace records linked to this company."
+    type: "id"
+    notes: "Multiselect record reference → workspaces object."
+    nullable: true
+
+  created_at:
+    display_name: "Created At"
+    description: "Timestamp when this company record was created in Attio."
+    type: "timestamp"
+    notes: "Read-only. UTC."
+    nullable: false
+
+  created_by:
+    display_name: "Created By"
+    description: "The workspace member or system that created this company record."
+    type: "id"
+    notes: "Read-only. Actor reference."
+    nullable: true
