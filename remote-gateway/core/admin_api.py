@@ -226,6 +226,23 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         return JSONResponse({"ok": True, "user_id": user_id, "tool_name": tool_name,
                              "enabled": bool(body["enabled"])})
 
+    async def api_skill_permissions_get(request: Request) -> Response:
+        if not _is_authorized(request):
+            return _forbidden()
+        user_id = request.path_params["user_id"]
+        org_id = _get_primary_org_id(telemetry)
+        explicit = {
+            row["skill_name"]: row["enabled"]
+            for row in telemetry.get_skill_permissions(user_id)
+        }
+        known = {s["name"] for s in telemetry.list_skills(org_id)}
+        skill_names = sorted(known | explicit.keys())
+        permissions = [
+            {"skill_name": name, "enabled": explicit.get(name, True)}
+            for name in skill_names
+        ]
+        return JSONResponse({"user_id": user_id, "permissions": permissions})
+
     async def api_org_profile_get(request: Request) -> Response:
         if not _is_authorized(request):
             return _forbidden()
@@ -361,6 +378,7 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         Route("/api/users/{user_id}", api_users_delete, methods=["DELETE"]),
         Route("/api/permissions/{user_id}", api_permissions_get, methods=["GET"]),
         Route("/api/permissions/{user_id}/{tool_name:path}", api_permissions_set, methods=["PUT"]),
+        Route("/api/skill-permissions/{user_id}", api_skill_permissions_get, methods=["GET"]),
         Route("/api/timeline", api_timeline),
         Route("/api/tools", api_tools),
         Route("/api/logs", api_logs),

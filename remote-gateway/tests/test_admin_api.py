@@ -367,3 +367,20 @@ def test_api_tasks_returns_task_list(client, store):
     assert "tasks" in data
     assert len(data["tasks"]) >= 1
     assert data["tasks"][0]["goal"] == "Research Salesforce"
+
+
+# ---------------------------------------------------------------------------
+# Skill Permissions
+# ---------------------------------------------------------------------------
+
+def test_get_skill_permissions_returns_explicit_with_known_skills(client):
+    c, store = client
+    store.add_api_key("alice@example.com", "sk-a", org_id="acme")
+    store.create_skill("acme", "briefing", "Morning summary", "Summarize {topic}")
+    store.set_skill_permission("alice@example.com", "briefing", False)
+    resp = c.get(f"/api/skill-permissions/alice@example.com?token={TOKEN}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["user_id"] == "alice@example.com"
+    by_name = {p["skill_name"]: p["enabled"] for p in body["permissions"]}
+    assert by_name["briefing"] is False
