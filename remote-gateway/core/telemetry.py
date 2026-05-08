@@ -41,6 +41,21 @@ from typing import Any
 
 _DB_PATH = Path(os.environ.get("TELEMETRY_DB_PATH", "data/telemetry.db"))
 
+INTENT_NEVER_REQUIRED: frozenset[str] = frozenset({
+    "setup_start", "setup_save_profile", "setup_complete",
+    "health_check",
+    "declare_intent", "complete_task", "get_tasks",
+    "get_operator_instructions", "create_user",
+    "profile_get", "profile_update",
+    "list_prompts", "get_prompt",
+})
+"""Tools that are always exempt from the intent (declare_intent) gate.
+
+The admin API rejects any attempt to require intent for these tools, since
+toggling them on would lock the org out of bootstrap operations (you cannot
+declare_intent if declare_intent itself requires intent).
+"""
+
 _SCHEMA_TABLES = """
 PRAGMA journal_mode = WAL;
 
@@ -100,6 +115,13 @@ CREATE TABLE IF NOT EXISTS skill_permissions (
     skill_name TEXT    NOT NULL,
     enabled    INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY (user_id, skill_name)
+);
+
+CREATE TABLE IF NOT EXISTS tool_intent_overrides (
+    user_id         TEXT    NOT NULL,
+    tool_name       TEXT    NOT NULL,
+    requires_intent INTEGER NOT NULL,
+    PRIMARY KEY (user_id, tool_name)
 );
 
 CREATE TABLE IF NOT EXISTS tool_hints (
