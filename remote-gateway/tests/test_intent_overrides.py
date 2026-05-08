@@ -66,3 +66,17 @@ def test_set_allows_skill_management_tools(store):
     for name in ["skill_create", "skill_update", "skill_list", "run_skill"]:
         store.set_tool_intent_override("*", name, True)
         assert store.get_tool_intent_override("alice", name) is True
+
+
+def test_clear_intent_override(store):
+    store.set_tool_intent_override("alice", "search_records", True)
+    store.clear_tool_intent_override("alice", "search_records")
+    assert store.get_tool_intent_override("alice", "search_records") is None
+
+
+def test_get_tool_intent_overrides_listing(store):
+    store.set_tool_intent_override("alice", "search_records", True)
+    store.set_tool_intent_override("alice", "create_record", False)
+    rows = store.get_tool_intent_overrides("alice")
+    by_name = {r["tool_name"]: r["requires_intent"] for r in rows}
+    assert by_name == {"search_records": True, "create_record": False}

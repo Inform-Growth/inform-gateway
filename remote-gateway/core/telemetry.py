@@ -637,6 +637,51 @@ class TelemetryStore:
         except Exception:
             pass
 
+    def clear_tool_intent_override(self, user_id: str, tool_name: str) -> None:
+        """Delete an override row, restoring default behavior.
+
+        Args:
+            user_id: The user ID (or '*' for a global override) whose override to remove.
+            tool_name: The name of the tool whose override should be deleted.
+        """
+        if not self._enabled:
+            return
+        try:
+            conn = self._connect()
+            conn.execute(
+                "DELETE FROM tool_intent_overrides WHERE user_id = ? AND tool_name = ?",
+                (user_id, tool_name),
+            )
+            conn.commit()
+        except Exception:
+            pass
+
+    def get_tool_intent_overrides(self, user_id: str) -> list[dict]:
+        """Return explicit intent override rows for a user.
+
+        Args:
+            user_id: The user ID (or '*' for global overrides) to query.
+
+        Returns:
+            A list of dicts with keys ``tool_name`` and ``requires_intent``, ordered
+            by tool name. Returns an empty list when telemetry is disabled or on error.
+        """
+        if not self._enabled:
+            return []
+        try:
+            conn = self._connect()
+            rows = conn.execute(
+                "SELECT tool_name, requires_intent FROM tool_intent_overrides "
+                "WHERE user_id = ? ORDER BY tool_name",
+                (user_id,),
+            ).fetchall()
+        except Exception:
+            return []
+        return [
+            {"tool_name": row["tool_name"], "requires_intent": bool(row["requires_intent"])}
+            for row in rows
+        ]
+
     def lookup_user(self, key: str) -> str | None:
         """Return the user_id for an API key, or None if the key is invalid.
 
