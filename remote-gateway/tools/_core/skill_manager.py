@@ -101,6 +101,12 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
             name: Skill name to render.
             variables: Dict of {placeholder: value} pairs to fill into the template.
         """
+        user_id = current_user_var.get()
+        if user_id is not None and not telemetry.is_skill_enabled(user_id, name):
+            raise PermissionError(
+                f"Skill '{name}' is disabled for your account. "
+                "Contact a gateway administrator to request access."
+            )
         skill = telemetry.get_skill(_org_id(), name)
         if skill is None:
             raise ValueError(f"Skill '{name}' not found.")

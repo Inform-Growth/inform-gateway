@@ -92,3 +92,26 @@ def test_skill_list_hides_globally_disabled_skill(tools, store):
     tools["skill_create"]("briefing", "Morning summary", "Summarize {topic}")
     store.set_skill_permission("*", "briefing", False)
     assert tools["skill_list"]() == []
+
+
+def test_run_skill_blocked_when_disabled(tools, store):
+    tools["skill_create"]("briefing", "Morning summary", "Summarize {topic}")
+    store.set_skill_permission("alice@example.com", "briefing", False)
+    with pytest.raises(PermissionError) as exc_info:
+        tools["run_skill"]("briefing", {"topic": "x"})
+    assert "briefing" in str(exc_info.value)
+
+
+def test_run_skill_blocked_when_globally_disabled(tools, store):
+    tools["skill_create"]("briefing", "Morning summary", "Summarize {topic}")
+    store.set_skill_permission("*", "briefing", False)
+    with pytest.raises(PermissionError):
+        tools["run_skill"]("briefing", {"topic": "x"})
+
+
+def test_run_skill_user_override_beats_global(tools, store):
+    tools["skill_create"]("briefing", "Morning summary", "Summarize {topic}")
+    store.set_skill_permission("*", "briefing", False)
+    store.set_skill_permission("alice@example.com", "briefing", True)
+    result = tools["run_skill"]("briefing", {"topic": "x"})
+    assert result == "Summarize x"
