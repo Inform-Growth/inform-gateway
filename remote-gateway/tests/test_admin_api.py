@@ -405,3 +405,23 @@ def test_put_skill_permissions_requires_enabled_field(client):
         json={},
     )
     assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Tool Intent
+# ---------------------------------------------------------------------------
+
+def test_get_tool_intent_lists_overrides_with_locked_flag(client):
+    c, store = client
+    store.add_api_key("alice@example.com", "sk-a", org_id="acme")
+    store.set_tool_intent_override("alice@example.com", "search_records", True)
+    resp = c.get(f"/api/tool-intent/alice@example.com?token={TOKEN}")
+    assert resp.status_code == 200
+    body = resp.json()
+    by_name = {r["tool_name"]: r for r in body["overrides"]}
+    assert by_name["search_records"]["requires_intent"] is True
+    assert by_name["search_records"]["locked"] is False
+    assert by_name["search_records"]["explicit"] is True
+    # health_check is in INTENT_NEVER_REQUIRED — should appear locked
+    assert any(r["tool_name"] == "health_check" and r["locked"] is True
+               for r in body["overrides"])

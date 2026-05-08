@@ -22,6 +22,8 @@ from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Respon
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
+from telemetry import INTENT_NEVER_REQUIRED
+
 _logger = logging.getLogger(__name__)
 
 _DASHBOARD_HTML = Path(__file__).parent / "admin_dashboard.html"
@@ -258,6 +260,40 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         return JSONResponse({"ok": True, "user_id": user_id, "skill_name": skill_name,
                              "enabled": bool(body["enabled"])})
 
+    async def api_tool_intent_get(request: Request) -> Response:
+        if not _is_authorized(request):
+            return _forbidden()
+        user_id = request.path_params["user_id"]
+        explicit = {
+            row["tool_name"]: row["requires_intent"]
+            for row in telemetry.get_tool_intent_overrides(user_id)
+        }
+        tool_names = set(INTENT_NEVER_REQUIRED) | explicit.keys()
+        if list_tools_fn is not None:
+            try:
+                tools = await list_tools_fn()
+                tool_names |= {t.name for t in tools}
+            except Exception:
+                pass
+        overrides = []
+        for name in sorted(tool_names):
+            locked = name in INTENT_NEVER_REQUIRED
+            if locked:
+                requires_intent = False
+            elif name in explicit:
+                requires_intent = bool(explicit[name])
+            else:
+                # Reflect default resolution
+                from mcp_server import _tool_requires_intent
+                requires_intent = _tool_requires_intent(user_id, name)
+            overrides.append({
+                "tool_name": name,
+                "requires_intent": requires_intent,
+                "locked": locked,
+                "explicit": name in explicit,
+            })
+        return JSONResponse({"user_id": user_id, "overrides": overrides})
+
     async def api_org_profile_get(request: Request) -> Response:
         if not _is_authorized(request):
             return _forbidden()
@@ -396,6 +432,7 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         Route("/api/skill-permissions/{user_id}", api_skill_permissions_get, methods=["GET"]),
         Route("/api/skill-permissions/{user_id}/{skill_name:path}",
               api_skill_permissions_set, methods=["PUT"]),
+        Route("/api/tool-intent/{user_id}", api_tool_intent_get, methods=["GET"]),
         Route("/api/timeline", api_timeline),
         Route("/api/tools", api_tools),
         Route("/api/logs", api_logs),
