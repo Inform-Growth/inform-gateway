@@ -76,7 +76,9 @@ def _import_mcp_server():
          "response_preview": response_preview}
     )
     mock_tel.lookup_user = MagicMock(return_value=None)
+    mock_tel.get_tool_intent_override = MagicMock(return_value=None)
     mod_tel.telemetry = mock_tel
+    mod_tel.INTENT_NEVER_REQUIRED = frozenset()
     sys.modules["telemetry"] = mod_tel
 
     # Stub tools sub-modules — track which ones we inject so we can clean up

@@ -58,8 +58,10 @@ def _import_server_with_permission_mock(has_permission_return: bool):
     mock_tel.get_task = MagicMock(
         return_value={"task_id": "t1", "user_id": "alice", "status": "active"}
     )
+    mock_tel.get_tool_intent_override = MagicMock(return_value=None)
     mod_tel = types.ModuleType("telemetry")
     mod_tel.telemetry = mock_tel
+    mod_tel.INTENT_NEVER_REQUIRED = frozenset()
     sys.modules["telemetry"] = mod_tel
 
     for tool_mod in ("tools", "tools.meta", "tools.notes", "tools.registry", "tools.attio"):
