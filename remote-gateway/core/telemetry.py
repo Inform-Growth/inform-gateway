@@ -448,6 +448,68 @@ class TelemetryStore:
         else:
             self._disabled_cache.setdefault(user_id, set()).add(tool_name)
 
+    def is_skill_enabled(self, user_id: str, skill_name: str) -> bool:
+        """Return whether a user is allowed to run a skill.
+
+        Resolution: per-user row → global '*' row → default True. The user-specific
+        row beats the global toggle, mirroring how tool permissions resolve.
+
+        Fails open: if telemetry is disabled or the DB lookup raises, returns True.
+
+        Args:
+            user_id: The authenticated user's identifier.
+            skill_name: The skill name being checked.
+
+        Returns:
+            False if the skill is globally disabled or explicitly disabled for
+            this user. True otherwise (including on DB failure).
+        """
+        if not self._enabled:
+            return True
+        try:
+            conn = self._connect()
+            row = conn.execute(
+                "SELECT enabled FROM skill_permissions WHERE user_id = ? AND skill_name = ?",
+                (user_id, skill_name),
+            ).fetchone()
+            if row is not None:
+                return bool(row["enabled"])
+            if skill_name in self._disabled_skills_cache.get("*", set()):
+                return False
+            return True
+        except Exception:
+            return True
+
+    def set_skill_permission(self, user_id: str, skill_name: str, enabled: bool) -> None:
+        """Insert or update a skill permission for a user.
+
+        Use user_id='*' to set a global toggle affecting all users — the skill
+        will be blocked at call time for everyone.
+
+        Args:
+            user_id: The user to configure, or '*' for a global toggle.
+            skill_name: The skill name as registered on the gateway.
+            enabled: True to allow, False to disable.
+        """
+        if not self._enabled:
+            return
+        try:
+            conn = self._connect()
+            conn.execute(
+                "INSERT INTO skill_permissions (user_id, skill_name, enabled) VALUES (?, ?, ?)"
+                " ON CONFLICT(user_id, skill_name) DO UPDATE SET enabled = excluded.enabled",
+                (user_id, skill_name, int(enabled)),
+            )
+            conn.commit()
+        except Exception:
+            pass
+        # Keep cache consistent regardless of DB success/failure
+        if enabled:
+            if user_id in self._disabled_skills_cache:
+                self._disabled_skills_cache[user_id].discard(skill_name)
+        else:
+            self._disabled_skills_cache.setdefault(user_id, set()).add(skill_name)
+
     def lookup_user(self, key: str) -> str | None:
         """Return the user_id for an API key, or None if the key is invalid.
 
