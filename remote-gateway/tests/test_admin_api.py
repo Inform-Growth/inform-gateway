@@ -425,3 +425,34 @@ def test_get_tool_intent_lists_overrides_with_locked_flag(client):
     # health_check is in INTENT_NEVER_REQUIRED — should appear locked
     assert any(r["tool_name"] == "health_check" and r["locked"] is True
                for r in body["overrides"])
+
+
+def test_put_tool_intent_sets_override(client):
+    c, store = client
+    resp = c.put(
+        f"/api/tool-intent/alice@example.com/search_records?token={TOKEN}",
+        json={"requires_intent": True},
+    )
+    assert resp.status_code == 200
+    assert store.get_tool_intent_override("alice@example.com", "search_records") is True
+
+
+def test_put_tool_intent_rejects_locked_tool(client):
+    c, _ = client
+    resp = c.put(
+        f"/api/tool-intent/alice@example.com/declare_intent?token={TOKEN}",
+        json={"requires_intent": True},
+    )
+    assert resp.status_code == 400
+    assert "bootstrap" in resp.json()["error"].lower()
+
+
+def test_put_tool_intent_allows_skill_management(client):
+    """skill_create / run_skill etc. are NOT in the hard-block list."""
+    c, store = client
+    resp = c.put(
+        f"/api/tool-intent/*/run_skill?token={TOKEN}",
+        json={"requires_intent": True},
+    )
+    assert resp.status_code == 200
+    assert store.get_tool_intent_override("*", "run_skill") is True
