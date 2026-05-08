@@ -95,6 +95,13 @@ CREATE TABLE IF NOT EXISTS skills (
     UNIQUE(org_id, name)
 );
 
+CREATE TABLE IF NOT EXISTS skill_permissions (
+    user_id    TEXT    NOT NULL,
+    skill_name TEXT    NOT NULL,
+    enabled    INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (user_id, skill_name)
+);
+
 CREATE TABLE IF NOT EXISTS tool_hints (
     id                  TEXT PRIMARY KEY,
     org_id              TEXT NOT NULL,
@@ -147,10 +154,12 @@ class TelemetryStore:
         self._path = db_path
         self._enabled = False
         self._disabled_cache: dict[str, set[str]] = {}
+        self._disabled_skills_cache: dict[str, set[str]] = {}
         self._hint_cache: dict[str, dict[str, dict]] = {}
         self._conn: sqlite3.Connection | None = None
         self._setup()
         self._load_disabled_cache()
+        self._load_disabled_skills_cache()
 
     def _setup(self) -> None:
         """Create the database file and schema. Disables itself on any failure."""
@@ -204,6 +213,24 @@ class TelemetryStore:
             ).fetchall()
             for row in rows:
                 self._disabled_cache.setdefault(row["user_id"], set()).add(row["tool_name"])
+        except Exception:
+            pass
+
+    def _load_disabled_skills_cache(self) -> None:
+        """Populate _disabled_skills_cache from all enabled=0 rows in skill_permissions.
+
+        Called once at startup. After this, set_skill_permission keeps the cache
+        consistent. Silent no-op if the DB is unavailable.
+        """
+        if not self._enabled:
+            return
+        try:
+            conn = self._connect()
+            rows = conn.execute(
+                "SELECT user_id, skill_name FROM skill_permissions WHERE enabled = 0"
+            ).fetchall()
+            for row in rows:
+                self._disabled_skills_cache.setdefault(row["user_id"], set()).add(row["skill_name"])
         except Exception:
             pass
 
