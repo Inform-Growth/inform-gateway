@@ -41,7 +41,7 @@ from mcp.server.fastmcp import FastMCP  # noqa: E402
 from mcp.server.lowlevel.server import lifespan as _noop_lifespan  # noqa: E402
 from mcp.server.lowlevel.server import request_ctx as _request_ctx  # noqa: E402
 from mcp_proxy import mount_all_proxies  # noqa: E402
-from telemetry import telemetry as _telemetry  # noqa: E402
+from telemetry import telemetry as _telemetry, INTENT_NEVER_REQUIRED  # noqa: E402
 
 
 @asynccontextmanager
@@ -177,9 +177,10 @@ _GATE_BYPASS: frozenset[str] = frozenset({
 })
 
 
-# _TASK_BYPASS must stay a superset of _GATE_BYPASS — any tool added to _GATE_BYPASS
-# that should also bypass the task gate must be added here too.
-_TASK_BYPASS: frozenset[str] = frozenset({
+# Tools listed here default to NOT requiring an active task. Admins can
+# override per tool via tool_intent_overrides; tools also in
+# INTENT_NEVER_REQUIRED cannot be overridden in either direction.
+_TASK_BYPASS_DEFAULTS: frozenset[str] = frozenset({
     "setup_start",
     "setup_save_profile",
     "setup_complete",
@@ -198,6 +199,22 @@ _TASK_BYPASS: frozenset[str] = frozenset({
     "complete_task",
     "get_tasks",
 })
+
+
+def _tool_requires_intent(user_id: str | None, tool_name: str) -> bool:
+    """Return whether a tool requires an active task_id for the calling user.
+
+    Resolution:
+        1. If tool is in INTENT_NEVER_REQUIRED → False (hard block)
+        2. If user/global override exists in tool_intent_overrides → use it
+        3. Else: True if tool is NOT in _TASK_BYPASS_DEFAULTS
+    """
+    if tool_name in INTENT_NEVER_REQUIRED:
+        return False
+    override = _telemetry.get_tool_intent_override(user_id, tool_name)
+    if override is not None:
+        return override
+    return tool_name not in _TASK_BYPASS_DEFAULTS
 
 
 def _make_gate_task_redirect(tool_name: str) -> dict:
@@ -497,7 +514,7 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                     _org = _get_org_id(sid)
                     if _org and not _telemetry.is_initialized(_org):
                         return _make_gate_redirect(fn.__name__)
-                if fn.__name__ not in _TASK_BYPASS and sid:
+                if _tool_requires_intent(_current_user.get(), fn.__name__) and sid:
                     if task_id is not None:
                         task_row = _telemetry.get_task(task_id)
                         if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
@@ -554,7 +571,7 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                 _org = _get_org_id(sid)
                 if _org and not _telemetry.is_initialized(_org):
                     return _make_gate_redirect(fn.__name__)
-            if fn.__name__ not in _TASK_BYPASS and sid:
+            if _tool_requires_intent(_current_user.get(), fn.__name__) and sid:
                 if task_id is not None:
                     task_row = _telemetry.get_task(task_id)
                     if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
@@ -639,7 +656,7 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
                 _org = _get_org_id(sid)
                 if _org and not _telemetry.is_initialized(_org):
                     return _make_gate_redirect(tool_name)
-            if tool_name not in _TASK_BYPASS and sid:
+            if _tool_requires_intent(_current_user.get(), tool_name) and sid:
                 if task_id is not None:
                     task_row = _telemetry.get_task(task_id)
                     if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
@@ -693,7 +710,7 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
             _org = _get_org_id(sid)
             if _org and not _telemetry.is_initialized(_org):
                 return _make_gate_redirect(tool_name)
-        if tool_name not in _TASK_BYPASS and sid:
+        if _tool_requires_intent(_current_user.get(), tool_name) and sid:
             if task_id is not None:
                 task_row = _telemetry.get_task(task_id)
                 if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":

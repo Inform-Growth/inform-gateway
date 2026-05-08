@@ -80,3 +80,44 @@ def test_get_tool_intent_overrides_listing(store):
     rows = store.get_tool_intent_overrides("alice")
     by_name = {r["tool_name"]: r["requires_intent"] for r in rows}
     assert by_name == {"search_records": True, "create_record": False}
+
+
+# ---------------------------------------------------------------------------
+# Tests for mcp_server._tool_requires_intent
+# ---------------------------------------------------------------------------
+
+def test_tool_requires_intent_default_for_bypass_tools(store, monkeypatch):
+    """Tools in _TASK_BYPASS_DEFAULTS default to NOT requiring intent."""
+    sys.modules.pop("mcp_server", None)
+    import mcp_server
+    monkeypatch.setattr(mcp_server, "_telemetry", store)
+    for name in ["health_check", "declare_intent", "skill_list", "run_skill",
+                 "profile_get", "setup_start"]:
+        assert mcp_server._tool_requires_intent("alice", name) is False, name
+
+
+def test_tool_requires_intent_default_for_other_tools(store, monkeypatch):
+    """Tools not in _TASK_BYPASS_DEFAULTS default to requiring intent."""
+    sys.modules.pop("mcp_server", None)
+    import mcp_server
+    monkeypatch.setattr(mcp_server, "_telemetry", store)
+    for name in ["search_records", "create_record", "enrich_person"]:
+        assert mcp_server._tool_requires_intent("alice", name) is True, name
+
+
+def test_tool_requires_intent_global_override(store, monkeypatch):
+    """A global override can force a bypass-default tool to require intent."""
+    sys.modules.pop("mcp_server", None)
+    import mcp_server
+    monkeypatch.setattr(mcp_server, "_telemetry", store)
+    store.set_tool_intent_override("*", "run_skill", True)
+    assert mcp_server._tool_requires_intent("alice", "run_skill") is True
+
+
+def test_tool_requires_intent_hard_block(store, monkeypatch):
+    """Tools in INTENT_NEVER_REQUIRED always return False regardless of overrides."""
+    sys.modules.pop("mcp_server", None)
+    import mcp_server
+    monkeypatch.setattr(mcp_server, "_telemetry", store)
+    # declare_intent is in INTENT_NEVER_REQUIRED — cannot be overridden
+    assert mcp_server._tool_requires_intent("alice", "declare_intent") is False
