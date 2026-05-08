@@ -26,11 +26,17 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
 
     @mcp.tool()
     def skill_list() -> list[dict]:
-        """Return all active skills for this organization.
+        """Return all active, permitted skills for the calling user.
 
-        Bypasses the init gate — available even before setup.
+        Bypasses the init gate — available even before setup. Skills disabled for
+        the user (or globally via '*') are filtered out.
         """
-        return telemetry.list_skills(_org_id())
+        user_id = current_user_var.get()
+        skills = telemetry.list_skills(_org_id())
+        if user_id is None:
+            return skills
+        visible = telemetry.filter_visible_skills(user_id, [s["name"] for s in skills])
+        return [s for s in skills if s["name"] in visible]
 
     @mcp.tool()
     def skill_create(name: str, description: str, prompt_template: str) -> dict:

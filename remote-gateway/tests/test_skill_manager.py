@@ -77,3 +77,18 @@ def test_run_skill_raises_for_unknown_skill(tools):
 def test_skill_update_raises_for_unknown_skill(tools):
     with pytest.raises(ValueError, match="not found"):
         tools["skill_update"]("nonexistent", description="new")
+
+
+def test_skill_list_hides_disabled_skill(tools, store):
+    tools["skill_create"]("briefing", "Morning summary", "Summarize {topic}")
+    tools["skill_create"]("recap", "Recap meeting", "Recap {meeting}")
+    store.set_skill_permission("alice@example.com", "briefing", False)
+    names = [s["name"] for s in tools["skill_list"]()]
+    assert "briefing" not in names
+    assert "recap" in names
+
+
+def test_skill_list_hides_globally_disabled_skill(tools, store):
+    tools["skill_create"]("briefing", "Morning summary", "Summarize {topic}")
+    store.set_skill_permission("*", "briefing", False)
+    assert tools["skill_list"]() == []
