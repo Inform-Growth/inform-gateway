@@ -64,3 +64,21 @@ def test_get_skill_permissions_returns_explicit_rows(store):
 
 def test_get_skill_permissions_empty_for_unknown_user(store):
     assert store.get_skill_permissions("nobody") == []
+
+
+def test_filter_visible_skills_hides_globally_disabled(store):
+    store.set_skill_permission("*", "briefing", False)
+    visible = store.filter_visible_skills("alice", ["briefing", "summary"])
+    assert visible == {"summary"}
+
+
+def test_filter_visible_skills_hides_user_disabled(store):
+    store.set_skill_permission("alice", "briefing", False)
+    visible = store.filter_visible_skills("alice", ["briefing", "summary"])
+    assert visible == {"summary"}
+
+
+def test_filter_visible_skills_other_user_unaffected(store):
+    store.set_skill_permission("alice", "briefing", False)
+    visible = store.filter_visible_skills("bob", ["briefing", "summary"])
+    assert visible == {"briefing", "summary"}

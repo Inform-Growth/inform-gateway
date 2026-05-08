@@ -525,6 +525,26 @@ class TelemetryStore:
             return []
         return [{"skill_name": row["skill_name"], "enabled": bool(row["enabled"])} for row in rows]
 
+    def filter_visible_skills(self, user_id: str | None, skill_names: list[str]) -> set[str]:
+        """Return the subset of skill_names the user is permitted to see.
+
+        Reads only the in-memory _disabled_skills_cache — no DB query. Mirrors
+        filter_visible_tools.
+
+        Args:
+            user_id: Authenticated user, or None for unauthenticated requests.
+            skill_names: Full list of skill names to filter.
+
+        Returns:
+            Set of skill names the user is allowed to see.
+        """
+        if not self._enabled:
+            return set(skill_names)
+        globally_disabled = self._disabled_skills_cache.get("*", set())
+        user_disabled = self._disabled_skills_cache.get(user_id, set()) if user_id else set()
+        hidden = globally_disabled | user_disabled
+        return {name for name in skill_names if name not in hidden}
+
     def lookup_user(self, key: str) -> str | None:
         """Return the user_id for an API key, or None if the key is invalid.
 
