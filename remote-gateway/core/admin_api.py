@@ -243,6 +243,21 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         ]
         return JSONResponse({"user_id": user_id, "permissions": permissions})
 
+    async def api_skill_permissions_set(request: Request) -> Response:
+        if not _is_authorized(request):
+            return _forbidden()
+        user_id = request.path_params["user_id"]
+        skill_name = request.path_params["skill_name"]
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+        if "enabled" not in body:
+            return JSONResponse({"error": "enabled (bool) is required"}, status_code=400)
+        telemetry.set_skill_permission(user_id, skill_name, bool(body["enabled"]))
+        return JSONResponse({"ok": True, "user_id": user_id, "skill_name": skill_name,
+                             "enabled": bool(body["enabled"])})
+
     async def api_org_profile_get(request: Request) -> Response:
         if not _is_authorized(request):
             return _forbidden()
@@ -379,6 +394,8 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         Route("/api/permissions/{user_id}", api_permissions_get, methods=["GET"]),
         Route("/api/permissions/{user_id}/{tool_name:path}", api_permissions_set, methods=["PUT"]),
         Route("/api/skill-permissions/{user_id}", api_skill_permissions_get, methods=["GET"]),
+        Route("/api/skill-permissions/{user_id}/{skill_name:path}",
+              api_skill_permissions_set, methods=["PUT"]),
         Route("/api/timeline", api_timeline),
         Route("/api/tools", api_tools),
         Route("/api/logs", api_logs),

@@ -384,3 +384,24 @@ def test_get_skill_permissions_returns_explicit_with_known_skills(client):
     assert body["user_id"] == "alice@example.com"
     by_name = {p["skill_name"]: p["enabled"] for p in body["permissions"]}
     assert by_name["briefing"] is False
+
+
+def test_put_skill_permissions_disables_skill(client):
+    c, store = client
+    store.add_api_key("alice@example.com", "sk-a", org_id="acme")
+    store.create_skill("acme", "briefing", "Morning summary", "Summarize {topic}")
+    resp = c.put(
+        f"/api/skill-permissions/alice@example.com/briefing?token={TOKEN}",
+        json={"enabled": False},
+    )
+    assert resp.status_code == 200
+    assert store.is_skill_enabled("alice@example.com", "briefing") is False
+
+
+def test_put_skill_permissions_requires_enabled_field(client):
+    c, _ = client
+    resp = c.put(
+        f"/api/skill-permissions/alice@example.com/briefing?token={TOKEN}",
+        json={},
+    )
+    assert resp.status_code == 400
