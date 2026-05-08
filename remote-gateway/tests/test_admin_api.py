@@ -456,3 +456,13 @@ def test_put_tool_intent_allows_skill_management(client):
     )
     assert resp.status_code == 200
     assert store.get_tool_intent_override("*", "run_skill") is True
+
+
+def test_delete_tool_intent_clears_override(client):
+    c, store = client
+    store.set_tool_intent_override("alice@example.com", "search_records", True)
+    resp = c.delete(
+        f"/api/tool-intent/alice@example.com/search_records?token={TOKEN}"
+    )
+    assert resp.status_code == 200
+    assert store.get_tool_intent_override("alice@example.com", "search_records") is None

@@ -314,6 +314,15 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         return JSONResponse({"ok": True, "user_id": user_id, "tool_name": tool_name,
                              "requires_intent": bool(body["requires_intent"])})
 
+    async def api_tool_intent_delete(request: Request) -> Response:
+        if not _is_authorized(request):
+            return _forbidden()
+        user_id = request.path_params["user_id"]
+        tool_name = request.path_params["tool_name"]
+        telemetry.clear_tool_intent_override(user_id, tool_name)
+        return JSONResponse({"ok": True, "cleared": True,
+                             "user_id": user_id, "tool_name": tool_name})
+
     async def api_org_profile_get(request: Request) -> Response:
         if not _is_authorized(request):
             return _forbidden()
@@ -455,6 +464,8 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         Route("/api/tool-intent/{user_id}", api_tool_intent_get, methods=["GET"]),
         Route("/api/tool-intent/{user_id}/{tool_name:path}",
               api_tool_intent_set, methods=["PUT"]),
+        Route("/api/tool-intent/{user_id}/{tool_name:path}",
+              api_tool_intent_delete, methods=["DELETE"]),
         Route("/api/timeline", api_timeline),
         Route("/api/tools", api_tools),
         Route("/api/logs", api_logs),
