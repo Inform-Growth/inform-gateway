@@ -36,3 +36,33 @@ def test_intent_never_required_contains_bootstrap_tools():
         "list_prompts", "get_prompt",
     }
     assert expected.issubset(INTENT_NEVER_REQUIRED)
+
+
+def test_get_tool_intent_override_default_none(store):
+    assert store.get_tool_intent_override("alice", "search_records") is None
+
+
+def test_set_and_get_user_specific(store):
+    store.set_tool_intent_override("alice", "search_records", True)
+    assert store.get_tool_intent_override("alice", "search_records") is True
+
+
+def test_user_override_beats_global(store):
+    store.set_tool_intent_override("*", "search_records", True)
+    store.set_tool_intent_override("alice", "search_records", False)
+    assert store.get_tool_intent_override("alice", "search_records") is False
+    assert store.get_tool_intent_override("bob", "search_records") is True
+
+
+def test_set_rejects_never_required_tools(store):
+    for name in ["setup_start", "declare_intent", "health_check", "create_user"]:
+        with pytest.raises(ValueError) as exc_info:
+            store.set_tool_intent_override("alice", name, True)
+        assert name in str(exc_info.value)
+
+
+def test_set_allows_skill_management_tools(store):
+    """skill_create / run_skill etc. are NOT in the hard-block list."""
+    for name in ["skill_create", "skill_update", "skill_list", "run_skill"]:
+        store.set_tool_intent_override("*", name, True)
+        assert store.get_tool_intent_override("alice", name) is True

@@ -567,6 +567,76 @@ class TelemetryStore:
         hidden = globally_disabled | user_disabled
         return {name for name in skill_names if name not in hidden}
 
+    def get_tool_intent_override(
+        self, user_id: str | None, tool_name: str
+    ) -> bool | None:
+        """Return user/global override for a tool's intent requirement.
+
+        Resolution: per-user row → global '*' row → None (no override).
+
+        Args:
+            user_id: The authenticated user ID, or None for unauthenticated requests.
+            tool_name: The name of the tool to query.
+
+        Returns:
+            True if intent is required, False if not required, or None if no override exists.
+        """
+        if not self._enabled:
+            return None
+        try:
+            conn = self._connect()
+            if user_id is not None:
+                row = conn.execute(
+                    "SELECT requires_intent FROM tool_intent_overrides "
+                    "WHERE user_id = ? AND tool_name = ?",
+                    (user_id, tool_name),
+                ).fetchone()
+                if row is not None:
+                    return bool(row["requires_intent"])
+            row = conn.execute(
+                "SELECT requires_intent FROM tool_intent_overrides "
+                "WHERE user_id = '*' AND tool_name = ?",
+                (tool_name,),
+            ).fetchone()
+            if row is not None:
+                return bool(row["requires_intent"])
+            return None
+        except Exception:
+            return None
+
+    def set_tool_intent_override(
+        self, user_id: str, tool_name: str, requires_intent: bool
+    ) -> None:
+        """Insert or update an intent override. Raises ValueError for hard-blocked tools.
+
+        Args:
+            user_id: The user ID (or '*' for a global override) to set the override for.
+            tool_name: The name of the tool to override.
+            requires_intent: Whether the tool requires intent to be declared before calling.
+
+        Raises:
+            ValueError: If tool_name is in INTENT_NEVER_REQUIRED (bootstrap-critical tools
+                that cannot be gated behind intent, as doing so would lock the org out).
+        """
+        if tool_name in INTENT_NEVER_REQUIRED:
+            raise ValueError(
+                f"Tool '{tool_name}' is bootstrap-critical and cannot be required to "
+                f"declare intent — toggling it would lock the org out."
+            )
+        if not self._enabled:
+            return
+        try:
+            conn = self._connect()
+            conn.execute(
+                "INSERT INTO tool_intent_overrides (user_id, tool_name, requires_intent) "
+                "VALUES (?, ?, ?) ON CONFLICT(user_id, tool_name) "
+                "DO UPDATE SET requires_intent = excluded.requires_intent",
+                (user_id, tool_name, int(requires_intent)),
+            )
+            conn.commit()
+        except Exception:
+            pass
+
     def lookup_user(self, key: str) -> str | None:
         """Return the user_id for an API key, or None if the key is invalid.
 
