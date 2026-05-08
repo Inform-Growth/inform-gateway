@@ -510,6 +510,21 @@ class TelemetryStore:
         else:
             self._disabled_skills_cache.setdefault(user_id, set()).add(skill_name)
 
+    def get_skill_permissions(self, user_id: str) -> list[dict]:
+        """Return explicit skill permission rows for a user."""
+        if not self._enabled:
+            return []
+        try:
+            conn = self._connect()
+            rows = conn.execute(
+                "SELECT skill_name, enabled FROM skill_permissions"
+                " WHERE user_id = ? ORDER BY skill_name",
+                (user_id,),
+            ).fetchall()
+        except Exception:
+            return []
+        return [{"skill_name": row["skill_name"], "enabled": bool(row["enabled"])} for row in rows]
+
     def lookup_user(self, key: str) -> str | None:
         """Return the user_id for an API key, or None if the key is invalid.
 

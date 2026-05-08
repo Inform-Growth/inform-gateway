@@ -52,3 +52,15 @@ def test_is_skill_enabled_user_override_beats_global(store):
     store.set_skill_permission("alice", "briefing", True)
     assert store.is_skill_enabled("alice", "briefing") is True
     assert store.is_skill_enabled("bob", "briefing") is False
+
+
+def test_get_skill_permissions_returns_explicit_rows(store):
+    store.set_skill_permission("alice", "briefing", False)
+    store.set_skill_permission("alice", "summary", True)
+    rows = store.get_skill_permissions("alice")
+    by_name = {r["skill_name"]: r["enabled"] for r in rows}
+    assert by_name == {"briefing": False, "summary": True}
+
+
+def test_get_skill_permissions_empty_for_unknown_user(store):
+    assert store.get_skill_permissions("nobody") == []
