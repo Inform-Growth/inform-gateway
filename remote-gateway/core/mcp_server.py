@@ -44,6 +44,41 @@ from mcp_proxy import mount_all_proxies  # noqa: E402
 from telemetry import telemetry as _telemetry, INTENT_NEVER_REQUIRED  # noqa: E402
 
 
+def _bootstrap_workspace_mcp_credentials() -> None:
+    """Seed the workspace-mcp credentials volume from a base64 env var.
+
+    On first deploy to Railway (or after a volume wipe) the workspace-mcp
+    credentials directory is empty and the Gmail/Calendar/Drive proxy can't
+    authenticate. To avoid an interactive browser flow inside the container we
+    accept the cached token as a base64-encoded blob in
+    ``GOOGLE_WORKSPACE_CREDS_B64`` and write it once to
+    ``$WORKSPACE_MCP_CREDENTIALS_DIR/$USER_GOOGLE_EMAIL.json`` if no file is
+    already there. Existing files are never overwritten — workspace-mcp
+    rotates refresh tokens at runtime and the disk copy is the freshest.
+    """
+    import base64
+    from pathlib import Path
+
+    blob = os.environ.get("GOOGLE_WORKSPACE_CREDS_B64")
+    creds_dir = os.environ.get("WORKSPACE_MCP_CREDENTIALS_DIR")
+    email = os.environ.get("USER_GOOGLE_EMAIL")
+    if not (blob and creds_dir and email):
+        return
+    target = Path(creds_dir) / f"{email}.json"
+    if target.exists():
+        return
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(base64.b64decode(blob))
+        target.chmod(0o600)
+        print(f"[workspace-mcp] seeded credentials at {target}", flush=True)
+    except Exception as exc:
+        print(f"[workspace-mcp] failed to seed credentials: {exc}", flush=True)
+
+
+_bootstrap_workspace_mcp_credentials()
+
+
 @asynccontextmanager
 async def lifespan(server: FastMCP):
     """Start upstream MCP proxy connections on startup; clean up on shutdown."""
