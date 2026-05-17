@@ -6,7 +6,49 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The Agent Gateway is a centralized MCP server that hosts promoted tools for business integrations (Attio, Apollo, Exa, GitHub, etc.) and provides a unified interface for AI agents. It operates under a **"Gateway First"** architecture where all agent interactions are governed, documented, and shadowed for proactive improvement.
 
-This branch (`template/clean-gateway`) is the **Copier template** consumed via `copier copy` / `copier update` (see `copier.yml`). When editing files that downstream consumers will render, remember the non-standard Jinja delimiters: `[[ var ]]` for variables and `[% block %]` for blocks (chosen to avoid colliding with GitHub Actions `${{ }}`).
+This repository is the **Copier template** consumed via `copier copy` / `copier update` (see `copier.yml`). When editing files that downstream consumers will render, remember the non-standard Jinja delimiters: `[[ var ]]` for variables and `[% block %]` for blocks (chosen to avoid colliding with GitHub Actions `${{ }}`).
+
+## Manifesto Context & Architecture
+
+The gateway exists to answer one question: **is this AI deployment generating real impact?** The manifesto metric is:
+
+> **total impact = number of high-impact decisions × impact per decision**
+
+The system is split into two layers, each in its own codebase:
+
+### This repo — the Sensor Layer (gateway)
+
+The gateway is the **sensor**. It captures the raw signal from every agent session:
+
+- **Tasks** (`declare_intent` / `complete_task`) — every agent session is wrapped in a task with a goal, planned steps, and optional decision context fields:
+  - `decision_context` — what decision does this task feed, in the operator's words
+  - `decision_type` — `"decision"` | `"process"` | `"exploration"`
+  - `stakes_hint` — operator's estimate: `"high"` | `"medium"` | `"low"`
+- **Issues** (`report_issue`) — agents file structured friction signals when they hit tool failures or multi-step workarounds. These are real GitHub Issues on the deployment repo.
+- **Telemetry** — every tool call is recorded with timing, success/failure, and the active task_id.
+- **Loom API** — `GET /admin/api/tasks?org_id=&from=&to=&exclude_process=true` exposes task records (including all three decision fields) for the loom to consume.
+
+### The Loom — the Decision Layer (separate repo)
+
+The loom is the **assembler and scorer**. It reads task records from the gateway's telemetry API and:
+- Clusters tasks into decisions by org, time window, and overlapping `decision_context`
+- Runs the Impact Scorer (`stakes_hint` → score tier)
+- Stores `decisions` and `state_changes` in its own schema
+
+**The gateway is read-only for the loom.** The loom never writes back into the gateway's schema. Any `decisions` table, `state_changes` table, or `linked_decision_id` foreign key belongs to the loom, not here.
+
+### What's built (Phase 1 — complete)
+
+- `report_issue` / `list_my_issues` — real GitHub Issues on the deployment repo (replaces the deprecated `write_issue` / `list_issues`)
+- `declare_intent` with decision context fields, clarity push-back, shadow operating instructions injected at task creation time
+- `GET /admin/api/tasks` with `from`, `to`, `exclude_process` query params
+- Compound index `idx_tasks_org_created ON tasks (org_id, created_at)` for loom time-window queries
+
+### What's next in this repo (Phases 3–4)
+
+- **Operator roles (future, loom-driven)** — Each operator will carry a role: `autonomous` (N8N, scheduled agents) or `human` (Claude/Gemini interactive sessions). Human operators will go through role onboarding; the loom infers role responsibilities from task/tool patterns over time. Role routing (analogous to org routing) ships after the loom is operational. The language in `declare_intent` is written to stay consistent when roles ship — agents see work framing, not decision framing.
+- **Phase 3** — `/webhooks/{system}` Starlette route for state change ingestion (Attio record updates, HubSpot deal stage changes). Requires loom to be operational first.
+- **Phase 4** — Decision view in the admin dashboard (tasks-per-decision ratio, impact score distribution). Requires loom data via `/api/decisions`.
 
 ## Core Commands
 
@@ -86,7 +128,7 @@ When acting as an agent in this environment, you MUST initialize your session by
     - `meta.py` — health, stats, auth, operator instructions.
     - `notes.py` — GitHub-backed notes & issues.
     - `registry.py` — field registry tools.
-    - `_core/` — onboarding (`setup_*`), profile manager (`profile_get/update`), task manager (`declare_intent`/`complete_task`/`get_tasks` — the **init gate**), skill manager (`skill_*`, `run_skill`).
+    - `_core/` — onboarding (`setup_*`), profile manager (`profile_get/update`), task manager (`declare_intent`/`complete_task`/`get_tasks`/`update_task` — the **init gate**), skill manager (`skill_*`, `run_skill`).
   - `prompts/` — `init.md` (Gateway Operator persona) and `qa_agent_instructions.md`.
   - `context/fields/` — YAML field schemas (`_template.yaml` ships with the template; consumers add `apollo.yaml`, `attio-*.yaml`, etc.).
   - `skills/` — Claude Code skill definitions bundled with the template (`gateway-health-check`, `mcp-builder`).
@@ -123,12 +165,13 @@ The `_AuthMiddleware` ASGI layer resolves the key to a `user_id` on every reques
 | `get_operator_instructions` | Load Gateway Operator persona and shadow note rules |
 | `list_prompts` | Discover available prompt templates |
 | `get_prompt` | Render a specific prompt template |
-| `write_note` / `read_note` / `list_notes` / `delete_note` | GitHub-backed markdown notes |
-| `write_issue` / `list_issues` | Issue tracking in notes repo |
+| `write_note` / `read_note` / `list_notes` / `delete_note` | GitHub-backed markdown notes (notes repo) |
+| `report_issue` | File a structured friction signal as a real GitHub Issue on the deployment repo. Called silently by agents during task execution. |
+| `list_my_issues` | List GitHub Issues on the deployment repo (filtered by state/label). |
 | `check_field_drift` / `discover_fields` / `get_field_definitions` / `lookup_field` / `list_field_integrations` | Field registry |
 | `setup_start` / `setup_save_profile` / `setup_complete` | Onboarding flow — **bypasses the init gate** |
 | `profile_get` / `profile_update` | Org profile (free-form JSON; bypasses init gate) |
-| `declare_intent` / `complete_task` / `get_tasks` | Task lifecycle — `declare_intent` opens the **init gate** for an org/user |
+| `declare_intent` / `complete_task` / `get_tasks` / `update_task` | Task lifecycle — `declare_intent` opens the **init gate** and captures `decision_context`, `decision_type`, `stakes_hint` for the loom; `update_task` enriches an active task before proceeding |
 | `skill_create` / `skill_update` / `skill_delete` / `skill_list` / `run_skill` | Dynamic prompt-based skills (templates with `{var}` placeholders rendered at call time) |
 
 ### The init gate
