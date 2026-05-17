@@ -2,7 +2,6 @@
 Tests for the admin route layout introduced for the React SPA migration.
 
 Verifies:
-  * Legacy HTML dashboard remains available at /legacy
   * SPA catch-all returns 503 when admin-ui/dist is not present
   * Unauthorized requests get 403
 
@@ -36,16 +35,6 @@ def store(tmp_path):
 def client(store):
     app = create_admin_app(store)
     return TestClient(app, raise_server_exceptions=True)
-
-
-def test_legacy_route_serves_html_dashboard(client):
-    """GET /legacy?token=<TOKEN> should return the old admin dashboard HTML."""
-    dash_path = Path(__file__).parent.parent / "core" / "admin_dashboard.html"
-    if not dash_path.exists():
-        pytest.skip("admin_dashboard.html not present in this checkout")
-    resp = client.get(f"/legacy?token={TOKEN}")
-    assert resp.status_code == 200
-    assert "text/html" in resp.headers.get("content-type", "")
 
 
 def test_spa_fallback_returns_503_when_dist_missing(tmp_path, store):

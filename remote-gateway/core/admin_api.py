@@ -24,7 +24,6 @@ from starlette.staticfiles import StaticFiles
 
 _logger = logging.getLogger(__name__)
 
-_DASHBOARD_HTML = Path(__file__).parent / "admin_dashboard.html"
 DIST = Path(__file__).parent.parent / "admin-ui" / "dist"
 _DEFAULT_TOKEN = "inform-admin-2026"
 
@@ -73,16 +72,6 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
             tools (each with .name and .description). Used by GET /api/tools.
             When omitted, that endpoint returns 503.
     """
-
-    async def dashboard(request: Request) -> Response:
-        if not _is_authorized(request):
-            return HTMLResponse(
-                "<h1>403 Forbidden</h1><p>Invalid or missing admin token.</p>",
-                status_code=403,
-            )
-        if not _DASHBOARD_HTML.exists():
-            return HTMLResponse("<h1>Admin dashboard not found.</h1>", status_code=500)
-        return HTMLResponse(_DASHBOARD_HTML.read_text())
 
     async def api_stats(request: Request) -> Response:
         if not _is_authorized(request):
@@ -373,7 +362,6 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         )
 
     routes = [
-        Route("/legacy", dashboard),  # OLD HTML — removed in Phase 8
         Route("/api/stats", api_stats),
         Route("/api/sessions", api_sessions),
         Route("/api/users", api_users_list, methods=["GET"]),

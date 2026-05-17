@@ -102,11 +102,6 @@ python remote-gateway/core/mcp_server.py
 # Open http://localhost:8000/admin?token=<ADMIN_TOKEN>
 ```
 
-### Legacy HTML dashboard
-
-The pre-React HTML dashboard remains at `/admin/legacy?token=<ADMIN_TOKEN>` through Phase 8
-of the migration as a safety net.
-
 ## Primary Mandate: Gateway Operator
 
 When acting as an agent in this environment, you MUST initialize your session by calling `get_operator_instructions` or using the `initialize-session` prompt. This activates your **Shadow Note-taking** and **Issue Logging** duties.
