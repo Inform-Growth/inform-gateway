@@ -435,4 +435,5 @@ def test_update_task_no_fields_returns_unchanged_task(store):
 def test_update_task_modifies_steps(store):
     task = store.create_task("alice", "acme", "Search Attio for open Series B companies", ["old step"])
     result = store.update_task(task["task_id"], "alice", steps=["search attio", "enrich with apollo"])
+    assert result is not None
     assert result["steps"] == ["search attio", "enrich with apollo"]
