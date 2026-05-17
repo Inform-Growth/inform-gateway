@@ -258,3 +258,11 @@ def test_declare_intent_decision_fields_optional(task_tools, store, user_var):
     assert result.get("decision_context") is None
     assert result.get("decision_type") is None
     assert result.get("stakes_hint") is None
+
+
+def test_compound_index_exists(store):
+    conn = store._connect()
+    rows = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_tasks_org_created'"
+    ).fetchall()
+    assert len(rows) == 1, "compound index idx_tasks_org_created must exist"
