@@ -973,33 +973,53 @@ class TelemetryStore:
         except Exception:
             return None
 
-    def list_tasks_for_org(self, org_id: str, status: str | None = None, limit: int = 100) -> list[dict]:
-        """Return tasks for an org, optionally filtered by status, newest first.
+    def list_tasks_for_org(
+        self,
+        org_id: str,
+        status: str | None = None,
+        limit: int = 100,
+        from_ts: float | None = None,
+        to_ts: float | None = None,
+        exclude_process: bool = False,
+    ) -> list[dict]:
+        """Return tasks for an org, optionally filtered, newest first.
 
         Args:
             org_id: Organization identifier.
             status: 'active', 'complete', or None for all.
             limit: Maximum number of tasks to return.
+            from_ts: Unix timestamp — include tasks created at or after this time.
+            to_ts: Unix timestamp — include tasks created at or before this time.
+            exclude_process: If True, omit tasks where decision_type = 'process'.
+                NULL decision_type rows are kept (loom treats them as 'exploration').
         """
         import json as _json
         if not self._enabled:
             return []
         try:
             conn = self._connect()
+            filters: list[str] = ["org_id = ?"]
+            params: list = [org_id]
             if status:
-                rows = conn.execute(
-                    "SELECT task_id, user_id, org_id, goal, steps, status, outcome, created_at, completed_at"
-                    " FROM tasks WHERE org_id = ? AND status = ?"
-                    " ORDER BY created_at DESC LIMIT ?",
-                    (org_id, status, limit),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT task_id, user_id, org_id, goal, steps, status, outcome, created_at, completed_at"
-                    " FROM tasks WHERE org_id = ?"
-                    " ORDER BY created_at DESC LIMIT ?",
-                    (org_id, limit),
-                ).fetchall()
+                filters.append("status = ?")
+                params.append(status)
+            if from_ts is not None:
+                filters.append("created_at >= ?")
+                params.append(from_ts)
+            if to_ts is not None:
+                filters.append("created_at <= ?")
+                params.append(to_ts)
+            if exclude_process:
+                filters.append("(decision_type IS NULL OR decision_type != 'process')")
+            where = "WHERE " + " AND ".join(filters)
+            params.append(limit)
+            rows = conn.execute(
+                f"SELECT task_id, user_id, org_id, goal, steps, status, outcome,"
+                f" created_at, completed_at, decision_context, decision_type, stakes_hint"
+                f" FROM tasks {where}"
+                f" ORDER BY created_at DESC LIMIT ?",
+                params,
+            ).fetchall()
             return [
                 {
                     "task_id": row["task_id"],
@@ -1011,6 +1031,9 @@ class TelemetryStore:
                     "outcome": row["outcome"],
                     "created_at": row["created_at"],
                     "completed_at": row["completed_at"],
+                    "decision_context": row["decision_context"],
+                    "decision_type": row["decision_type"],
+                    "stakes_hint": row["stakes_hint"],
                 }
                 for row in rows
             ]

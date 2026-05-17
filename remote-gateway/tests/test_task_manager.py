@@ -266,3 +266,69 @@ def test_compound_index_exists(store):
         "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_tasks_org_created'"
     ).fetchall()
     assert len(rows) == 1, "compound index idx_tasks_org_created must exist"
+
+
+def test_list_tasks_for_org_includes_decision_fields(store):
+    store.create_task(
+        "alice", "acme",
+        "Evaluate whether to expand Acme account to enterprise tier",
+        ["pull usage data", "check deal history"],
+        decision_context="Should we upgrade Acme to enterprise",
+        decision_type="decision",
+        stakes_hint="high",
+    )
+    tasks = store.list_tasks_for_org("acme")
+    assert len(tasks) == 1
+    assert tasks[0]["decision_context"] == "Should we upgrade Acme to enterprise"
+    assert tasks[0]["decision_type"] == "decision"
+    assert tasks[0]["stakes_hint"] == "high"
+
+
+def test_list_tasks_for_org_time_window(store):
+    import time as _time
+    import secrets as _secrets
+    base = _time.time()
+    conn = store._connect()
+
+    def _insert(goal: str, ts: float):
+        tid = f"task-{_secrets.token_hex(8)}"
+        conn.execute(
+            "INSERT INTO tasks (task_id, user_id, org_id, goal, steps, status, created_at)"
+            " VALUES (?, 'alice', 'acme', ?, '[]', 'active', ?)",
+            (tid, goal, ts),
+        )
+        conn.commit()
+
+    _insert("Too early", base - 7200)
+    _insert("In window", base)
+    _insert("Too late", base + 7200)
+
+    tasks = store.list_tasks_for_org(
+        "acme",
+        from_ts=base - 3600,
+        to_ts=base + 3600,
+    )
+    goals = [t["goal"] for t in tasks]
+    assert "In window" in goals
+    assert "Too early" not in goals
+    assert "Too late" not in goals
+
+
+def test_list_tasks_for_org_exclude_process(store):
+    store.create_task(
+        "alice", "acme", "Weekly enrichment job", [],
+        decision_type="process",
+    )
+    store.create_task(
+        "alice", "acme", "Evaluate Acme expansion", [],
+        decision_type="decision",
+    )
+    store.create_task(
+        "alice", "acme", "Explore new market segment", [],
+        # decision_type is None — loom treats as "exploration", must be included
+    )
+    tasks = store.list_tasks_for_org("acme", exclude_process=True)
+    types = [t["decision_type"] for t in tasks]
+    assert "process" not in types
+    assert "decision" in types
+    assert None in types  # NULL rows are kept
