@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 import pytest
+import time as _time_mod
+from starlette.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -332,3 +334,55 @@ def test_list_tasks_for_org_exclude_process(store):
     assert "process" not in types
     assert "decision" in types
     assert None in types  # NULL rows are kept
+
+
+def test_api_tasks_filters_passed_through(store):
+    """GET /api/tasks?from=&to=&exclude_process=true filters tasks correctly."""
+    import os
+    os.environ["ADMIN_TOKEN"] = "test-token"
+
+    from admin_api import create_admin_app
+    app = create_admin_app(store)
+    client = TestClient(app, raise_server_exceptions=True)
+
+    base = _time_mod.time()
+    import secrets as _sec
+    conn = store._connect()
+
+    def _ins(goal: str, ts: float, dtype: str | None = None):
+        tid = f"task-{_sec.token_hex(8)}"
+        conn.execute(
+            "INSERT INTO tasks"
+            " (task_id, user_id, org_id, goal, steps, status, created_at, decision_type)"
+            " VALUES (?, 'alice', 'acme', ?, '[]', 'active', ?, ?)",
+            (tid, goal, ts, dtype),
+        )
+        conn.commit()
+
+    _ins("Too early", base - 7200, "decision")
+    _ins("In window process", base, "process")
+    _ins("In window decision", base, "decision")
+    _ins("Too late", base + 7200, "decision")
+
+    resp = client.get(
+        "/api/tasks",
+        params={
+            "token": "test-token",
+            "org_id": "acme",
+            "from": base - 3600,
+            "to": base + 3600,
+            "exclude_process": "true",
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    goals = [t["goal"] for t in data["tasks"]]
+    assert "In window decision" in goals
+    assert "In window process" not in goals
+    assert "Too early" not in goals
+    assert "Too late" not in goals
+    # decision fields present on every task
+    for task in data["tasks"]:
+        assert "decision_context" in task
+        assert "decision_type" in task
+        assert "stakes_hint" in task

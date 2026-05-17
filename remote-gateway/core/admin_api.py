@@ -327,7 +327,24 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
             limit = max(1, min(int(request.query_params.get("limit", "100")), 500))
         except ValueError:
             limit = 100
-        tasks = telemetry.list_tasks_for_org(org_id, status=status, limit=limit)
+        from_ts: float | None = None
+        to_ts: float | None = None
+        try:
+            if "from" in request.query_params:
+                from_ts = float(request.query_params["from"])
+            if "to" in request.query_params:
+                to_ts = float(request.query_params["to"])
+        except ValueError:
+            pass
+        exclude_process = request.query_params.get("exclude_process", "").lower() == "true"
+        tasks = telemetry.list_tasks_for_org(
+            org_id,
+            status=status,
+            limit=limit,
+            from_ts=from_ts,
+            to_ts=to_ts,
+            exclude_process=exclude_process,
+        )
         return JSONResponse({"org_id": org_id, "tasks": tasks, "count": len(tasks)})
 
     async def _serve_spa(request: Request) -> Response:
