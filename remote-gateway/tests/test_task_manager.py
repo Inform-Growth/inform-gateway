@@ -336,10 +336,9 @@ def test_list_tasks_for_org_exclude_process(store):
     assert None in types  # NULL rows are kept
 
 
-def test_api_tasks_filters_passed_through(store):
+def test_api_tasks_filters_passed_through(store, monkeypatch):
     """GET /api/tasks?from=&to=&exclude_process=true filters tasks correctly."""
-    import os
-    os.environ["ADMIN_TOKEN"] = "test-token"
+    monkeypatch.setenv("ADMIN_TOKEN", "test-token")
 
     from admin_api import create_admin_app
     app = create_admin_app(store)
