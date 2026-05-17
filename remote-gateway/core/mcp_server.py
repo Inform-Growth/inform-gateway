@@ -174,6 +174,7 @@ _GATE_BYPASS: frozenset[str] = frozenset({
     "declare_intent",
     "complete_task",
     "get_tasks",
+    "update_task",
 })
 
 
@@ -197,17 +198,44 @@ _TASK_BYPASS: frozenset[str] = frozenset({
     "declare_intent",
     "complete_task",
     "get_tasks",
+    "update_task",
 })
+
+
+def _tool_requires_intent(user_id: str | None, tool_name: str) -> bool:
+    """Return whether a tool requires an active task_id for the calling user.
+
+    Resolution:
+        1. If tool is in INTENT_NEVER_REQUIRED → False (hard block)
+        2. If user/global override exists in tool_intent_overrides → use it
+        3. Else: True if tool is NOT in _TASK_BYPASS_DEFAULTS
+    """
+    if tool_name in INTENT_NEVER_REQUIRED:
+        return False
+    override = _telemetry.get_tool_intent_override(user_id, tool_name)
+    if override is not None:
+        return override
+    return tool_name not in _TASK_BYPASS_DEFAULTS
+
+
+_GATE_TASK_MESSAGE: str = (
+    "GATEWAY: No active task for this session. Before using tools, tell us what "
+    "you're working on by calling declare_intent.\n\n"
+    "AGENT INSTRUCTION: Before calling declare_intent, make sure you have gathered "
+    "the following from the user:\n"
+    "1. What specifically they need — which system, data, or action\n"
+    "2. Why it matters — what question they're trying to answer or outcome they're supporting\n"
+    "3. How important this is — high, medium, or low\n\n"
+    "Then call declare_intent with a goal, planned steps, and as much of "
+    "the above context as the user has provided."
+)
+
 
 
 def _make_gate_task_redirect(tool_name: str) -> dict:
     return {
         "gateway_status": "no_active_task",
-        "message": (
-            "GATEWAY: No task_id provided. "
-            "AGENT INSTRUCTION: Call declare_intent to start a new task, "
-            "or call get_tasks to retrieve an existing task_id and pass it explicitly."
-        ),
+        "message": _GATE_TASK_MESSAGE,
         "blocked_tool": tool_name,
         "required_action": "declare_intent",
     }
