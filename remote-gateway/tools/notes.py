@@ -345,22 +345,12 @@ def report_issue(
 
 
 def write_issue(slug: str, content: str, commit_message: str = "") -> dict:
-    """Create or update an issue note in the gateway's issues folder.
+    """DEPRECATED. Use report_issue instead.
 
-    Use this during gateway health checks to record problems found: authentication
-    failures, missing field documentation, schema drift, or tool errors. Issues
-    persist in {NOTES_PATH}/issues/ across redeployments.
-
-    Args:
-        slug: Short kebab-case identifier for the issue, without .md extension
-            (e.g., "attio-auth-failure-2026-04-07", "exa-missing-docs").
-        content: Full markdown content describing the issue, including context
-            and recommended action.
-        commit_message: Optional git commit message. Defaults to
-            "chore: record issue <slug>".
-
-    Returns:
-        Dict confirming the commit with 'sha', 'slug', 'path', and 'commit_url'.
+    write_issue wrote markdown files to the notes repo under notes/issues/.
+    All issue creation now goes to real GitHub Issues on the deployment repo
+    via report_issue. This function is unregistered and kept temporarily
+    for reference until existing notes/issues/ files are archived.
     """
     import httpx
 
@@ -399,14 +389,11 @@ def write_issue(slug: str, content: str, commit_message: str = "") -> dict:
 
 
 def list_issues() -> dict:
-    """List all open issue notes in the gateway's issues folder.
+    """DEPRECATED. Use list_my_issues instead.
 
-    Issues are written by the gateway-health-check skill when problems are
-    found (auth failures, missing documentation, schema drift, tool errors).
-    Use this to audit the current open issue backlog.
-
-    Returns:
-        Dict with 'issues' list (each entry has name, path, sha) and 'count'.
+    list_issues listed markdown files from the notes repo issues folder.
+    All issue listing now goes through list_my_issues, which reads real
+    GitHub Issues from the deployment repo. This function is unregistered.
     """
     import httpx
 
@@ -441,5 +428,5 @@ def register(mcp: Any) -> None:
     mcp.tool()(read_note)
     mcp.tool()(write_note)
     mcp.tool()(delete_note)
-    mcp.tool()(write_issue)
-    mcp.tool()(list_issues)
+    # write_issue and list_issues are intentionally NOT registered here.
+    # They are deprecated — use report_issue and list_my_issues instead.
