@@ -1,9 +1,9 @@
 """
 Gateway task management tools.
 
-Agents must declare intent before using gateway tools. Each declared intent
-creates a task with a unique task_id. Tool calls are attributed to the active
-task in telemetry, enabling per-task audit trails.
+Agents must tell us what they're working on before using gateway tools. Each
+declared intent creates a task with a unique task_id. Tool calls are attributed
+to the active task in telemetry, enabling per-task audit trails.
 
 Bypasses the init gate — safe to call after initialization.
 """
@@ -25,19 +25,24 @@ _VAGUE_PHRASES: tuple[str, ...] = (
 )
 
 _CLARITY_EXAMPLES: list[str] = [
-    (
-        "Search Attio for Series B companies in Vancouver with >50 employees "
-        "to support expansion decision"
-    ),
-    (
-        "Pull Apollo enrichment for Vancouver cold-call prospects "
-        "— process task, no decision"
-    ),
-    (
-        "Evaluate Acme renewal terms — decision with high stakes "
-        "(3-year vs 1-year tradeoff)"
-    ),
+    "Search Attio for Series B companies in Vancouver with more than 50 employees",
+    "Pull Apollo enrichment for all open opportunities created this month",
+    "Review the Acme account history and recent interactions in the CRM",
 ]
+
+_TASK_CRITERIA_CHECKLIST: list[str] = [
+    "Goal names a specific system, dataset, or context",
+    "Goal describes what action you are taking, not just a topic",
+    "Context explains why this matters to the organization",
+    "Stakes level is set (high / medium / low)",
+    "At least 2 concrete planned steps are listed",
+]
+
+_TASK_CRITERIA_INSTRUCTION: str = (
+    "Review this task against each item above. "
+    "If any are missing, call update_task with the task_id before proceeding to other tools. "
+    "Richer task descriptions help the organization learn from this session."
+)
 
 _SHADOW_OPERATING_INSTRUCTIONS: str = (
     "As you work, notice when something takes longer than it should or breaks unexpectedly. "
@@ -57,16 +62,14 @@ _SHADOW_OPERATING_INSTRUCTIONS: str = (
 def _check_goal_clarity(goal: str) -> dict | None:
     """Return a clarity_warning dict if the goal is too vague, else None.
 
-    A goal is considered vague if it is fewer than 6 words or contains a
-    known vague phrase. Does not block task creation — caller adds warning
-    to response only.
+    Does not block task creation — returned as a soft signal in the response.
     """
     words = goal.strip().split()
     if len(words) < 6:
         return {
             "message": (
-                "Goal is too short to attribute to a decision or measure impact. "
-                "Describe: what you're looking for, in which system, and why."
+                "Goal is too short. "
+                "Describe: what you're looking for, in which system, and what you plan to do."
             ),
             "examples": _CLARITY_EXAMPLES,
         }
@@ -76,7 +79,7 @@ def _check_goal_clarity(goal: str) -> dict | None:
             return {
                 "message": (
                     f"Goal contains a vague phrase ('{phrase}'). "
-                    "Consider describing the specific object, system, and decision context."
+                    "Describe the specific system, data, and action instead."
                 ),
                 "examples": _CLARITY_EXAMPLES,
             }
@@ -84,7 +87,7 @@ def _check_goal_clarity(goal: str) -> dict | None:
 
 
 def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar) -> None:
-    """Register declare_intent, complete_task, and get_tasks on mcp.
+    """Register declare_intent, complete_task, get_tasks, and update_task on mcp.
 
     Args:
         mcp: FastMCP instance (or stub with .tool() decorator).
@@ -105,21 +108,31 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
         decision_type: str | None = None,
         stakes_hint: str | None = None,
     ) -> dict:
-        """Declare what you are about to accomplish. Required before using any gateway tool.
+        """Tell us what you're working on before using any gateway tool.
 
-        Creates a task and returns a task_id. Pass this task_id to subsequent tool
-        calls to attribute them to this task. Multiple tasks can be active at once.
+        Creates a task that attributes your tool calls to a goal and helps the
+        organization understand what its AI is accomplishing. Returns a task_id —
+        pass it to every subsequent tool call to link them to this task.
+
+        Before calling this, make sure you have gathered from the user:
+        - What specifically they need (which system, data, or action)
+        - Why it matters to them or the organization
+        - A rough sense of how important this is
 
         Args:
-            goal: One sentence describing what you are trying to accomplish.
-            steps: Ordered list of planned tool calls or actions.
-            decision_context: Optional — what decision does this task feed, in your own words.
-            decision_type: Optional — "decision" (feeds a known decision), "process" (routine,
-                no decision), or "exploration" (gathering info, decision TBD).
-            stakes_hint: Optional — your estimate of the stakes: "high", "medium", or "low".
+            goal: One sentence — what you are trying to accomplish, in what system or context.
+            steps: Ordered list of planned actions (e.g. ["search CRM for Vancouver accounts",
+                "enrich top 10 with Apollo"]).
+            decision_context: Optional — why this work matters to the organization. What
+                question are you trying to answer or what outcome are you supporting? More
+                context helps the org learn from this session.
+            decision_type: Optional — the nature of this work: "process" (routine, repeatable),
+                "exploration" (gathering information, direction unclear), or "decision" (a
+                specific choice needs to be made).
+            stakes_hint: Optional — how important this feels: "high", "medium", or "low".
 
         Returns:
-            Dict with task_id, goal, steps, decision fields, status, agent_instruction,
+            Dict with task_id, goal, steps, status, agent_instruction, task_criteria,
             shadow_operating_instructions, and optionally clarity_warning.
         """
         user_id, org_id = _user_and_org()
@@ -136,6 +149,10 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
             "to attribute it to this task. Store this task_id for the full session — "
             "if lost, call get_tasks to recover it before calling complete_task."
         )
+        task["task_criteria"] = {
+            "checklist": _TASK_CRITERIA_CHECKLIST,
+            "instruction": _TASK_CRITERIA_INSTRUCTION,
+        }
         task["shadow_operating_instructions"] = _SHADOW_OPERATING_INSTRUCTIONS
 
         warning = _check_goal_clarity(goal)
@@ -176,3 +193,43 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
         user_id, _ = _user_and_org()
         tasks = telemetry.list_active_tasks(user_id)
         return {"tasks": tasks, "count": len(tasks)}
+
+    @mcp.tool()
+    def update_task(
+        task_id: str,
+        goal: str | None = None,
+        context: str | None = None,
+        stakes_hint: str | None = None,
+        work_type: str | None = None,
+        steps: list[str] | None = None,
+    ) -> dict:
+        """Add or correct information on an active task before proceeding to other tools.
+
+        Use this after declare_intent if the task description is incomplete — for example,
+        after the user provides more context about why this work matters or how important it is.
+        Only the task owner can update a task, and only while it is still active.
+
+        Args:
+            task_id: The task_id returned by declare_intent.
+            goal: Updated goal sentence, or omit to leave unchanged.
+            context: Why this work matters to the organization, or omit to leave unchanged.
+            stakes_hint: Importance level — "high", "medium", or "low" — or omit to leave unchanged.
+            work_type: Nature of the work — "process", "exploration", or "decision" — or omit.
+            steps: Updated planned steps list, or omit to leave unchanged.
+
+        Returns:
+            Updated task dict, or an error dict if task not found, not owned by you, or already complete.
+        """
+        user_id, _ = _user_and_org()
+        result = telemetry.update_task(
+            task_id,
+            user_id,
+            goal=goal,
+            decision_context=context,
+            stakes_hint=stakes_hint,
+            decision_type=work_type,
+            steps=steps,
+        )
+        if result is None:
+            return {"error": f"Task '{task_id}' not found, already complete, or not owned by you."}
+        return result

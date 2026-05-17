@@ -387,6 +387,78 @@ def test_api_tasks_filters_passed_through(store, monkeypatch):
         assert "stakes_hint" in task
 
 
+# --- declare_intent criteria block ---
+
+def test_declare_intent_returns_task_criteria_block(task_tools, store, user_var):
+    store.add_api_key("alice", "sk-test", org_id="acme")
+    user_var.set("alice")
+    result = task_tools["declare_intent"](
+        "Search Attio for open Series B companies in Vancouver",
+        ["search attio"],
+    )
+    assert "task_criteria" in result
+    assert "checklist" in result["task_criteria"]
+    assert "instruction" in result["task_criteria"]
+    assert isinstance(result["task_criteria"]["checklist"], list)
+    assert len(result["task_criteria"]["checklist"]) >= 4
+    assert "update_task" in result["task_criteria"]["instruction"]
+
+
+def test_declare_intent_docstring_has_no_decision_tracking_language(task_tools):
+    fn = task_tools["declare_intent"]
+    doc = fn.__doc__ or ""
+    assert "what decision does this task feed" not in doc.lower()
+    assert "decision or measure impact" not in doc.lower()
+
+
+# --- update_task MCP tool ---
+
+def test_update_task_tool_returns_updated_task(task_tools, store, user_var):
+    store.add_api_key("alice", "sk-test", org_id="acme")
+    user_var.set("alice")
+    created = task_tools["declare_intent"]("Vague goal", [])
+    result = task_tools["update_task"](
+        created["task_id"],
+        goal="Search Attio for open Series B companies in Vancouver",
+        context="Evaluating whether to expand territory",
+        stakes_hint="high",
+        work_type="decision",
+        steps=["search attio", "enrich top 10"],
+    )
+    assert "error" not in result
+    assert result["goal"] == "Search Attio for open Series B companies in Vancouver"
+    assert result["decision_context"] == "Evaluating whether to expand territory"
+    assert result["stakes_hint"] == "high"
+    assert result["decision_type"] == "decision"
+    assert result["steps"] == ["search attio", "enrich top 10"]
+
+
+def test_update_task_tool_wrong_user_returns_error(task_tools, store, user_var):
+    store.add_api_key("alice", "sk-test", org_id="acme")
+    store.add_api_key("bob", "sk-bob", org_id="acme")
+    user_var.set("alice")
+    created = task_tools["declare_intent"](
+        "Search Attio for open Series B companies in Vancouver", []
+    )
+    user_var.set("bob")
+    result = task_tools["update_task"](created["task_id"], goal="Overwritten")
+    assert "error" in result
+
+
+def test_update_task_tool_partial_update_leaves_other_fields(task_tools, store, user_var):
+    store.add_api_key("alice", "sk-test", org_id="acme")
+    user_var.set("alice")
+    created = task_tools["declare_intent"](
+        "Search Attio for open Series B companies",
+        ["step a", "step b"],
+        decision_context="Territory expansion",
+    )
+    result = task_tools["update_task"](created["task_id"], stakes_hint="medium")
+    assert result["stakes_hint"] == "medium"
+    assert result["decision_context"] == "Territory expansion"  # unchanged
+    assert result["steps"] == ["step a", "step b"]  # unchanged
+
+
 # --- update_task telemetry tests ---
 
 def test_update_task_modifies_goal(store):
