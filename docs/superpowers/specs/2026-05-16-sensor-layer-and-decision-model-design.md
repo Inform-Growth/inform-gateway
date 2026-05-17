@@ -11,9 +11,22 @@ Two features, one PR (Phase 1), three follow-on PRs planned.
 **Phase 1 (this PR):**
 1. `report_issue` + `list_my_issues` — real GitHub Issues against the deployment repo (sensor layer)
 2. `declare_intent` improvements — decision context fields, clarity push-back, shadow operating instructions injected at task creation time
-3. Table schemas for `decisions` and `state_changes` — structure in place, no population logic yet
 
 **Phases 2–4** are specced below for planning but not built in this PR.
+
+---
+
+## User Attribution and Role Context
+
+Every task in the gateway is already attributed to a `user_id` — this exists today on every row in the `tasks` table and every telemetry record. That attribution is the load-bearing link between the sensor layer and the decision model.
+
+**What user_id gives the loom now:** The loom can join task records on `user_id` to group tasks by actor, understand which human a decision belongs to, and cluster tasks from the same person in the same time window.
+
+**What role context will add (future):** The user's role — their organizational position, their decision authority, their relationship to the entities they operate on — determines what their `decision_context` actually means. A CSM running a task with `decision_type: "decision"` and `decision_context: "should we expand the account"` is at a different decision-making level than a CFO running the same. Same task fields, very different weight. Role context is what allows the Impact Scorer to interpret stakes meaningfully, and the Decision Assembler to understand whether a given actor has the authority to have made the decision the cluster suggests.
+
+**Where role will live:** Role is a planned addition to the user profile (`profile_get`/`profile_update`). It will not be a separate table — it extends the existing user record. When roles ship, the loom reads `user_id` from task records, resolves to the user profile (including role), and uses that to contextualize `decision_type`, `decision_context`, and `stakes_hint`.
+
+**What this means for Phase 1:** No schema changes needed beyond what's already planned. `user_id` is already on tasks. The three new task fields (`decision_context`, `decision_type`, `stakes_hint`) are captured as the user's own words and their own estimate — role context enriches the interpretation of those fields later, it doesn't replace them. The gateway passes the raw signal; role-aware interpretation is the loom's job.
 
 ---
 
