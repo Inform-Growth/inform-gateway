@@ -199,3 +199,62 @@ def test_clarity_check_passes_process_goal():
         "Run the weekly pipeline enrichment job for all open opportunities in Attio"
     )
     assert result is None
+
+
+def test_declare_intent_includes_shadow_operating_instructions(task_tools, store, user_var):
+    store.add_api_key("alice", "sk-test", org_id="acme")
+    user_var.set("alice")
+    result = task_tools["declare_intent"](
+        "Search Attio for Series B companies in Vancouver with over 50 employees",
+        ["search attio"],
+    )
+    assert "shadow_operating_instructions" in result
+    assert "report_issue" in result["shadow_operating_instructions"]
+    assert "FRICTION" in result["shadow_operating_instructions"]
+    assert "EFFICIENCY" in result["shadow_operating_instructions"]
+
+
+def test_declare_intent_emits_clarity_warning_for_vague_goal(task_tools, store, user_var):
+    store.add_api_key("alice", "sk-test", org_id="acme")
+    user_var.set("alice")
+    result = task_tools["declare_intent"]("Help with things", [])
+    assert "task_id" in result  # task still created
+    assert "clarity_warning" in result
+    assert "message" in result["clarity_warning"]
+
+
+def test_declare_intent_no_clarity_warning_for_specific_goal(task_tools, store, user_var):
+    store.add_api_key("alice", "sk-test", org_id="acme")
+    user_var.set("alice")
+    result = task_tools["declare_intent"](
+        "Pull Apollo enrichment for all open Attio opportunities created this month",
+        ["search apollo"],
+    )
+    assert "clarity_warning" not in result
+
+
+def test_declare_intent_accepts_and_echoes_decision_fields(task_tools, store, user_var):
+    store.add_api_key("alice", "sk-test", org_id="acme")
+    user_var.set("alice")
+    result = task_tools["declare_intent"](
+        "Evaluate whether to expand Acme account to enterprise tier",
+        ["pull usage data", "check deal history"],
+        decision_context="Should we upgrade Acme to enterprise",
+        decision_type="decision",
+        stakes_hint="high",
+    )
+    assert result["decision_context"] == "Should we upgrade Acme to enterprise"
+    assert result["decision_type"] == "decision"
+    assert result["stakes_hint"] == "high"
+
+
+def test_declare_intent_decision_fields_optional(task_tools, store, user_var):
+    store.add_api_key("alice", "sk-test", org_id="acme")
+    user_var.set("alice")
+    result = task_tools["declare_intent"](
+        "Run weekly pipeline enrichment job for all open opportunities",
+        [],
+    )
+    assert result.get("decision_context") is None
+    assert result.get("decision_type") is None
+    assert result.get("stakes_hint") is None
