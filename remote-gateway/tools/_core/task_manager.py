@@ -12,6 +12,62 @@ from __future__ import annotations
 import contextvars
 from typing import Any
 
+_VAGUE_PHRASES: tuple[str, ...] = (
+    "help with",
+    "look into",
+    "do some research",
+    "figure out",
+    "check on",
+    "work on",
+    "deal with",
+    "handle",
+    "take a look",
+)
+
+_CLARITY_EXAMPLES: list[str] = [
+    (
+        "Search Attio for Series B companies in Vancouver with >50 employees "
+        "to support expansion decision"
+    ),
+    (
+        "Pull Apollo enrichment for Vancouver cold-call prospects "
+        "— process task, no decision"
+    ),
+    (
+        "Evaluate Acme renewal terms — decision with high stakes "
+        "(3-year vs 1-year tradeoff)"
+    ),
+]
+
+
+def _check_goal_clarity(goal: str) -> dict | None:
+    """Return a clarity_warning dict if the goal is too vague, else None.
+
+    A goal is considered vague if it is fewer than 6 words or contains a
+    known vague phrase. Does not block task creation — caller adds warning
+    to response only.
+    """
+    words = goal.strip().split()
+    if len(words) < 6:
+        return {
+            "message": (
+                "Goal is too short to attribute to a decision or measure impact. "
+                "Describe: what you're looking for, in which system, and why."
+            ),
+            "examples": _CLARITY_EXAMPLES,
+        }
+    lower = goal.lower()
+    for phrase in _VAGUE_PHRASES:
+        if phrase in lower:
+            return {
+                "message": (
+                    f"Goal contains a vague phrase ('{phrase}'). "
+                    "Consider describing the specific object, system, and decision context."
+                ),
+                "examples": _CLARITY_EXAMPLES,
+            }
+    return None
+
 
 def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar) -> None:
     """Register declare_intent, complete_task, and get_tasks on mcp.
@@ -36,7 +92,8 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
 
         Args:
             goal: One sentence describing what you are trying to accomplish.
-            steps: Ordered list of planned tool calls or actions (e.g. ["search CRM", "enrich with Apollo"]).
+            steps: Ordered list of planned tool calls or actions
+                (e.g. ["search CRM", "enrich with Apollo"]).
 
         Returns:
             Dict with task_id, goal, steps, status, and agent_instruction.
