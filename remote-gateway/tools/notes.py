@@ -344,6 +344,51 @@ def report_issue(
         return {"error": str(exc), "logged_to_task": task_id}
 
 
+def list_my_issues(
+    state: str = "open",
+    label: str | None = None,
+    limit: int = 20,
+) -> list[dict]:
+    """List issues on the deployment repo.
+
+    Internal observability for CS operators and the fleet operator agent.
+    Not user-facing. Reads from INFORM_GATEWAY_DEPLOYMENT_REPO.
+
+    Args:
+        state: Filter by issue state — "open", "closed", or "all".
+        label: Optional label name to filter by (e.g. "type:bug", "tool:attio").
+        limit: Maximum number of issues to return (default 20).
+
+    Returns:
+        List of dicts with issue_number, title, labels (list of name strings),
+        state, created_at, and html_url.
+    """
+    import httpx
+
+    params: dict = {"state": state, "per_page": limit}
+    if label:
+        params["labels"] = label
+
+    with httpx.Client() as client:
+        resp = client.get(
+            _deployment_issue_url(),
+            headers=_deployment_repo_headers(),
+            params=params,
+        )
+    resp.raise_for_status()
+    return [
+        {
+            "issue_number": issue["number"],
+            "title": issue["title"],
+            "labels": [lb["name"] for lb in issue.get("labels", [])],
+            "state": issue["state"],
+            "created_at": issue["created_at"],
+            "html_url": issue["html_url"],
+        }
+        for issue in resp.json()
+    ]
+
+
 def write_issue(slug: str, content: str, commit_message: str = "") -> dict:
     """DEPRECATED. Use report_issue instead.
 
@@ -428,5 +473,7 @@ def register(mcp: Any) -> None:
     mcp.tool()(read_note)
     mcp.tool()(write_note)
     mcp.tool()(delete_note)
+    mcp.tool()(report_issue)
+    mcp.tool()(list_my_issues)
     # write_issue and list_issues are intentionally NOT registered here.
     # They are deprecated — use report_issue and list_my_issues instead.
