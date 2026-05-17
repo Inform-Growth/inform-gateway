@@ -131,3 +131,36 @@ def test_get_tasks_returns_active_tasks(task_tools, store, user_var):
     task_tools["declare_intent"]("Task B", [])
     result = task_tools["get_tasks"]()
     assert len(result["tasks"]) == 2
+
+
+def test_create_task_stores_decision_fields(store):
+    task = store.create_task(
+        "alice", "acme",
+        "Evaluate renewal terms for Acme account",
+        ["pull usage data", "check deal history"],
+        decision_context="Should we extend renewal terms for Acme",
+        decision_type="decision",
+        stakes_hint="high",
+    )
+    fetched = store.get_task(task["task_id"])
+    assert fetched["decision_context"] == "Should we extend renewal terms for Acme"
+    assert fetched["decision_type"] == "decision"
+    assert fetched["stakes_hint"] == "high"
+
+
+def test_create_task_decision_fields_nullable(store):
+    task = store.create_task("alice", "acme", "Pull weekly pipeline report", [])
+    fetched = store.get_task(task["task_id"])
+    assert fetched["decision_context"] is None
+    assert fetched["decision_type"] is None
+    assert fetched["stakes_hint"] is None
+
+
+def test_list_active_tasks_includes_decision_fields(store):
+    store.create_task(
+        "alice", "acme", "Evaluate Acme renewal", [],
+        decision_type="decision", stakes_hint="high",
+    )
+    tasks = store.list_active_tasks("alice")
+    assert tasks[0]["decision_type"] == "decision"
+    assert tasks[0]["stakes_hint"] == "high"

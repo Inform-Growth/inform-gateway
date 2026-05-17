@@ -137,6 +137,10 @@ _MIGRATIONS = [
     ("tool_calls", "response_preview", "TEXT"),
     ("api_keys", "org_id",             "TEXT"),
     ("tool_calls", "task_id",          "TEXT"),
+    # Decision model fields — captured at declare_intent time for the loom
+    ("tasks", "decision_context",      "TEXT"),
+    ("tasks", "decision_type",         "TEXT"),
+    ("tasks", "stakes_hint",           "TEXT"),
 ]
 
 
@@ -852,6 +856,9 @@ class TelemetryStore:
         org_id: str,
         goal: str,
         steps: list[str],
+        decision_context: str | None = None,
+        decision_type: str | None = None,
+        stakes_hint: str | None = None,
     ) -> dict:
         """Create a new active task and return it.
 
@@ -860,9 +867,13 @@ class TelemetryStore:
             org_id: The user's organization.
             goal: What the agent is trying to accomplish.
             steps: Planned tool call sequence (list of strings).
+            decision_context: Free text describing what decision this task feeds.
+            decision_type: One of "decision", "process", "exploration".
+            stakes_hint: Operator's estimate — "high", "medium", or "low".
 
         Returns:
-            Task dict with task_id, user_id, org_id, goal, steps, status, created_at.
+            Task dict with task_id, user_id, org_id, goal, steps, status,
+            created_at, decision_context, decision_type, stakes_hint.
             Returns {} if telemetry is disabled or the write failed.
         """
         import json as _json
@@ -874,9 +885,12 @@ class TelemetryStore:
         try:
             conn = self._connect()
             conn.execute(
-                "INSERT INTO tasks (task_id, user_id, org_id, goal, steps, status, created_at)"
-                " VALUES (?, ?, ?, ?, ?, 'active', ?)",
-                (task_id, user_id, org_id, goal, _json.dumps(steps), now),
+                "INSERT INTO tasks "
+                "(task_id, user_id, org_id, goal, steps, status, created_at,"
+                " decision_context, decision_type, stakes_hint)"
+                " VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)",
+                (task_id, user_id, org_id, goal, _json.dumps(steps), now,
+                 decision_context, decision_type, stakes_hint),
             )
             conn.commit()
             return {
@@ -887,6 +901,9 @@ class TelemetryStore:
                 "steps": steps,
                 "status": "active",
                 "created_at": now,
+                "decision_context": decision_context,
+                "decision_type": decision_type,
+                "stakes_hint": stakes_hint,
             }
         except Exception:
             return {}
@@ -903,7 +920,8 @@ class TelemetryStore:
         try:
             conn = self._connect()
             row = conn.execute(
-                "SELECT task_id, user_id, org_id, goal, steps, status, outcome, created_at, completed_at"
+                "SELECT task_id, user_id, org_id, goal, steps, status, outcome,"
+                " created_at, completed_at, decision_context, decision_type, stakes_hint"
                 " FROM tasks WHERE task_id = ?",
                 (task_id,),
             ).fetchone()
@@ -919,6 +937,9 @@ class TelemetryStore:
                 "outcome": row["outcome"],
                 "created_at": row["created_at"],
                 "completed_at": row["completed_at"],
+                "decision_context": row["decision_context"],
+                "decision_type": row["decision_type"],
+                "stakes_hint": row["stakes_hint"],
             }
         except Exception:
             return None
@@ -1007,7 +1028,8 @@ class TelemetryStore:
         try:
             conn = self._connect()
             rows = conn.execute(
-                "SELECT task_id, user_id, org_id, goal, steps, status, created_at"
+                "SELECT task_id, user_id, org_id, goal, steps, status,"
+                " created_at, decision_context, decision_type, stakes_hint"
                 " FROM tasks WHERE user_id = ? AND status = 'active'"
                 " ORDER BY created_at DESC",
                 (user_id,),
@@ -1021,6 +1043,9 @@ class TelemetryStore:
                     "steps": _json.loads(row["steps"] or "[]"),
                     "status": row["status"],
                     "created_at": row["created_at"],
+                    "decision_context": row["decision_context"],
+                    "decision_type": row["decision_type"],
+                    "stakes_hint": row["stakes_hint"],
                 }
                 for row in rows
             ]
