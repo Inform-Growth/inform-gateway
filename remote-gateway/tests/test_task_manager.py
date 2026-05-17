@@ -518,3 +518,22 @@ def test_update_task_modifies_steps(store):
     )
     assert result is not None
     assert result["steps"] == ["search attio", "enrich with apollo"]
+
+
+# --- gate message content ---
+
+def test_gate_task_redirect_contains_operator_instructions(monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "test-token")
+    sys.modules.pop("mcp_server", None)
+    from mcp_server import _make_gate_task_redirect
+    result = _make_gate_task_redirect("attio__search_records")
+    assert result["gateway_status"] == "no_active_task"
+    assert result["blocked_tool"] == "attio__search_records"
+    assert result["required_action"] == "declare_intent"
+    msg = result["message"]
+    assert "AGENT INSTRUCTION" in msg
+    assert "declare_intent" in msg
+    # must contain the three context prompts
+    assert "system" in msg.lower()
+    assert "matters" in msg.lower()
+    assert "important" in msg.lower()
