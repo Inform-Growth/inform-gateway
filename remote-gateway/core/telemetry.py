@@ -154,6 +154,7 @@ _SCHEMA_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_tool_name ON tool_calls (tool_name);
 CREATE INDEX IF NOT EXISTS idx_called_at ON tool_calls (called_at);
 CREATE INDEX IF NOT EXISTS idx_user_id   ON tool_calls (user_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_org_created ON tasks (org_id, created_at);
 """
 
 # Columns added after initial release — applied via ALTER TABLE migration.
