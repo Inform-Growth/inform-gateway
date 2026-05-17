@@ -52,9 +52,9 @@ def test_api_stats_forbidden_without_token(client):
 
 def test_dashboard_allowed_with_token(client):
     c, _ = client
-    dash_path = Path(__file__).parent.parent / "core" / "admin_dashboard.html"
-    if not dash_path.exists():
-        pytest.skip("admin_dashboard.html not yet created")
+    dist_index = Path(__file__).parent.parent / "admin-ui" / "dist" / "index.html"
+    if not dist_index.exists():
+        pytest.skip("admin-ui not built — run npm run build:ui first")
     resp = c.get(f"/?token={TOKEN}")
     assert resp.status_code == 200
 
