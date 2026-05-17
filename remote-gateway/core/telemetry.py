@@ -1234,6 +1234,72 @@ class TelemetryStore:
         except Exception:
             return None
 
+    def update_task(
+        self,
+        task_id: str,
+        user_id: str,
+        goal: str | None = None,
+        decision_context: str | None = None,
+        stakes_hint: str | None = None,
+        decision_type: str | None = None,
+        steps: list[str] | None = None,
+    ) -> dict | None:
+        """Update mutable fields on an active task. Owner-only; completed tasks cannot be updated.
+
+        Args:
+            task_id: Task to update.
+            user_id: Must match the task's owner.
+            goal: New goal text, or None to leave unchanged.
+            decision_context: New context text, or None to leave unchanged.
+            stakes_hint: New stakes level, or None to leave unchanged.
+            decision_type: New work type, or None to leave unchanged.
+            steps: New planned steps list, or None to leave unchanged.
+
+        Returns:
+            Updated task dict, or None if task not found, not owned by user, or already complete.
+        """
+        import json as _json
+        if not self._enabled:
+            return None
+        try:
+            conn = self._connect()
+            row = conn.execute(
+                "SELECT user_id FROM tasks WHERE task_id = ? AND status = 'active'",
+                (task_id,),
+            ).fetchone()
+            if not row or row["user_id"] != user_id:
+                return None
+
+            fields: list[str] = []
+            values: list[object] = []
+            if goal is not None:
+                fields.append("goal = ?")
+                values.append(goal)
+            if decision_context is not None:
+                fields.append("decision_context = ?")
+                values.append(decision_context)
+            if stakes_hint is not None:
+                fields.append("stakes_hint = ?")
+                values.append(stakes_hint)
+            if decision_type is not None:
+                fields.append("decision_type = ?")
+                values.append(decision_type)
+            if steps is not None:
+                fields.append("steps = ?")
+                values.append(_json.dumps(steps))
+
+            if fields:
+                values.append(task_id)
+                conn.execute(
+                    f"UPDATE tasks SET {', '.join(fields)} WHERE task_id = ?",
+                    values,
+                )
+                conn.commit()
+
+            return self.get_task(task_id)
+        except Exception:
+            return None
+
     def list_tasks_for_org(
         self,
         org_id: str,
