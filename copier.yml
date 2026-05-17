@@ -44,3 +44,8 @@ questions:
     type: str
     help: "Title shown in the admin dashboard sidebar/topbar"
     default: "[[ project_name ]] Admin"
+
+  deployment_repo:
+    type: str
+    help: "GitHub repo where agents file issues (owner/repo, e.g. 'Inform-Growth/acme-gateway')"
+    default: "[[ github_org ]]/[[ project_slug ]]"
