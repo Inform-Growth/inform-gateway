@@ -40,11 +40,17 @@ Additionally, agents currently have no systematic mechanism to surface friction 
 
 ## Phase 1 Design
 
-### 1a — `report_issue` + `list_my_issues`
+### 1a — `report_issue` + `list_my_issues` (replaces `write_issue` + `list_issues`)
 
-#### What they do
+#### Deprecation of `write_issue` and `list_issues`
 
-`report_issue` files a **real GitHub Issue** (not a markdown file) against the deployment's own GitHub repo. This is distinct from `write_issue`, which writes markdown files to the notes repo. These are different repos, different APIs, different purposes.
+`write_issue` and `list_issues` are deprecated in this PR and removed from registration. They wrote markdown files into the notes repo under `notes/issues/` — a different repo, a different API, a different format. That approach is being replaced wholesale.
+
+All issue creation now goes through `report_issue`, which files **real GitHub Issues** on the deployment's own repo. All issue listing goes through `list_my_issues`. No new code should call `write_issue` or `list_issues`. The functions remain in `notes.py` temporarily (unregistered) until any existing note-repo issue files are migrated or archived, then deleted.
+
+#### What the new tools do
+
+`report_issue` files a real GitHub Issue against the deployment's own repo using the GitHub Issues API.
 
 `list_my_issues` reads issues back from the same deployment repo, filtered by state and/or label.
 
@@ -296,15 +302,18 @@ Reuses existing admin UI React/Vite/Tailwind 4 stack. New `/api/decisions` admin
 - Cross-client deduplication of issues (fleet operator agent, Phase 2)
 - Rate limiting on `report_issue` (revisit if over-filing observed)
 - User-facing UI for deployment repo issues (clients use GitHub directly)
+- Migration or archival of existing `notes/issues/` markdown files (separate cleanup task)
 
 ---
 
 ## Build checklist for Phase 1
 
-### `report_issue` + `list_my_issues`
+### `report_issue` + `list_my_issues` (deprecate `write_issue` + `list_issues`)
+- [ ] Remove `write_issue` and `list_issues` from `notes.register()` (unregister — functions stay in file temporarily)
+- [ ] Add deprecation notice to `write_issue` and `list_issues` docstrings pointing to replacements
 - [ ] Add `report_issue` and `list_my_issues` to `notes.py`
 - [ ] Add `_deployment_repo_headers()` and `_deployment_issue_url()` helpers (separate from existing `_github_headers()` which points at the notes repo)
-- [ ] Register both tools via `mcp.tool()` in `notes.register()`
+- [ ] Register `report_issue` and `list_my_issues` via `mcp.tool()` in `notes.register()`
 - [ ] Add to `.env.example`: `INFORM_GATEWAY_DEPLOYMENT_REPO`, `INFORM_GATEWAY_GITHUB_TOKEN`, `INFORM_GATEWAY_REPORT_ISSUE_DISABLED`
 - [ ] Add to `copier.yml`: prompt for `INFORM_GATEWAY_DEPLOYMENT_REPO`
 - [ ] Update `get_operator_instructions` output with shadow-issue-filing clause
