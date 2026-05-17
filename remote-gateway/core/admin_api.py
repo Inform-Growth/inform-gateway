@@ -426,13 +426,16 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
             limit = 100
         from_ts: float | None = None
         to_ts: float | None = None
-        try:
-            if "from" in request.query_params:
+        if "from" in request.query_params:
+            try:
                 from_ts = float(request.query_params["from"])
-            if "to" in request.query_params:
+            except ValueError:
+                pass
+        if "to" in request.query_params:
+            try:
                 to_ts = float(request.query_params["to"])
-        except ValueError:
-            pass
+            except ValueError:
+                pass
         exclude_process = request.query_params.get("exclude_process", "").lower() == "true"
         tasks = telemetry.list_tasks_for_org(
             org_id,
