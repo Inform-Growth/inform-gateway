@@ -385,3 +385,54 @@ def test_api_tasks_filters_passed_through(store, monkeypatch):
         assert "decision_context" in task
         assert "decision_type" in task
         assert "stakes_hint" in task
+
+
+# --- update_task telemetry tests ---
+
+def test_update_task_modifies_goal(store):
+    task = store.create_task("alice", "acme", "Vague goal", ["step 1"])
+    result = store.update_task(task["task_id"], "alice", goal="Search Attio for open Series B companies in Vancouver")
+    assert result is not None
+    assert result["goal"] == "Search Attio for open Series B companies in Vancouver"
+    assert result["steps"] == ["step 1"]  # unchanged
+
+
+def test_update_task_modifies_context_and_stakes(store):
+    task = store.create_task("alice", "acme", "Search Attio for open Series B companies", [])
+    result = store.update_task(
+        task["task_id"], "alice",
+        decision_context="Evaluating whether to expand Vancouver territory",
+        stakes_hint="high",
+        decision_type="decision",
+    )
+    assert result is not None
+    assert result["decision_context"] == "Evaluating whether to expand Vancouver territory"
+    assert result["stakes_hint"] == "high"
+    assert result["decision_type"] == "decision"
+
+
+def test_update_task_wrong_user_returns_none(store):
+    task = store.create_task("alice", "acme", "Search Attio for open Series B companies", [])
+    result = store.update_task(task["task_id"], "bob", goal="Overwritten")
+    assert result is None
+
+
+def test_update_task_on_complete_task_returns_none(store):
+    task = store.create_task("alice", "acme", "Search Attio for open Series B companies", [])
+    store.complete_task(task["task_id"], "alice", "done")
+    result = store.update_task(task["task_id"], "alice", goal="Too late")
+    assert result is None
+
+
+def test_update_task_no_fields_returns_unchanged_task(store):
+    task = store.create_task("alice", "acme", "Search Attio for open Series B companies", ["step a"])
+    result = store.update_task(task["task_id"], "alice")
+    assert result is not None
+    assert result["goal"] == "Search Attio for open Series B companies"
+    assert result["steps"] == ["step a"]
+
+
+def test_update_task_modifies_steps(store):
+    task = store.create_task("alice", "acme", "Search Attio for open Series B companies", ["old step"])
+    result = store.update_task(task["task_id"], "alice", steps=["search attio", "enrich with apollo"])
+    assert result["steps"] == ["search attio", "enrich with apollo"]
