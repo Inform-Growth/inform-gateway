@@ -218,46 +218,12 @@ Every `declare_intent` response includes a new `shadow_operating_instructions` f
 
 #### Database changes
 
-New columns on `tasks` table (all nullable, backward-compatible):
+Three new nullable columns on the existing `tasks` table — captured at declare_intent time, backward-compatible:
 - `decision_context TEXT`
 - `decision_type TEXT`
 - `stakes_hint TEXT`
-- `linked_decision_id TEXT` — populated later by the Decision Assembler
 
-New tables added to schema (no population logic in Phase 1):
-
-```sql
-CREATE TABLE IF NOT EXISTS decisions (
-    decision_id           TEXT PRIMARY KEY,
-    org_id                TEXT NOT NULL,
-    decision_owner_id     TEXT,
-    title                 TEXT NOT NULL,
-    description           TEXT,
-    decision_type         TEXT,
-    stakes_tier           TEXT,
-    detected_at           REAL NOT NULL,
-    made_at               REAL,
-    supporting_task_ids   TEXT,  -- JSON array
-    supporting_state_change_ids TEXT,  -- JSON array
-    impact_score          REAL,
-    impact_components     TEXT   -- JSON object
-);
-
-CREATE TABLE IF NOT EXISTS state_changes (
-    state_change_id   TEXT PRIMARY KEY,
-    org_id            TEXT NOT NULL,
-    system            TEXT NOT NULL,
-    entity_type       TEXT,
-    entity_id         TEXT,
-    actor_id          TEXT,
-    change_summary    TEXT,
-    before_snapshot   TEXT,  -- JSON
-    after_snapshot    TEXT,  -- JSON
-    detected_at       REAL NOT NULL,
-    occurred_at       REAL,
-    linked_decision_id TEXT
-);
-```
+The gateway is the sensor layer only. `decisions`, `state_changes`, and any linking between tasks and decisions (e.g., `linked_decision_id`) are the loom's concern — the loom reads task records from the gateway's telemetry and assembles them; it does not write back into the gateway's schema.
 
 #### `get_operator_instructions` update
 
@@ -265,22 +231,19 @@ The shadow-issue-filing clause is added to the operator instructions output (sam
 
 ---
 
-## Phase 2 — Decision Assembler (follow-on PR)
+## Phase 2 — Decision Assembler (loom, not this repo)
 
-**What it does:** A background `asyncio` task started inside the gateway process on startup. Runs every 3 minutes. Queries completed tasks in the last 24h grouped by `org_id + decision_type`. Clusters by:
+**Lives on the loom**, not in the gateway. The loom reads completed task records from the gateway's telemetry API (or directly from the SQLite export) and assembles them into decisions.
+
+The loom clusters tasks by:
 - Same `org_id`
 - Same `decision_type != "process"` (process tasks never roll up into decisions)
 - Within a ±2h time window
 - Overlapping `decision_context` keywords (simple token overlap, no embeddings yet)
 
-When a cluster meets the threshold (≥1 task with `decision_context` set, or ≥2 tasks from the same actor in the same window with the same `decision_type`), the Assembler:
-1. Synthesizes a `decisions` row (title from `decision_context` of the highest-stakes task, description from cluster summary)
-2. Backfills `linked_decision_id` on all contributing tasks
-3. Runs the v0 Impact Scorer: `stakes_hint` → score tier (high=0.8, medium=0.5, low=0.2, null=0.1)
+When a cluster meets the threshold (≥1 task with `decision_context` set, or ≥2 tasks from the same actor in the same window with the same `decision_type`), the Assembler synthesizes a `decisions` row in the loom's own store and runs the v0 Impact Scorer: `stakes_hint` → score tier (high=0.8, medium=0.5, low=0.2, null=0.1).
 
-**Idempotency:** Before creating a decision, the Assembler checks if any task in the cluster already has a `linked_decision_id`. If so, it extends the existing decision rather than creating a duplicate.
-
-**Isolation:** The Assembler has read/write access only to the org's own SQLite records. No cross-org access.
+**The gateway's role here is read-only:** expose a telemetry query endpoint the loom can call to pull task records for a given org and time window. No write-back from the loom into the gateway schema.
 
 ---
 
@@ -310,9 +273,11 @@ Reuses existing admin UI React/Vite/Tailwind 4 stack. New `/api/decisions` admin
 
 ## What is explicitly out of scope for Phase 1
 
-- The Decision Assembler background task (Phase 2)
-- Webhook ingestion (Phase 3)
-- Impact scoring beyond schema (Phase 3)
+- The Decision Assembler — lives on the loom, not this repo
+- `decisions` and `state_changes` tables — loom's schema, not the gateway's
+- Any `linked_decision_id` write-back into the gateway — the loom owns that
+- Webhook ingestion (Phase 3, loom-side)
+- Impact scoring (Phase 3, loom-side)
 - Dashboard decision view (Phase 4)
 - Skill injection at `declare_intent` time (future, requires semantic embedding)
 - Cross-client deduplication of issues (fleet operator agent, Phase 2)
@@ -336,8 +301,7 @@ Reuses existing admin UI React/Vite/Tailwind 4 stack. New `/api/decisions` admin
 - [ ] Add clarity check function `_check_goal_clarity(goal: str) -> dict | None`
 - [ ] Inject `shadow_operating_instructions` into every `declare_intent` response
 - [ ] Add `clarity_warning` to response when check fails
-- [ ] Add new columns to `tasks` table in `telemetry.py` (`decision_context`, `decision_type`, `stakes_hint`, `linked_decision_id`)
-- [ ] Add `decisions` and `state_changes` table schemas to `telemetry.py`
+- [ ] Add new columns to `tasks` table in `telemetry.py` (`decision_context`, `decision_type`, `stakes_hint`)
 - [ ] Update `create_task` and `get_task` to read/write new columns
 - [ ] Update `list_active_tasks` to include new columns in output
 
@@ -350,5 +314,4 @@ Reuses existing admin UI React/Vite/Tailwind 4 stack. New `/api/decisions` admin
 - [ ] `test_declare_intent_clarity_vague` — pass short/vague goal, verify `clarity_warning` present, task still created
 - [ ] `test_declare_intent_clarity_clear` — pass specific goal, verify no `clarity_warning`
 - [ ] `test_declare_intent_shadow_instructions` — verify `shadow_operating_instructions` always present
-- [ ] `test_decisions_table_exists` — verify schema migration creates tables
-- [ ] `test_state_changes_table_exists` — verify schema migration creates tables
+- [ ] `test_declare_intent_new_columns_persisted` — verify decision_context, decision_type, stakes_hint are stored and echoed back
