@@ -50,15 +50,6 @@ def test_api_stats_forbidden_without_token(client):
     assert resp.status_code == 403
 
 
-def test_dashboard_allowed_with_token(client):
-    c, _ = client
-    dash_path = Path(__file__).parent.parent / "core" / "admin_dashboard.html"
-    if not dash_path.exists():
-        pytest.skip("admin_dashboard.html not yet created")
-    resp = c.get(f"/?token={TOKEN}")
-    assert resp.status_code == 200
-
-
 # ---------------------------------------------------------------------------
 # Stats
 # ---------------------------------------------------------------------------

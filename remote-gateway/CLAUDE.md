@@ -73,7 +73,7 @@ Every tool should wrap its response with `validated("integration", result)`.
 
 ## Admin Dashboard
 
-The admin UI is a React + Vite + TypeScript + Tailwind 4 + shadcn (base-ui) app at `admin-ui/`. Production builds are served by Starlette from `/admin/`; the legacy HTML lives at `/admin/legacy`. For local development run `./dev.sh` from the repo root (Python on :8000, Vite on :5173 with HMR).
+The admin UI is a React + Vite + TypeScript + Tailwind 4 + shadcn (base-ui) app at `admin-ui/`. Production builds are served by Starlette from `/admin/`. For local development run `./dev.sh` from the repo root (Python on :8000, Vite on :5173 with HMR).
 
 See `docs/superpowers/specs/2026-05-05-admin-ui-react-port-design.md` (design) and `docs/superpowers/plans/2026-05-05-admin-ui-phase-0-scaffolding.md` (phase 0 plan).
 
