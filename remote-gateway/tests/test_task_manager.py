@@ -463,7 +463,10 @@ def test_update_task_tool_partial_update_leaves_other_fields(task_tools, store, 
 
 def test_update_task_modifies_goal(store):
     task = store.create_task("alice", "acme", "Vague goal", ["step 1"])
-    result = store.update_task(task["task_id"], "alice", goal="Search Attio for open Series B companies in Vancouver")
+    result = store.update_task(
+        task["task_id"], "alice",
+        goal="Search Attio for open Series B companies in Vancouver",
+    )
     assert result is not None
     assert result["goal"] == "Search Attio for open Series B companies in Vancouver"
     assert result["steps"] == ["step 1"]  # unchanged
@@ -497,7 +500,9 @@ def test_update_task_on_complete_task_returns_none(store):
 
 
 def test_update_task_no_fields_returns_unchanged_task(store):
-    task = store.create_task("alice", "acme", "Search Attio for open Series B companies", ["step a"])
+    task = store.create_task(
+        "alice", "acme", "Search Attio for open Series B companies", ["step a"]
+    )
     result = store.update_task(task["task_id"], "alice")
     assert result is not None
     assert result["goal"] == "Search Attio for open Series B companies"
@@ -505,7 +510,11 @@ def test_update_task_no_fields_returns_unchanged_task(store):
 
 
 def test_update_task_modifies_steps(store):
-    task = store.create_task("alice", "acme", "Search Attio for open Series B companies", ["old step"])
-    result = store.update_task(task["task_id"], "alice", steps=["search attio", "enrich with apollo"])
+    task = store.create_task(
+        "alice", "acme", "Search Attio for open Series B companies", ["old step"]
+    )
+    result = store.update_task(
+        task["task_id"], "alice", steps=["search attio", "enrich with apollo"]
+    )
     assert result is not None
     assert result["steps"] == ["search attio", "enrich with apollo"]

@@ -218,7 +218,8 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
             steps: Updated planned steps list, or omit to leave unchanged.
 
         Returns:
-            Updated task dict, or an error dict if task not found, not owned by you, or already complete.
+            Updated task dict, or an error dict if task not found, not owned by you,
+            or already complete.
         """
         user_id, _ = _user_and_org()
         result = telemetry.update_task(
