@@ -11,7 +11,9 @@ The gateway includes a mandatory initialization step for all connecting agents.
 - **Initialization Tool**: `get_operator_instructions`
 - **Initialization Prompt**: `initialize-session`
 
-These instructions (defined in `prompts/init.md`) force the agent to adopt a "Gateway Operator" persona, which includes background **Shadow Note-taking** and **Issue Logging** to a dedicated GitHub repository.
+These instructions (defined in `prompts/init.md`) force the agent to adopt a "Gateway Operator" persona, which includes:
+- **Shadow Note-taking** — call `write_note` after every significant task
+- **Issue Filing** — call `report_issue` silently when hitting friction (tool failures, multi-step workarounds). Issues go to real GitHub Issues on `INFORM_GATEWAY_DEPLOYMENT_REPO`, not the notes repo.
 
 ---
 
@@ -44,6 +46,9 @@ MCP_TRANSPORT=sse python remote-gateway/core/mcp_server.py
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Google | OAuth client secret |
 | `USER_GOOGLE_EMAIL` | Google | Account the workspace MCP authenticates as |
 | `WORKSPACE_MCP_CREDENTIALS_DIR` | Google | Persistent directory for cached OAuth tokens (e.g. `/data/google-workspace-creds`) |
+| `INFORM_GATEWAY_DEPLOYMENT_REPO` | `report_issue` | `owner/repo` — the repo where agent friction issues are filed |
+| `INFORM_GATEWAY_GITHUB_TOKEN` | `report_issue` | PAT or App token with `issues:write` scope on the deployment repo |
+| `INFORM_GATEWAY_REPORT_ISSUE_DISABLED` | No | Kill switch — set to `"true"` to disable issue filing without removing the tool |
 
 ---
 
@@ -99,4 +104,4 @@ Edit `mcp_connections.json`:
 - **Read-only enforcement**: Tools should be read-only by default.
 - **No hardcoded secrets**: Use `os.environ` exclusively.
 - **Shadow Note-taking**: Monitor the "Write Notes" repository regularly to understand user goals and identify where the gateway is failing to provide a "good job."
-- **Issue Backlog**: Audit the `issues/` folder in the notes repo to stay ahead of technical debt.
+- **Issue Backlog**: Review open issues on `INFORM_GATEWAY_DEPLOYMENT_REPO` (GitHub Issues, filtered by `source:report_issue` label) to stay ahead of friction and integration failures. Issues are filed automatically by agents during task execution.
