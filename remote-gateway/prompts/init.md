@@ -19,7 +19,7 @@ New organizations should run `setup_start` to initialize their workspace. This w
 ## Available Capabilities
 
 - **Onboarding**: `setup_start`, `setup_save_profile`, `setup_complete`
-- **Tasks**: `declare_intent`, `complete_task`, `get_tasks`
+- **Tasks**: `declare_intent`, `complete_task`, `get_tasks`, `update_task`
 - **Skills**: `skill_list`, `skill_create`, `skill_update`, `skill_delete`, `run_skill`
 - **Profile**: `profile_get`, `profile_update`
 - **Notes**: `write_note`, `read_note`, `list_notes`

@@ -46,6 +46,7 @@ The loom is the **assembler and scorer**. It reads task records from the gateway
 
 ### What's next in this repo (Phases 3–4)
 
+- **Operator roles (future, loom-driven)** — Each operator will carry a role: `autonomous` (N8N, scheduled agents) or `human` (Claude/Gemini interactive sessions). Human operators will go through role onboarding; the loom infers role responsibilities from task/tool patterns over time. Role routing (analogous to org routing) ships after the loom is operational. The language in `declare_intent` is written to stay consistent when roles ship — agents see work framing, not decision framing.
 - **Phase 3** — `/webhooks/{system}` Starlette route for state change ingestion (Attio record updates, HubSpot deal stage changes). Requires loom to be operational first.
 - **Phase 4** — Decision view in the admin dashboard (tasks-per-decision ratio, impact score distribution). Requires loom data via `/api/decisions`.
 
@@ -129,7 +130,7 @@ When acting as an agent in this environment, you MUST initialize your session by
     - `meta.py` — health, stats, auth, operator instructions.
     - `notes.py` — GitHub-backed notes (`write_note`, `read_note`, `list_notes`, `delete_note`) and deployment-repo issue filing (`report_issue`, `list_my_issues`). Note: `write_issue` and `list_issues` are deprecated and unregistered — do not use.
     - `registry.py` — field registry tools.
-    - `_core/` — onboarding (`setup_*`), profile manager (`profile_get/update`), task manager (`declare_intent`/`complete_task`/`get_tasks` — the **init gate**), skill manager (`skill_*`, `run_skill`).
+    - `_core/` — onboarding (`setup_*`), profile manager (`profile_get/update`), task manager (`declare_intent`/`complete_task`/`get_tasks`/`update_task` — the **init gate**), skill manager (`skill_*`, `run_skill`).
   - `prompts/` — `init.md` (Gateway Operator persona) and `qa_agent_instructions.md`.
   - `context/fields/` — YAML field schemas (`_template.yaml` ships with the template; consumers add `apollo.yaml`, `attio-*.yaml`, etc.).
   - `skills/` — Claude Code skill definitions bundled with the template (`gateway-health-check`, `mcp-builder`).
@@ -172,7 +173,7 @@ The `_AuthMiddleware` ASGI layer resolves the key to a `user_id` on every reques
 | `check_field_drift` / `discover_fields` / `get_field_definitions` / `lookup_field` / `list_field_integrations` | Field registry |
 | `setup_start` / `setup_save_profile` / `setup_complete` | Onboarding flow — **bypasses the init gate** |
 | `profile_get` / `profile_update` | Org profile (free-form JSON; bypasses init gate) |
-| `declare_intent` / `complete_task` / `get_tasks` | Task lifecycle — `declare_intent` opens the **init gate** and captures `decision_context`, `decision_type`, `stakes_hint` for the loom |
+| `declare_intent` / `complete_task` / `get_tasks` / `update_task` | Task lifecycle — `declare_intent` opens the **init gate** and captures `decision_context`, `decision_type`, `stakes_hint` for the loom; `update_task` enriches an active task before proceeding |
 | `skill_create` / `skill_update` / `skill_delete` / `skill_list` / `run_skill` | Dynamic prompt-based skills (templates with `{var}` placeholders rendered at call time) |
 
 ### The init gate
