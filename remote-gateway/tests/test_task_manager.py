@@ -164,3 +164,38 @@ def test_list_active_tasks_includes_decision_fields(store):
     tasks = store.list_active_tasks("alice")
     assert tasks[0]["decision_type"] == "decision"
     assert tasks[0]["stakes_hint"] == "high"
+
+
+def test_clarity_check_passes_specific_goal():
+    from tools._core.task_manager import _check_goal_clarity
+    result = _check_goal_clarity(
+        "Search Attio for Series B companies in Vancouver with more than 50 employees"
+    )
+    assert result is None
+
+
+def test_clarity_check_fails_short_goal():
+    from tools._core.task_manager import _check_goal_clarity
+    result = _check_goal_clarity("Look into it")
+    assert result is not None
+    assert "clarity_warning" in result or "message" in result
+
+
+def test_clarity_check_fails_vague_phrase():
+    from tools._core.task_manager import _check_goal_clarity
+    result = _check_goal_clarity("Help with the prospecting list we discussed")
+    assert result is not None
+
+
+def test_clarity_check_fails_under_six_words():
+    from tools._core.task_manager import _check_goal_clarity
+    result = _check_goal_clarity("Do some research now")
+    assert result is not None
+
+
+def test_clarity_check_passes_process_goal():
+    from tools._core.task_manager import _check_goal_clarity
+    result = _check_goal_clarity(
+        "Run the weekly pipeline enrichment job for all open opportunities in Attio"
+    )
+    assert result is None
