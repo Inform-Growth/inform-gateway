@@ -1,6 +1,7 @@
-import { Outlet, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
+import { getToken } from '@/lib/auth';
 
 const TITLES: Record<string, string> = {
   '/dashboard':  'Dashboard',
@@ -15,6 +16,7 @@ const TITLES: Record<string, string> = {
 
 export function AppShell() {
   const { pathname } = useLocation();
+  if (!getToken()) return <Navigate to="/login" replace />;
   const title = TITLES[pathname] ?? 'Gateway';
   return (
     <div className="flex h-screen">

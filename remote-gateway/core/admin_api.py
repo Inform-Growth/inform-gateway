@@ -51,18 +51,7 @@ def _forbidden() -> Response:
 
 def _get_primary_org_id(telemetry: Any) -> str:
     """Return the first initialized org_id, falling back to 'default'."""
-    if not telemetry._enabled:
-        return "default"
-    try:
-        conn = telemetry._connect()
-        row = conn.execute(
-            "SELECT org_id FROM org_profiles WHERE initialized = 1 ORDER BY created_at LIMIT 1"
-        ).fetchone()
-        if row:
-            return row["org_id"]
-    except Exception:
-        pass
-    return "default"
+    return telemetry.get_primary_initialized_org() or "default"
 
 
 def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
@@ -437,11 +426,6 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         return JSONResponse({"org_id": org_id, "tasks": tasks, "count": len(tasks)})
 
     async def _serve_spa(request: Request) -> Response:
-        if not _is_authorized(request):
-            return HTMLResponse(
-                "<h1>403 Forbidden</h1><p>Invalid or missing admin token.</p>",
-                status_code=403,
-            )
         index = DIST / "index.html"
         if not index.exists():
             return HTMLResponse(
