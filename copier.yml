@@ -19,33 +19,32 @@ _jinja_env:
   comment_start_string: "[#"
   comment_end_string: "#]"
 
-questions:
-  project_name:
-    type: str
-    help: "Human-readable name for your gateway (e.g. 'Acme Agent Gateway')"
-    default: My Agent Gateway
+project_name:
+  type: str
+  help: "Human-readable name for your gateway (e.g. 'Acme Agent Gateway')"
+  default: My Agent Gateway
 
-  project_slug:
-    type: str
-    help: "URL/package-safe identifier (e.g. 'acme-agent-gateway')"
-    default: "{{ project_name | lower | replace(' ', '-') }}"
+project_slug:
+  type: str
+  help: "URL/package-safe identifier (e.g. 'acme-agent-gateway')"
+  default: "{{ project_name | lower | replace(' ', '-') }}"
 
-  gateway_url:
-    type: str
-    help: "URL where your remote gateway will be deployed (e.g. 'https://gateway.acme.com')"
-    default: https://your-gateway.example.com
+gateway_url:
+  type: str
+  help: "URL where your remote gateway will be deployed (e.g. 'https://gateway.acme.com')"
+  default: https://your-gateway.example.com
 
-  github_org:
-    type: str
-    help: "Your GitHub organization or username"
-    default: your-org
+github_org:
+  type: str
+  help: "Your GitHub organization or username"
+  default: your-org
 
-  admin_ui_title:
-    type: str
-    help: "Title shown in the admin dashboard sidebar/topbar"
-    default: "[[ project_name ]] Admin"
+admin_ui_title:
+  type: str
+  help: "Title shown in the admin dashboard sidebar/topbar"
+  default: "{{ project_name }} Admin"
 
-  deployment_repo:
-    type: str
-    help: "GitHub repo where agents file issues (owner/repo, e.g. 'Inform-Growth/acme-gateway')"
-    default: "[[ github_org ]]/[[ project_slug ]]"
+deployment_repo:
+  type: str
+  help: "GitHub repo where agents file issues (owner/repo, e.g. 'Inform-Growth/acme-gateway')"
+  default: "{{ github_org }}/{{ project_slug }}"
