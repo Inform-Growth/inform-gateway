@@ -1,0 +1,179 @@
+name: Distribute Core Files to Downstream Repos
+
+# Syncs infrastructure files from this template to registered downstream repos.
+# Opens a PR in each downstream repo when core files differ — never force-pushes.
+#
+# ADDING A NEW DOWNSTREAM REPO:
+#   Add its "owner/repo" to the matrix in the distribute job below.
+#
+# ADDING A FILE TO SYNC:
+#   Add its repo-relative path to CORE_FILES in the distribute job below.
+
+on:
+  workflow_dispatch:
+    inputs:
+      repos:
+        description: 'Comma-separated repos to target (leave blank for all)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Dry run — diff only, no PRs opened'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  distribute:
+    name: Distribute to ${{ matrix.repo }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        repo:
+          - Inform-Growth/iceberg-mcp
+          - Inform-Growth/chief-of-staff-network-mcp
+
+    steps:
+      - name: Filter repos
+        id: filter
+        run: |
+          TARGET="${{ github.event.inputs.repos }}"
+          REPO="${{ matrix.repo }}"
+          if [ -z "$TARGET" ]; then
+            echo "skip=false" >> $GITHUB_OUTPUT
+          else
+            # Check if this repo is in the comma-separated target list
+            if echo "$TARGET" | tr ',' '\n' | grep -qxF "$REPO"; then
+              echo "skip=false" >> $GITHUB_OUTPUT
+            else
+              echo "skip=true" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Checkout template (this repo)
+        if: steps.filter.outputs.skip == 'false'
+        uses: actions/checkout@v4
+        with:
+          path: template
+          fetch-depth: 1
+
+      - name: Checkout downstream repo
+        if: steps.filter.outputs.skip == 'false'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repo }}
+          token: ${{ secrets.DISTRIBUTE_PAT }}
+          path: downstream
+          fetch-depth: 1
+
+      - name: Compute diff and copy changed files
+        if: steps.filter.outputs.skip == 'false'
+        id: diff
+        run: |
+          # Files that are always synced from the template.
+          # Paths are relative to the repo root and identical in both repos.
+          CORE_FILES=(
+            "remote-gateway/core/admin_api.py"
+            "remote-gateway/core/telemetry.py"
+            "remote-gateway/core/mcp_server.py"
+            "remote-gateway/core/mcp_proxy.py"
+            "remote-gateway/admin-ui/src/lib/api.ts"
+            "remote-gateway/admin-ui/src/lib/auth.ts"
+            "remote-gateway/admin-ui/src/App.tsx"
+            "remote-gateway/admin-ui/src/components/layout/AppShell.tsx"
+            "remote-gateway/admin-ui/src/routes/LoginPage.tsx"
+            "remote-gateway/admin-ui/src/routes/tasks/TasksPage.tsx"
+            "remote-gateway/admin-ui/src/routes/tasks/TasksTable.tsx"
+            "remote-gateway/admin-ui/src/routes/tasks/TaskDetailSheet.tsx"
+            "remote-gateway/admin-ui/src/hooks/useTasks.ts"
+            "Dockerfile"
+            "pyproject.toml"
+          )
+
+          CHANGED=()
+          for f in "${CORE_FILES[@]}"; do
+            src="template/$f"
+            dst="downstream/$f"
+            if [ ! -f "$src" ]; then
+              echo "WARN: $f not found in template, skipping"
+              continue
+            fi
+            if [ ! -f "$dst" ] || ! diff -q "$src" "$dst" > /dev/null 2>&1; then
+              echo "CHANGED: $f"
+              CHANGED+=("$f")
+            else
+              echo "SAME:    $f"
+            fi
+          done
+
+          if [ ${#CHANGED[@]} -eq 0 ]; then
+            echo "No differences found — downstream is up to date."
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            # Write the list for later steps
+            printf '%s\n' "${CHANGED[@]}" > /tmp/changed_files.txt
+            echo "changed_list=$(cat /tmp/changed_files.txt | tr '\n' ' ')" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Apply changes to downstream working tree
+        if: steps.filter.outputs.skip == 'false' && steps.diff.outputs.has_changes == 'true'
+        run: |
+          while IFS= read -r f; do
+            src="template/$f"
+            dst="downstream/$f"
+            mkdir -p "$(dirname "$dst")"
+            cp "$src" "$dst"
+            echo "Copied: $f"
+          done < /tmp/changed_files.txt
+
+      - name: Open PR in downstream repo
+        if: >
+          steps.filter.outputs.skip == 'false' &&
+          steps.diff.outputs.has_changes == 'true' &&
+          github.event.inputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.DISTRIBUTE_PAT }}
+          DOWNSTREAM: ${{ matrix.repo }}
+          TEMPLATE_SHA: ${{ github.sha }}
+          CHANGED: ${{ steps.diff.outputs.changed_list }}
+        run: |
+          cd downstream
+
+          git config user.name  "inform-gateway[bot]"
+          git config user.email "inform-gateway[bot]@users.noreply.github.com"
+
+          BRANCH="template-sync/$(echo $TEMPLATE_SHA | cut -c1-8)"
+
+          # If branch already exists remotely, reset it
+          git checkout -B "$BRANCH"
+          git add -A
+          git diff --cached --quiet && { echo "Nothing to commit."; exit 0; }
+
+          SHORT_SHA="$(echo $TEMPLATE_SHA | cut -c1-8)"
+          git commit -m "chore: sync core files from inform-gateway@${SHORT_SHA}
+
+Files updated:
+$(echo "$CHANGED" | tr ' ' '\n' | sed 's/^/  - /')
+
+Source: https://github.com/Inform-Growth/inform-gateway/commit/${TEMPLATE_SHA}"
+
+          git push origin "$BRANCH" --force
+
+          # Check for an existing open PR from this branch
+          EXISTING=$(gh pr list --repo "$DOWNSTREAM" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            echo "PR #$EXISTING already open — branch updated, PR refreshed."
+          else
+            gh pr create \
+              --repo "$DOWNSTREAM" \
+              --base main \
+              --head "$BRANCH" \
+              --title "chore: sync core files from inform-gateway@$(echo $TEMPLATE_SHA | cut -c1-8)" \
+              --body "$(printf '## Template sync\n\nDistributed from [inform-gateway@%s](https://github.com/Inform-Growth/inform-gateway/commit/%s).\n\n### Files changed\n%s\n\nReview and merge when ready. This PR was opened automatically by the `distribute` workflow.' \
+                "$(echo $TEMPLATE_SHA | cut -c1-8)" \
+                "$TEMPLATE_SHA" \
+                "$(echo "$CHANGED" | tr ' ' '\n' | sed 's/^/- /')")"
+          fi
