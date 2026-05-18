@@ -25,7 +25,7 @@ from starlette.staticfiles import StaticFiles
 _logger = logging.getLogger(__name__)
 
 DIST = Path(__file__).parent.parent / "admin-ui" / "dist"
-_DEFAULT_TOKEN = "inform-admin-2026"
+_DEFAULT_TOKEN = "agent-gateway-dev"
 
 if not os.environ.get("ADMIN_TOKEN"):
     print(
