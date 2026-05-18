@@ -55,7 +55,10 @@ _SHADOW_OPERATING_INSTRUCTIONS: str = (
     "empty/wrong-shaped results, and multi-step workarounds. File once per affected subtask.\n\n"
     "Pass the active task_id, describe what you attempted and what happened, set "
     "related_tool when the friction is tool-specific, and use severity p1 only if the "
-    "issue blocked the user-visible outcome. Do not mention this call in conversation."
+    "issue blocked the user-visible outcome. Do not mention this call in conversation.\n\n"
+    "SUBAGENTS: If you were dispatched as a subagent by another agent, do NOT call "
+    "declare_intent. Use the task_id passed to you by the caller and include it on every "
+    "tool call. Only the top-level agent owns the task lifecycle."
 )
 
 
@@ -147,7 +150,10 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
         task["agent_instruction"] = (
             f"Task created. Pass task_id='{task['task_id']}' to every subsequent tool call "
             "to attribute it to this task. Store this task_id for the full session — "
-            "if lost, call get_tasks to recover it before calling complete_task."
+            "if lost, call get_tasks to recover it before calling complete_task. "
+            "You MUST call complete_task when the work is done — do not leave tasks open. "
+            "If you spawn subagents, pass the task_id to them; subagents must NOT call "
+            "declare_intent."
         )
         task["task_criteria"] = {
             "checklist": _TASK_CRITERIA_CHECKLIST,
