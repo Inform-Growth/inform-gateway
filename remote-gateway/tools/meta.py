@@ -35,9 +35,9 @@ def make_get_tool_stats(telemetry: Any) -> Callable[[str], dict]:
         (possible API degradation), tools that have never been called (stale
         candidates for deprecation), and overall call volume.
 
-        Stats reset if the gateway is redeployed without a persistent volume.
-        For persistent history on Railway or Render, set TELEMETRY_DB_PATH to a
-        path on a mounted volume (e.g., /data/telemetry.db).
+        Stats reset if the gateway is redeployed without a persistent database.
+        For persistent history on Railway or Render, set DATABASE_URL to a
+        PostgreSQL connection string (e.g., postgresql://user:pass@host/dbname).
 
         Args:
             tool_name: Filter to a specific tool by name, or leave empty for all.

@@ -94,7 +94,7 @@ cp remote-gateway/.env.example remote-gateway/.env
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Google OAuth client secret |
 | `USER_GOOGLE_EMAIL` | Google account the workspace MCP authenticates as |
 | `WORKSPACE_MCP_CREDENTIALS_DIR` | Path to cached OAuth tokens (e.g. `/data/google-workspace-creds` on Railway) |
-| `TELEMETRY_DB_PATH` | Path to telemetry SQLite DB (set to a persistent volume; default `data/telemetry.db` is ephemeral) |
+| `DATABASE_URL` | PostgreSQL connection string (e.g., `postgresql://user:password@host/dbname`). Railway injects this automatically when a Postgres plugin is added. |
 | `ADMIN_TOKEN` | Admin dashboard token (optional — defaults to `inform-admin-2026` locally) |
 
 ### 3. Start the server
