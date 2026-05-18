@@ -8,7 +8,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import psycopg2
 import pytest
 from pytest_postgresql import factories
 

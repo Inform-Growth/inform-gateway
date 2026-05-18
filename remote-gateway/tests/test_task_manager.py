@@ -10,12 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.modules.pop("telemetry", None)
 
-from telemetry import TelemetryStore
 
-
-@pytest.fixture()
-def store(tmp_path):
-    return TelemetryStore(db_path=tmp_path / "test.db")
 
 
 def test_create_task_returns_task_id(store):

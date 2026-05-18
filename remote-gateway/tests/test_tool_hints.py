@@ -7,15 +7,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 sys.modules.pop("telemetry", None)
 
-from telemetry import TelemetryStore
 
-
-@pytest.fixture()
-def store(tmp_path):
-    s = TelemetryStore(db_path=tmp_path / "test.db")
-    s.add_api_key("alice@example.com", "sk-test", org_id="acme")
-    s.set_initialized("acme")
-    return s
 
 
 def test_enrich_wraps_result_when_hint_exists(store):

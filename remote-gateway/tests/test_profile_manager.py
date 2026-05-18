@@ -8,14 +8,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.modules.pop("telemetry", None)
 
-from telemetry import TelemetryStore
-
-
-@pytest.fixture()
-def store(tmp_path):
-    s = TelemetryStore(db_path=tmp_path / "test.db")
-    s.add_api_key("alice@example.com", "sk-test", org_id="acme")
-    return s
 
 
 @pytest.fixture()
@@ -39,20 +31,23 @@ def tools(store, user_var):
     return collected
 
 
-def test_profile_get_empty_initially(tools):
+def test_profile_get_empty_initially(tools, store):
+    store.add_api_key("alice@example.com", "sk-test", org_id="acme")
     result = tools["profile_get"]()
     assert result["org_id"] == "acme"
     assert result["profile"] == {}
 
 
-def test_profile_update_sets_fields(tools):
+def test_profile_update_sets_fields(tools, store):
+    store.add_api_key("alice@example.com", "sk-test", org_id="acme")
     tools["profile_update"]({"tone": "direct", "icp": "SMB"})
     result = tools["profile_get"]()
     assert result["profile"]["tone"] == "direct"
     assert result["profile"]["icp"] == "SMB"
 
 
-def test_profile_update_is_additive(tools):
+def test_profile_update_is_additive(tools, store):
+    store.add_api_key("alice@example.com", "sk-test", org_id="acme")
     tools["profile_update"]({"tone": "direct"})
     tools["profile_update"]({"icp": "SMB"})
     result = tools["profile_get"]()

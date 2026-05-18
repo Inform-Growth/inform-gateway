@@ -9,12 +9,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 sys.modules.pop("telemetry", None)
 
-from telemetry import TelemetryStore, INTENT_NEVER_REQUIRED  # noqa: E402
+from telemetry import INTENT_NEVER_REQUIRED  # noqa: E402
 
-
-@pytest.fixture()
-def store(tmp_path):
-    return TelemetryStore(db_path=tmp_path / "test.db")
 
 
 def test_intent_overrides_table_exists(store):

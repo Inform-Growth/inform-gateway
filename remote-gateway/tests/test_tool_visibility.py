@@ -1,6 +1,6 @@
 """Tests for per-user tool visibility filtering and global toggle.
 
-All tests use a temporary SQLite DB via tmp_path — no shared state between tests.
+All tests use an isolated PostgreSQL database via the shared conftest store fixture.
 No mcp_server import (startup side effects). The list_tools filter logic is tested
 via a local simulation of _filtered_list_tools using filter_visible_tools directly.
 """
@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -29,10 +28,6 @@ class _FakeTool:
     def __init__(self, name: str) -> None:
         self.name = name
 
-
-def _make_store(tmp_path: Path) -> TelemetryStore:
-    """Return a fresh TelemetryStore backed by a temp DB."""
-    return TelemetryStore(db_path=tmp_path / "test.db")
 
 
 def _simulate_list_tools_filter(
@@ -57,15 +52,14 @@ def _simulate_list_tools_filter(
 # ---------------------------------------------------------------------------
 
 
-def test_cache_loads_from_db(tmp_path):
+def test_cache_loads_from_db(store):
     """_load_disabled_cache reads all enabled=0 rows at startup."""
-    store = _make_store(tmp_path)
     store.set_tool_permission("*", "tool_a", False)
     store.set_tool_permission("user_abc", "tool_b", False)
     store.set_tool_permission("user_abc", "tool_c", True)  # should NOT be in cache
 
     # Create a second store instance to force a fresh cache load from DB
-    store2 = TelemetryStore(db_path=tmp_path / "test.db")
+    store2 = TelemetryStore(dsn=store._dsn)
 
     assert "tool_a" in store2._disabled_cache.get("*", set())
     assert "tool_b" in store2._disabled_cache.get("user_abc", set())
@@ -77,9 +71,8 @@ def test_cache_loads_from_db(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_filter_hides_globally_disabled(tmp_path):
+def test_filter_hides_globally_disabled(store):
     """filter_visible_tools removes '*'-disabled tools for all callers."""
-    store = _make_store(tmp_path)
     store.set_tool_permission("*", "hidden_tool", False)
 
     result = store.filter_visible_tools(None, ["hidden_tool", "visible_tool"])
@@ -88,9 +81,8 @@ def test_filter_hides_globally_disabled(tmp_path):
     assert "visible_tool" in result
 
 
-def test_filter_hides_user_disabled(tmp_path):
+def test_filter_hides_user_disabled(store):
     """filter_visible_tools removes per-user disabled tools for that user only."""
-    store = _make_store(tmp_path)
     store.set_tool_permission("user_abc", "user_tool", False)
 
     result_abc = store.filter_visible_tools("user_abc", ["user_tool", "other_tool"])
@@ -101,9 +93,8 @@ def test_filter_hides_user_disabled(tmp_path):
     assert "user_tool" in result_other  # another user is unaffected
 
 
-def test_filter_applies_both(tmp_path):
+def test_filter_applies_both(store):
     """Global and per-user disables union — both sets are hidden."""
-    store = _make_store(tmp_path)
     store.set_tool_permission("*", "globally_hidden", False)
     store.set_tool_permission("user_abc", "user_hidden", False)
 
@@ -115,22 +106,17 @@ def test_filter_applies_both(tmp_path):
     assert result == {"visible"}
 
 
-def test_filter_shows_all_when_no_disables(tmp_path):
+def test_filter_shows_all_when_no_disables(store):
     """No disabled rows → full list returned."""
-    store = _make_store(tmp_path)
-
     result = store.filter_visible_tools("user_abc", ["tool_a", "tool_b", "tool_c"])
 
     assert result == {"tool_a", "tool_b", "tool_c"}
 
 
-def test_filter_fails_open_when_disabled(tmp_path):
-    """If telemetry is disabled (bad DB path), filter returns full list."""
-    store = TelemetryStore(db_path=Path("/nonexistent/path/db.sqlite"))
-
+def test_filter_fails_open_when_disabled():
+    """If telemetry is disabled (bad DSN), filter returns full list."""
+    store = TelemetryStore(dsn="postgresql://invalid:5432/nodb")
     result = store.filter_visible_tools("user_abc", ["tool_a", "tool_b"])
-
-    # TelemetryStore._enabled is False, filter_visible_tools must return everything
     assert result == {"tool_a", "tool_b"}
 
 
@@ -139,10 +125,8 @@ def test_filter_fails_open_when_disabled(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_set_permission_updates_cache(tmp_path):
+def test_set_permission_updates_cache(store):
     """Cache reflects write immediately — no re-query needed."""
-    store = _make_store(tmp_path)
-
     store.set_tool_permission("user_abc", "tool_x", False)
     assert "tool_x" in store._disabled_cache.get("user_abc", set())
 
@@ -150,10 +134,8 @@ def test_set_permission_updates_cache(tmp_path):
     assert "tool_x" not in store._disabled_cache.get("user_abc", set())
 
 
-def test_set_global_permission_updates_cache(tmp_path):
+def test_set_global_permission_updates_cache(store):
     """set_tool_permission with user_id='*' updates the global cache entry."""
-    store = _make_store(tmp_path)
-
     store.set_tool_permission("*", "global_tool", False)
     assert "global_tool" in store._disabled_cache.get("*", set())
 
@@ -166,9 +148,8 @@ def test_set_global_permission_updates_cache(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_has_permission_blocks_global(tmp_path):
+def test_has_permission_blocks_global(store):
     """has_permission returns False for a '*'-disabled tool regardless of user."""
-    store = _make_store(tmp_path)
     store.set_tool_permission("*", "blocked_tool", False)
 
     assert not store.has_permission("user_abc", "blocked_tool")
@@ -181,9 +162,8 @@ def test_has_permission_blocks_global(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_list_tools_filtered_by_user(tmp_path):
+def test_list_tools_filtered_by_user(store):
     """Authenticated user sees global disables + their own disables removed."""
-    store = _make_store(tmp_path)
     store.set_tool_permission("*", "globally_hidden", False)
     store.set_tool_permission("user_abc", "user_hidden", False)
 
@@ -199,9 +179,8 @@ def test_list_tools_filtered_by_user(tmp_path):
     assert result[0].name == "visible_tool"
 
 
-def test_list_tools_unauthenticated(tmp_path):
+def test_list_tools_unauthenticated(store):
     """Unauthenticated (user_id=None) sees only global disables applied."""
-    store = _make_store(tmp_path)
     store.set_tool_permission("*", "globally_hidden", False)
     store.set_tool_permission("user_abc", "user_hidden", False)
 

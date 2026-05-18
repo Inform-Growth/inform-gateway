@@ -16,12 +16,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 # time and puts a fake `telemetry` module in sys.modules before this file loads).
 sys.modules.pop("telemetry", None)
 
-from telemetry import TelemetryStore  # noqa: E402
-
-
-@pytest.fixture()
-def store(tmp_path):
-    return TelemetryStore(db_path=tmp_path / "test.db")
 
 
 def test_has_permission_default_true(store):
@@ -147,14 +141,12 @@ def test_raw_logs_filters_errors_only(store):
 # daily_activity_by_user
 # ---------------------------------------------------------------------------
 
-def test_daily_activity_by_user_empty(tmp_path):
-    store = TelemetryStore(db_path=tmp_path / "test.db")
+def test_daily_activity_by_user_empty(store):
     result = store.daily_activity_by_user(days=30)
     assert result == {"users": [], "days": []}
 
 
-def test_daily_activity_by_user_single_user(tmp_path):
-    store = TelemetryStore(db_path=tmp_path / "test.db")
+def test_daily_activity_by_user_single_user(store):
     store.record("health_check", 10, True, user_id="alice@example.com")
     store.record("health_check", 20, True, user_id="alice@example.com")
     result = store.daily_activity_by_user(days=30)
@@ -164,8 +156,7 @@ def test_daily_activity_by_user_single_user(tmp_path):
     assert day["alice@example.com"] == 2
 
 
-def test_daily_activity_by_user_multiple_users_same_day(tmp_path):
-    store = TelemetryStore(db_path=tmp_path / "test.db")
+def test_daily_activity_by_user_multiple_users_same_day(store):
     store.record("health_check", 10, True, user_id="alice@example.com")
     store.record("health_check", 10, True, user_id="bob@example.com")
     store.record("health_check", 10, True, user_id="bob@example.com")
@@ -177,9 +168,8 @@ def test_daily_activity_by_user_multiple_users_same_day(tmp_path):
     assert day["bob@example.com"] == 2
 
 
-def test_daily_activity_by_user_absent_user_gets_zero(tmp_path):
+def test_daily_activity_by_user_absent_user_gets_zero(store):
     """A user who had no calls on a given day gets 0, not a missing key."""
-    store = TelemetryStore(db_path=tmp_path / "test.db")
     store.record("health_check", 10, True, user_id="alice@example.com")
     store.record("health_check", 10, True, user_id="bob@example.com")
     result = store.daily_activity_by_user(days=30)
@@ -189,9 +179,8 @@ def test_daily_activity_by_user_absent_user_gets_zero(tmp_path):
         assert "bob@example.com" in day
 
 
-def test_daily_activity_by_user_null_user_id_becomes_unknown(tmp_path):
+def test_daily_activity_by_user_null_user_id_becomes_unknown(store):
     """Calls with no user_id are grouped under 'unknown'."""
-    store = TelemetryStore(db_path=tmp_path / "test.db")
     store.record("health_check", 10, True)   # user_id=None
     result = store.daily_activity_by_user(days=30)
     assert "unknown" in result["users"]
