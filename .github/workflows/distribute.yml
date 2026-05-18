@@ -74,11 +74,20 @@ jobs:
         run: |
           # Files that are always synced from the template.
           # Paths are relative to the repo root and identical in both repos.
+          # Files synced verbatim from the template to all downstream repos.
+          # Excluded intentionally:
+          #   remote-gateway/core/mcp_server.py — each deployment owns its own
+          #     tool registration (which integrations are wired up, etc.)
+          #   remote-gateway/tools/notes.py — GitHub-backed notes are inform-gateway
+          #     internal only; downstream deployments use DB-backed storage instead
+          #   docs/superpowers/plans/ and docs/superpowers/specs/ — development
+          #     plans and specs specific to inform-gateway; each downstream repo
+          #     maintains its own planning docs
           CORE_FILES=(
             "remote-gateway/core/admin_api.py"
             "remote-gateway/core/telemetry.py"
-            "remote-gateway/core/mcp_server.py"
             "remote-gateway/core/mcp_proxy.py"
+            "remote-gateway/tools/_core/task_manager.py"
             "remote-gateway/admin-ui/src/lib/api.ts"
             "remote-gateway/admin-ui/src/lib/auth.ts"
             "remote-gateway/admin-ui/src/App.tsx"
