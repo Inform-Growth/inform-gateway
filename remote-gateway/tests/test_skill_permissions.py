@@ -12,10 +12,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 
 def test_skill_permissions_table_exists(store):
     """skill_permissions table must be created on init."""
-    conn = store._connect()
-    row = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='skill_permissions'"
-    ).fetchone()
+    with store._cursor() as cur:
+        cur.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name = 'skill_permissions'"
+        )
+        row = cur.fetchone()
     assert row is not None
 
 

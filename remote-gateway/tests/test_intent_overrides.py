@@ -14,10 +14,12 @@ from telemetry import INTENT_NEVER_REQUIRED  # noqa: E402
 
 
 def test_intent_overrides_table_exists(store):
-    conn = store._connect()
-    row = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='tool_intent_overrides'"
-    ).fetchone()
+    with store._cursor() as cur:
+        cur.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name = 'tool_intent_overrides'"
+        )
+        row = cur.fetchone()
     assert row is not None
 
 

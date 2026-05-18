@@ -51,11 +51,12 @@ def test_list_active_tasks_for_user(store):
 
 def test_tool_calls_can_store_task_id(store):
     store.record("attio__search_records", 42, True, user_id="alice", task_id="task-abc123")
-    conn = store._connect()
-    row = conn.execute(
-        "SELECT task_id FROM tool_calls WHERE tool_name = ?",
-        ("attio__search_records",),
-    ).fetchone()
+    with store._cursor() as cur:
+        cur.execute(
+            "SELECT task_id FROM tool_calls WHERE tool_name = %s",
+            ("attio__search_records",),
+        )
+        row = cur.fetchone()
     assert row is not None
     assert row["task_id"] == "task-abc123"
 
@@ -258,10 +259,11 @@ def test_declare_intent_decision_fields_optional(task_tools, store, user_var):
 
 
 def test_compound_index_exists(store):
-    conn = store._connect()
-    rows = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_tasks_org_created'"
-    ).fetchall()
+    with store._cursor() as cur:
+        cur.execute(
+            "SELECT indexname FROM pg_indexes WHERE indexname = 'idx_tasks_org_created'"
+        )
+        rows = cur.fetchall()
     assert len(rows) == 1, "compound index idx_tasks_org_created must exist"
 
 
@@ -285,16 +287,15 @@ def test_list_tasks_for_org_time_window(store):
     import time as _time
     import secrets as _secrets
     base = _time.time()
-    conn = store._connect()
 
     def _insert(goal: str, ts: float):
         tid = f"task-{_secrets.token_hex(8)}"
-        conn.execute(
-            "INSERT INTO tasks (task_id, user_id, org_id, goal, steps, status, created_at)"
-            " VALUES (?, 'alice', 'acme', ?, '[]', 'active', ?)",
-            (tid, goal, ts),
-        )
-        conn.commit()
+        with store._cursor() as cur:
+            cur.execute(
+                "INSERT INTO tasks (task_id, user_id, org_id, goal, steps, status, created_at)"
+                " VALUES (%s, 'alice', 'acme', %s, '[]', 'active', %s)",
+                (tid, goal, ts),
+            )
 
     _insert("Too early", base - 7200)
     _insert("In window", base)
@@ -341,17 +342,16 @@ def test_api_tasks_filters_passed_through(store, monkeypatch):
 
     base = _time_mod.time()
     import secrets as _sec
-    conn = store._connect()
 
     def _ins(goal: str, ts: float, dtype: str | None = None):
         tid = f"task-{_sec.token_hex(8)}"
-        conn.execute(
-            "INSERT INTO tasks"
-            " (task_id, user_id, org_id, goal, steps, status, created_at, decision_type)"
-            " VALUES (?, 'alice', 'acme', ?, '[]', 'active', ?, ?)",
-            (tid, goal, ts, dtype),
-        )
-        conn.commit()
+        with store._cursor() as cur:
+            cur.execute(
+                "INSERT INTO tasks"
+                " (task_id, user_id, org_id, goal, steps, status, created_at, decision_type)"
+                " VALUES (%s, 'alice', 'acme', %s, '[]', 'active', %s, %s)",
+                (tid, goal, ts, dtype),
+            )
 
     _ins("Too early", base - 7200, "decision")
     _ins("In window process", base, "process")
