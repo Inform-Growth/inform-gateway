@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "[[ project_slug ]]"
 version = "0.1.0"
@@ -10,13 +14,18 @@ dependencies = [
     "openai",
     "httpx",
     "pyyaml",
+    "psycopg2-binary",
 ]
+
+[tool.setuptools]
+packages = ["remote-gateway"]
 
 [project.optional-dependencies]
 dev = [
     "pytest",
     "python-dotenv",
     "ruff",
+    "pytest-postgresql",
 ]
 
 [tool.ruff]
