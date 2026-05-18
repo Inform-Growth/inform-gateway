@@ -26,6 +26,7 @@ dev = [
     "python-dotenv",
     "ruff",
     "pytest-postgresql",
+    "psycopg[binary]",
 ]
 
 [tool.ruff]

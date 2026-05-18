@@ -55,7 +55,7 @@ The loom is the **assembler and scorer**. It reads task records from the gateway
 ```bash
 # Install (from repo root)
 pip install -e .
-pip install -e ".[dev]"   # includes pytest and ruff
+pip install -e ".[dev]"   # includes pytest, ruff, and psycopg[binary] (psycopg3) for pytest-postgresql 8.x
 
 # Lint & Test
 ruff check .
@@ -133,7 +133,7 @@ When acting as an agent in this environment, you MUST initialize your session by
   - `mcp_connections.json` — Upstream proxy definitions; **empty by default in the template** (`{"connections": {}}`). Consumers add integrations here.
 - **`.github/workflows/`** — `auto_pr.yml`, `auto_promote.yml`, `qa_agent_review.yml` drive the tool promotion pipeline.
 - **`copier.yml`** — Copier template config (questions: `project_name`, `project_slug`, `gateway_url`, `github_org`).
-- **`data/`** — SQLite telemetry DB (gitignored in prod; use a mounted volume).
+- **`data/`** — SQLite test fixtures (gitignored in prod; PostgreSQL in production).
 - **`debug_mcp.py`** — Root-level dev utility.
 
 ## Authentication
@@ -191,7 +191,7 @@ The template ships with `{"connections": {}}` — **no integrations are configur
 
 Every tool call is recorded automatically (timing, success/failure, `user_id`, `request_id`, response size).
 
-- **SQLite DB**: `TELEMETRY_DB_PATH` (default: `data/telemetry.db`). Mount `/data` as a persistent volume on Railway/Render.
+- **Storage**: PostgreSQL at `DATABASE_URL`. Railway injects this automatically when a Postgres plugin is added to the service.
 - **Stats**: Call `get_tool_stats()` for per-tool metrics. `summary.high_error_rate` flags tools with ≥5% error rate over ≥10 calls.
 - **Session analysis**: Call `get_session_usage()` for call sequences grouped by user.
 

@@ -37,7 +37,7 @@ MCP_TRANSPORT=sse python remote-gateway/core/mcp_server.py
 | `MCP_TRANSPORT` | No | `sse` for remote deployment, omit for stdio |
 | `MCP_SERVER_HOST` | No | SSE bind address (default: `0.0.0.0`) |
 | `MCP_SERVER_PORT` | No | SSE port (default: `8000`) |
-| `TELEMETRY_DB_PATH` | No | Path to SQLite telemetry file (default: `data/telemetry.db`) |
+| `DATABASE_URL` | Yes (prod) | PostgreSQL connection string. Railway injects this automatically when a Postgres plugin is added to the service. |
 | `GITHUB_TOKEN` | Yes | PAT with Contents read+write on the notes repo |
 | `GITHUB_REPO` | Yes | `owner/repo` slug for the notes repo |
 | `GITHUB_BRANCH` | No | Branch for notes read/write (default: `main`) |
@@ -58,7 +58,7 @@ Every tool call is recorded automatically via the telemetry patch in `core/mcp_s
 
 - **Querying stats**: Call `get_tool_stats()` from any connected agent.
 - **High Error Rates**: The `summary.high_error_rate` list flags tools with ≥5% error rate—this is your primary signal for API degradation or auth failures.
-- **Storage**: SQLite at `TELEMETRY_DB_PATH`. Mount a persistent volume at `/data` for production environments (Railway/Render) and set `TELEMETRY_DB_PATH=/data/telemetry.db`.
+- **Storage**: PostgreSQL at `DATABASE_URL`. Railway injects the DSN automatically when a Postgres plugin is added to the service.
 
 ---
 
