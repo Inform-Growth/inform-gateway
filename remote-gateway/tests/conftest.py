@@ -5,7 +5,6 @@ instance (via pytest-postgresql). Each test gets an isolated database.
 """
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
