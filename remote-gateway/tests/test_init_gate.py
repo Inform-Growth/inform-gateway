@@ -7,14 +7,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 sys.modules.pop("telemetry", None)
 
-from telemetry import TelemetryStore
-
-
-@pytest.fixture()
-def store(tmp_path):
-    s = TelemetryStore(db_path=tmp_path / "test.db")
-    s.add_api_key("alice@example.com", "sk-test", org_id="acme")
-    return s
 
 
 def test_gate_redirects_uninitialized_org(store):
@@ -29,6 +21,7 @@ def test_gate_redirects_uninitialized_org(store):
 
 
 def test_gate_passes_after_setup_complete(store):
+    store.add_api_key("alice@example.com", "sk-test", org_id="acme")
     store.set_initialized("acme")
     org_id = store.get_org_id("alice@example.com")
     assert store.is_initialized(org_id) is True

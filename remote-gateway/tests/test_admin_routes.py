@@ -21,14 +21,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 
 import admin_api  # noqa: E402
 from admin_api import _DEFAULT_TOKEN, create_admin_app  # noqa: E402
-from telemetry import TelemetryStore  # noqa: E402
 
 TOKEN = _DEFAULT_TOKEN
-
-
-@pytest.fixture()
-def store(tmp_path):
-    return TelemetryStore(db_path=tmp_path / "test.db")
 
 
 @pytest.fixture()

@@ -18,14 +18,8 @@ from starlette.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 
 from admin_api import _DEFAULT_TOKEN, create_admin_app
-from telemetry import TelemetryStore
 
 TOKEN = _DEFAULT_TOKEN
-
-
-@pytest.fixture()
-def store(tmp_path):
-    return TelemetryStore(db_path=tmp_path / "test.db")
 
 
 @pytest.fixture()
