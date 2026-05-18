@@ -1,5 +1,5 @@
 """
-Gateway telemetry — SQLite-backed tool call tracking.
+Gateway telemetry — PostgreSQL-backed tool call tracking.
 
 Records every invocation with timing, success/failure, and the user who made
 the call (resolved from their API key at request time).
@@ -20,10 +20,8 @@ The gateway's ASGI auth middleware resolves the key to a user_id on each
 request and stores it in a ContextVar. The telemetry wrappers pick it up
 automatically — no per-tool changes required.
 
-Zero external dependencies: sqlite3 ships with the Python standard library.
-
-Database location: TELEMETRY_DB_PATH env var (default: data/telemetry.db).
-Mount a persistent volume at /data on Railway/Render and set that variable.
+Requires psycopg2-binary. Connection string from DATABASE_URL env var.
+On Railway, add a Postgres plugin to your service — Railway auto-injects DATABASE_URL.
 
 Telemetry is never load-bearing — all record() calls are silent no-ops if
 the database is unavailable.
@@ -34,99 +32,136 @@ from __future__ import annotations
 import datetime
 import os
 import secrets
-import sqlite3
 import time
-from pathlib import Path
-from typing import Any
+from contextlib import contextmanager
+from typing import Any, Generator
 
-_DB_PATH = Path(os.environ.get("TELEMETRY_DB_PATH", "data/telemetry.db"))
+import psycopg2
+import psycopg2.extras
 
-_SCHEMA_TABLES = """
-PRAGMA journal_mode = WAL;
+_DSN = os.environ.get("DATABASE_URL", "")
 
-CREATE TABLE IF NOT EXISTS api_keys (
-    key         TEXT    PRIMARY KEY,
-    user_id     TEXT    NOT NULL,
-    created_at  REAL    NOT NULL
-);
+INTENT_NEVER_REQUIRED: frozenset[str] = frozenset({
+    "setup_start", "setup_save_profile", "setup_complete",
+    "health_check",
+    "declare_intent", "complete_task", "get_tasks",
+    "get_operator_instructions", "create_user",
+    "profile_get", "profile_update",
+    "list_prompts", "get_prompt",
+})
+"""Tools that are always exempt from the intent (declare_intent) gate.
 
-CREATE TABLE IF NOT EXISTS tool_calls (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    tool_name     TEXT    NOT NULL,
-    called_at     REAL    NOT NULL,
-    duration_ms   INTEGER NOT NULL,
-    success       INTEGER NOT NULL,
-    error_type    TEXT,
-    error_message TEXT,
-    user_id       TEXT,
-    request_id    TEXT,
-    response_size INTEGER,
-    input_body    TEXT,
-    response_preview TEXT
-);
-
-CREATE TABLE IF NOT EXISTS tool_permissions (
-    user_id   TEXT    NOT NULL,
-    tool_name TEXT    NOT NULL,
-    enabled   INTEGER NOT NULL DEFAULT 1,
-    PRIMARY KEY (user_id, tool_name)
-);
-
-CREATE TABLE IF NOT EXISTS org_profiles (
-    org_id       TEXT PRIMARY KEY,
-    display_name TEXT,
-    profile_json TEXT NOT NULL DEFAULT '{}',
-    initialized  INTEGER NOT NULL DEFAULT 0,
-    created_at   REAL NOT NULL,
-    updated_at   REAL NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS skills (
-    id              TEXT PRIMARY KEY,
-    org_id          TEXT NOT NULL,
-    name            TEXT NOT NULL,
-    description     TEXT NOT NULL,
-    prompt_template TEXT NOT NULL,
-    is_active       INTEGER NOT NULL DEFAULT 1,
-    is_system       INTEGER NOT NULL DEFAULT 0,
-    created_by      TEXT,
-    created_at      REAL NOT NULL,
-    updated_at      REAL NOT NULL,
-    UNIQUE(org_id, name)
-);
-
-CREATE TABLE IF NOT EXISTS tool_hints (
-    id                  TEXT PRIMARY KEY,
-    org_id              TEXT NOT NULL,
-    tool_name           TEXT NOT NULL,
-    interpretation_hint TEXT,
-    usage_rules         TEXT,
-    data_sensitivity    TEXT DEFAULT 'internal',
-    is_active           INTEGER NOT NULL DEFAULT 1,
-    UNIQUE(org_id, tool_name)
-);
-
-CREATE TABLE IF NOT EXISTS tasks (
-    task_id      TEXT PRIMARY KEY,
-    user_id      TEXT NOT NULL,
-    org_id       TEXT NOT NULL,
-    goal         TEXT NOT NULL,
-    steps        TEXT NOT NULL DEFAULT '[]',
-    status       TEXT NOT NULL DEFAULT 'active',
-    outcome      TEXT,
-    created_at   REAL NOT NULL,
-    completed_at REAL
-);
+The admin API rejects any attempt to require intent for these tools, since
+toggling them on would lock the org out of bootstrap operations (you cannot
+declare_intent if declare_intent itself requires intent).
 """
 
-# Indexes are created after migrations so that columns added via ALTER TABLE
-# are present before any index on those columns is attempted.
-_SCHEMA_INDEXES = """
-CREATE INDEX IF NOT EXISTS idx_tool_name ON tool_calls (tool_name);
-CREATE INDEX IF NOT EXISTS idx_called_at ON tool_calls (called_at);
-CREATE INDEX IF NOT EXISTS idx_user_id   ON tool_calls (user_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_org_created ON tasks (org_id, created_at);
-"""
+_SCHEMA_STATEMENTS: list[str] = [
+    """
+    CREATE TABLE IF NOT EXISTS api_keys (
+        key         TEXT             PRIMARY KEY,
+        user_id     TEXT             NOT NULL,
+        created_at  DOUBLE PRECISION NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tool_calls (
+        id            BIGSERIAL        PRIMARY KEY,
+        tool_name     TEXT             NOT NULL,
+        called_at     DOUBLE PRECISION NOT NULL,
+        duration_ms   INTEGER          NOT NULL,
+        success       INTEGER          NOT NULL,
+        error_type    TEXT,
+        error_message TEXT,
+        user_id       TEXT,
+        request_id    TEXT,
+        response_size INTEGER,
+        input_body    TEXT,
+        response_preview TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tool_permissions (
+        user_id   TEXT    NOT NULL,
+        tool_name TEXT    NOT NULL,
+        enabled   INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY (user_id, tool_name)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS org_profiles (
+        org_id       TEXT             PRIMARY KEY,
+        display_name TEXT,
+        profile_json TEXT             NOT NULL DEFAULT '{}',
+        initialized  INTEGER          NOT NULL DEFAULT 0,
+        created_at   DOUBLE PRECISION NOT NULL,
+        updated_at   DOUBLE PRECISION NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS skills (
+        id              TEXT             PRIMARY KEY,
+        org_id          TEXT             NOT NULL,
+        name            TEXT             NOT NULL,
+        description     TEXT             NOT NULL,
+        prompt_template TEXT             NOT NULL,
+        is_active       INTEGER          NOT NULL DEFAULT 1,
+        is_system       INTEGER          NOT NULL DEFAULT 0,
+        created_by      TEXT,
+        created_at      DOUBLE PRECISION NOT NULL,
+        updated_at      DOUBLE PRECISION NOT NULL,
+        UNIQUE(org_id, name)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS skill_permissions (
+        user_id    TEXT    NOT NULL,
+        skill_name TEXT    NOT NULL,
+        enabled    INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY (user_id, skill_name)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tool_intent_overrides (
+        user_id         TEXT    NOT NULL,
+        tool_name       TEXT    NOT NULL,
+        requires_intent INTEGER NOT NULL,
+        PRIMARY KEY (user_id, tool_name)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tool_hints (
+        id                  TEXT PRIMARY KEY,
+        org_id              TEXT NOT NULL,
+        tool_name           TEXT NOT NULL,
+        interpretation_hint TEXT,
+        usage_rules         TEXT,
+        data_sensitivity    TEXT DEFAULT 'internal',
+        is_active           INTEGER NOT NULL DEFAULT 1,
+        UNIQUE(org_id, tool_name)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tasks (
+        task_id      TEXT             PRIMARY KEY,
+        user_id      TEXT             NOT NULL,
+        org_id       TEXT             NOT NULL,
+        goal         TEXT             NOT NULL,
+        steps        TEXT             NOT NULL DEFAULT '[]',
+        status       TEXT             NOT NULL DEFAULT 'active',
+        outcome      TEXT,
+        created_at   DOUBLE PRECISION NOT NULL,
+        completed_at DOUBLE PRECISION
+    )
+    """,
+]
+
+_SCHEMA_INDEX_STATEMENTS: list[str] = [
+    "CREATE INDEX IF NOT EXISTS idx_tool_name ON tool_calls (tool_name)",
+    "CREATE INDEX IF NOT EXISTS idx_called_at ON tool_calls (called_at)",
+    "CREATE INDEX IF NOT EXISTS idx_user_id   ON tool_calls (user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_tasks_org_created ON tasks (org_id, created_at)",
+]
 
 # Columns added after initial release — applied via ALTER TABLE migration.
 _MIGRATIONS = [
@@ -146,52 +181,80 @@ _MIGRATIONS = [
 
 
 class TelemetryStore:
-    """Lightweight SQLite store for gateway tool call metrics and API key management."""
+    """PostgreSQL-backed store for gateway tool call metrics and API key management."""
 
-    def __init__(self, db_path: Path = _DB_PATH) -> None:
-        self._path = db_path
+    def __init__(self, dsn: str = _DSN) -> None:
+        self._dsn = dsn
         self._enabled = False
         self._disabled_cache: dict[str, set[str]] = {}
+        self._disabled_skills_cache: dict[str, set[str]] = {}
         self._hint_cache: dict[str, dict[str, dict]] = {}
-        self._conn: sqlite3.Connection | None = None
+        self._conn: Any = None
         self._setup()
         self._load_disabled_cache()
+        self._load_disabled_skills_cache()
 
     def _setup(self) -> None:
-        """Create the database file and schema. Disables itself on any failure."""
+        """Connect to Postgres, create schema, run migrations. Disables on any failure."""
+        if not self._dsn:
+            print("[telemetry] disabled — DATABASE_URL not set", flush=True)
+            return
         try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            conn = sqlite3.connect(self._path, check_same_thread=False)
-            conn.row_factory = sqlite3.Row
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.executescript(_SCHEMA_TABLES)
-            self._migrate(conn)
-            conn.executescript(_SCHEMA_INDEXES)
-            self._conn = conn          # store; do NOT close
+            conn = psycopg2.connect(self._dsn)
+        except Exception as exc:
+            print(f"[telemetry] disabled — could not connect: {exc}", flush=True)
+            return
+        try:
+            with conn.cursor() as cur:
+                for stmt in _SCHEMA_STATEMENTS:
+                    cur.execute(stmt)
+                self._migrate_pg(cur)
+                for stmt in _SCHEMA_INDEX_STATEMENTS:
+                    cur.execute(stmt)
+            conn.commit()
+            self._conn = conn
             self._enabled = True
         except Exception as exc:
-            print(f"[telemetry] disabled — could not open {self._path}: {exc}", flush=True)
+            conn.close()
+            print(f"[telemetry] disabled — schema setup failed: {exc}", flush=True)
 
-    def _migrate(self, conn: sqlite3.Connection) -> None:
-        """Add any columns that were introduced after the initial schema."""
-        existing_tables = {
-            row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        }
+    def _migrate_pg(self, cur: Any) -> None:
+        """Add any columns introduced after the initial schema."""
+        cur.execute(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+        )
+        existing_tables = {row[0] for row in cur.fetchall()}
         for table, column, col_type in _MIGRATIONS:
             if table not in existing_tables:
                 continue
-            existing_cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+            cur.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema = 'public' AND table_name = %s",
+                (table,),
+            )
+            existing_cols = {row[0] for row in cur.fetchall()}
             if column not in existing_cols:
-                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
-        conn.commit()
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
 
-    def _connect(self) -> sqlite3.Connection:
-        """Return the shared persistent WAL-mode connection.
+    def _connect(self) -> Any:
+        """Return the shared persistent connection."""
+        return self._conn
 
-        The connection is created once in _setup() and lives for the process
-        lifetime. Callers must NOT call conn.close().
-        """
-        return self._conn  # type: ignore[return-value]
+    # NOTE: self._conn is a single shared connection — not safe for concurrent writes.
+    # For high-concurrency deployments, replace with psycopg2.pool.ThreadedConnectionPool.
+    @contextmanager
+    def _cursor(self) -> Generator[Any, None, None]:
+        """Yield a RealDictCursor; commit on success, rollback on exception."""
+        conn = self._conn
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        try:
+            yield cur
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
 
     def _load_disabled_cache(self) -> None:
         """Populate _disabled_cache from all enabled=0 rows in tool_permissions.
@@ -203,12 +266,32 @@ class TelemetryStore:
         if not self._enabled:
             return
         try:
-            conn = self._connect()
-            rows = conn.execute(
-                "SELECT user_id, tool_name FROM tool_permissions WHERE enabled = 0"
-            ).fetchall()
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT user_id, tool_name FROM tool_permissions WHERE enabled = 0"
+                )
+                rows = cur.fetchall()
             for row in rows:
                 self._disabled_cache.setdefault(row["user_id"], set()).add(row["tool_name"])
+        except Exception:
+            pass
+
+    def _load_disabled_skills_cache(self) -> None:
+        """Populate _disabled_skills_cache from all enabled=0 rows in skill_permissions.
+
+        Called once at startup. After this, set_skill_permission keeps the cache
+        consistent. Silent no-op if the DB is unavailable.
+        """
+        if not self._enabled:
+            return
+        try:
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT user_id, skill_name FROM skill_permissions WHERE enabled = 0"
+                )
+                rows = cur.fetchall()
+            for row in rows:
+                self._disabled_skills_cache.setdefault(row["user_id"], set()).add(row["skill_name"])
         except Exception:
             pass
 
@@ -225,10 +308,12 @@ class TelemetryStore:
         if not self._enabled:
             return None
         try:
-            conn = self._connect()
-            row = conn.execute(
-                "SELECT org_id FROM org_profiles WHERE initialized = 1 ORDER BY created_at LIMIT 1"
-            ).fetchone()
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT org_id FROM org_profiles WHERE initialized = 1 "
+                    "ORDER BY created_at LIMIT 1"
+                )
+                row = cur.fetchone()
             return row["org_id"] if row else None
         except Exception:
             return None
@@ -251,12 +336,12 @@ class TelemetryStore:
             org_id = self.get_primary_initialized_org() or user_id
         if not self._enabled:
             return key
-        conn = self._connect()
-        conn.execute(
-            "INSERT INTO api_keys (key, user_id, org_id, created_at) VALUES (?, ?, ?, ?)",
-            (key, user_id, org_id, time.time()),
-        )
-        conn.commit()
+        with self._cursor() as cur:
+            cur.execute(
+                "INSERT INTO api_keys (key, user_id, org_id, created_at) "
+                "VALUES (%s, %s, %s, %s)",
+                (key, user_id, org_id, time.time()),
+            )
         return key
 
     def revoke_api_key(self, key: str) -> None:
@@ -268,9 +353,8 @@ class TelemetryStore:
         if not self._enabled:
             return
         try:
-            conn = self._connect()
-            conn.execute("DELETE FROM api_keys WHERE key = ?", (key,))
-            conn.commit()
+            with self._cursor() as cur:
+                cur.execute("DELETE FROM api_keys WHERE key = %s", (key,))
         except Exception:
             pass
 
@@ -279,21 +363,22 @@ class TelemetryStore:
         if not self._enabled:
             return []
         try:
-            conn = self._connect()
-            rows = conn.execute(
-                """
-                SELECT
-                    ak.user_id,
-                    ak.key,
-                    ak.created_at,
-                    COUNT(tc.id)      AS call_count,
-                    MAX(tc.called_at) AS last_active
-                FROM api_keys ak
-                LEFT JOIN tool_calls tc ON ak.user_id = tc.user_id
-                GROUP BY ak.user_id, ak.key
-                ORDER BY ak.created_at DESC
-                """
-            ).fetchall()
+            with self._cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        ak.user_id,
+                        ak.key,
+                        ak.created_at,
+                        COUNT(tc.id)      AS call_count,
+                        MAX(tc.called_at) AS last_active
+                    FROM api_keys ak
+                    LEFT JOIN tool_calls tc ON ak.user_id = tc.user_id
+                    GROUP BY ak.user_id, ak.key
+                    ORDER BY ak.created_at DESC
+                    """
+                )
+                rows = cur.fetchall()
         except Exception:
             return []
         return [
@@ -320,11 +405,10 @@ class TelemetryStore:
         if not self._enabled:
             return 0
         try:
-            conn = self._connect()
-            cursor = conn.execute("DELETE FROM api_keys WHERE user_id = ?", (user_id,))
-            deleted = cursor.rowcount
-            conn.execute("DELETE FROM tool_permissions WHERE user_id = ?", (user_id,))
-            conn.commit()
+            with self._cursor() as cur:
+                cur.execute("DELETE FROM api_keys WHERE user_id = %s", (user_id,))
+                deleted = cur.rowcount
+                cur.execute("DELETE FROM tool_permissions WHERE user_id = %s", (user_id,))
             return deleted
         except Exception:
             return 0
@@ -349,11 +433,13 @@ class TelemetryStore:
         if not self._enabled:
             return True
         try:
-            conn = self._connect()
-            row = conn.execute(
-                "SELECT enabled FROM tool_permissions WHERE user_id = ? AND tool_name = ?",
-                (user_id, tool_name),
-            ).fetchone()
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT enabled FROM tool_permissions "
+                    "WHERE user_id = %s AND tool_name = %s",
+                    (user_id, tool_name),
+                )
+                row = cur.fetchone()
             return row is None or bool(row["enabled"])
         except Exception:
             return True  # never block on DB failure
@@ -386,12 +472,13 @@ class TelemetryStore:
         if not self._enabled:
             return []
         try:
-            conn = self._connect()
-            rows = conn.execute(
-                "SELECT tool_name, enabled FROM tool_permissions"
-                " WHERE user_id = ? ORDER BY tool_name",
-                (user_id,),
-            ).fetchall()
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT tool_name, enabled FROM tool_permissions"
+                    " WHERE user_id = %s ORDER BY tool_name",
+                    (user_id,),
+                )
+                rows = cur.fetchall()
         except Exception:
             return []
         return [{"tool_name": row["tool_name"], "enabled": bool(row["enabled"])} for row in rows]
@@ -410,13 +497,13 @@ class TelemetryStore:
         if not self._enabled:
             return
         try:
-            conn = self._connect()
-            conn.execute(
-                "INSERT INTO tool_permissions (user_id, tool_name, enabled) VALUES (?, ?, ?)"
-                " ON CONFLICT(user_id, tool_name) DO UPDATE SET enabled = excluded.enabled",
-                (user_id, tool_name, int(enabled)),
-            )
-            conn.commit()
+            with self._cursor() as cur:
+                cur.execute(
+                    "INSERT INTO tool_permissions (user_id, tool_name, enabled) "
+                    "VALUES (%s, %s, %s) "
+                    "ON CONFLICT(user_id, tool_name) DO UPDATE SET enabled = excluded.enabled",
+                    (user_id, tool_name, int(enabled)),
+                )
         except Exception:
             pass
         # Keep cache consistent regardless of DB success/failure
@@ -425,6 +512,223 @@ class TelemetryStore:
                 self._disabled_cache[user_id].discard(tool_name)
         else:
             self._disabled_cache.setdefault(user_id, set()).add(tool_name)
+
+    def is_skill_enabled(self, user_id: str, skill_name: str) -> bool:
+        """Return whether a user is allowed to run a skill.
+
+        Resolution: per-user row → global '*' row → default True. The user-specific
+        row beats the global toggle, mirroring how tool permissions resolve.
+
+        Fails open: if telemetry is disabled or the DB lookup raises, returns True.
+
+        Args:
+            user_id: The authenticated user's identifier.
+            skill_name: The skill name being checked.
+
+        Returns:
+            False if the skill is globally disabled or explicitly disabled for
+            this user. True otherwise (including on DB failure).
+        """
+        if not self._enabled:
+            return True
+        try:
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT enabled FROM skill_permissions "
+                    "WHERE user_id = %s AND skill_name = %s",
+                    (user_id, skill_name),
+                )
+                row = cur.fetchone()
+            if row is not None:
+                return bool(row["enabled"])
+            if skill_name in self._disabled_skills_cache.get("*", set()):
+                return False
+            return True
+        except Exception:
+            return True
+
+    def set_skill_permission(self, user_id: str, skill_name: str, enabled: bool) -> None:
+        """Insert or update a skill permission for a user.
+
+        Use user_id='*' to set a global toggle affecting all users — the skill
+        will be blocked at call time for everyone.
+
+        Args:
+            user_id: The user to configure, or '*' for a global toggle.
+            skill_name: The skill name as registered on the gateway.
+            enabled: True to allow, False to disable.
+        """
+        if not self._enabled:
+            return
+        try:
+            with self._cursor() as cur:
+                cur.execute(
+                    "INSERT INTO skill_permissions (user_id, skill_name, enabled) "
+                    "VALUES (%s, %s, %s) "
+                    "ON CONFLICT(user_id, skill_name) DO UPDATE SET enabled = excluded.enabled",
+                    (user_id, skill_name, int(enabled)),
+                )
+        except Exception:
+            pass
+        # Keep cache consistent regardless of DB success/failure
+        if enabled:
+            if user_id in self._disabled_skills_cache:
+                self._disabled_skills_cache[user_id].discard(skill_name)
+        else:
+            self._disabled_skills_cache.setdefault(user_id, set()).add(skill_name)
+
+    def get_skill_permissions(self, user_id: str) -> list[dict]:
+        """Return explicit skill permission rows for a user."""
+        if not self._enabled:
+            return []
+        try:
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT skill_name, enabled FROM skill_permissions"
+                    " WHERE user_id = %s ORDER BY skill_name",
+                    (user_id,),
+                )
+                rows = cur.fetchall()
+        except Exception:
+            return []
+        return [{"skill_name": row["skill_name"], "enabled": bool(row["enabled"])} for row in rows]
+
+    def filter_visible_skills(self, user_id: str | None, skill_names: list[str]) -> set[str]:
+        """Return the subset of skill_names the user is permitted to see.
+
+        Reads only the in-memory _disabled_skills_cache — no DB query. Mirrors
+        filter_visible_tools.
+
+        Args:
+            user_id: Authenticated user, or None for unauthenticated requests.
+            skill_names: Full list of skill names to filter.
+
+        Returns:
+            Set of skill names the user is allowed to see.
+        """
+        if not self._enabled:
+            return set(skill_names)
+        globally_disabled = self._disabled_skills_cache.get("*", set())
+        user_disabled = self._disabled_skills_cache.get(user_id, set()) if user_id else set()
+        hidden = globally_disabled | user_disabled
+        return {name for name in skill_names if name not in hidden}
+
+    def get_tool_intent_override(
+        self, user_id: str | None, tool_name: str
+    ) -> bool | None:
+        """Return user/global override for a tool's intent requirement.
+
+        Resolution: per-user row → global '*' row → None (no override).
+
+        Args:
+            user_id: The authenticated user ID, or None for unauthenticated requests.
+            tool_name: The name of the tool to query.
+
+        Returns:
+            True if intent is required, False if not required, or None if no override exists.
+        """
+        if not self._enabled:
+            return None
+        try:
+            with self._cursor() as cur:
+                if user_id is not None:
+                    cur.execute(
+                        "SELECT requires_intent FROM tool_intent_overrides "
+                        "WHERE user_id = %s AND tool_name = %s",
+                        (user_id, tool_name),
+                    )
+                    row = cur.fetchone()
+                    if row is not None:
+                        return bool(row["requires_intent"])
+                cur.execute(
+                    "SELECT requires_intent FROM tool_intent_overrides "
+                    "WHERE user_id = '*' AND tool_name = %s",
+                    (tool_name,),
+                )
+                row = cur.fetchone()
+                if row is not None:
+                    return bool(row["requires_intent"])
+            return None
+        except Exception:
+            return None
+
+    def set_tool_intent_override(
+        self, user_id: str, tool_name: str, requires_intent: bool
+    ) -> None:
+        """Insert or update an intent override. Raises ValueError for hard-blocked tools.
+
+        Args:
+            user_id: The user ID (or '*' for a global override) to set the override for.
+            tool_name: The name of the tool to override.
+            requires_intent: Whether the tool requires intent to be declared before calling.
+
+        Raises:
+            ValueError: If tool_name is in INTENT_NEVER_REQUIRED (bootstrap-critical tools
+                that cannot be gated behind intent, as doing so would lock the org out).
+        """
+        if tool_name in INTENT_NEVER_REQUIRED:
+            raise ValueError(
+                f"Tool '{tool_name}' is bootstrap-critical and cannot be required to "
+                f"declare intent — toggling it would lock the org out."
+            )
+        if not self._enabled:
+            return
+        try:
+            with self._cursor() as cur:
+                cur.execute(
+                    "INSERT INTO tool_intent_overrides (user_id, tool_name, requires_intent) "
+                    "VALUES (%s, %s, %s) ON CONFLICT(user_id, tool_name) "
+                    "DO UPDATE SET requires_intent = excluded.requires_intent",
+                    (user_id, tool_name, int(requires_intent)),
+                )
+        except Exception:
+            pass
+
+    def clear_tool_intent_override(self, user_id: str, tool_name: str) -> None:
+        """Delete an override row, restoring default behavior.
+
+        Args:
+            user_id: The user ID (or '*' for a global override) whose override to remove.
+            tool_name: The name of the tool whose override should be deleted.
+        """
+        if not self._enabled:
+            return
+        try:
+            with self._cursor() as cur:
+                cur.execute(
+                    "DELETE FROM tool_intent_overrides "
+                    "WHERE user_id = %s AND tool_name = %s",
+                    (user_id, tool_name),
+                )
+        except Exception:
+            pass
+
+    def get_tool_intent_overrides(self, user_id: str) -> list[dict]:
+        """Return explicit intent override rows for a user.
+
+        Args:
+            user_id: The user ID (or '*' for global overrides) to query.
+
+        Returns:
+            A list of dicts with keys ``tool_name`` and ``requires_intent``, ordered
+            by tool name. Returns an empty list when telemetry is disabled or on error.
+        """
+        if not self._enabled:
+            return []
+        try:
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT tool_name, requires_intent FROM tool_intent_overrides "
+                    "WHERE user_id = %s ORDER BY tool_name",
+                    (user_id,),
+                )
+                rows = cur.fetchall()
+        except Exception:
+            return []
+        return [
+            {"tool_name": row["tool_name"], "requires_intent": bool(row["requires_intent"])}
+            for row in rows
+        ]
 
     def lookup_user(self, key: str) -> str | None:
         """Return the user_id for an API key, or None if the key is invalid.
@@ -438,10 +742,9 @@ class TelemetryStore:
         if not self._enabled:
             return None
         try:
-            conn = self._connect()
-            row = conn.execute(
-                "SELECT user_id FROM api_keys WHERE key = ?", (key,)
-            ).fetchone()
+            with self._cursor() as cur:
+                cur.execute("SELECT user_id FROM api_keys WHERE key = %s", (key,))
+                row = cur.fetchone()
             return row["user_id"] if row else None
         except Exception:
             return None
@@ -458,10 +761,9 @@ class TelemetryStore:
         if not self._enabled:
             return user_id
         try:
-            conn = self._connect()
-            row = conn.execute(
-                "SELECT org_id FROM api_keys WHERE user_id = ?", (user_id,)
-            ).fetchone()
+            with self._cursor() as cur:
+                cur.execute("SELECT org_id FROM api_keys WHERE user_id = %s", (user_id,))
+                row = cur.fetchone()
             if row and row["org_id"]:
                 return row["org_id"]
         except Exception:
@@ -478,11 +780,11 @@ class TelemetryStore:
         if not self._enabled:
             return
         try:
-            conn = self._connect()
-            conn.execute(
-                "UPDATE api_keys SET org_id = ? WHERE user_id = ?", (org_id, user_id)
-            )
-            conn.commit()
+            with self._cursor() as cur:
+                cur.execute(
+                    "UPDATE api_keys SET org_id = %s WHERE user_id = %s",
+                    (org_id, user_id),
+                )
         except Exception:
             pass
 
@@ -500,10 +802,11 @@ class TelemetryStore:
             return {}
         try:
             import json as _json
-            conn = self._connect()
-            row = conn.execute(
-                "SELECT profile_json FROM org_profiles WHERE org_id = ?", (org_id,)
-            ).fetchone()
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT profile_json FROM org_profiles WHERE org_id = %s", (org_id,)
+                )
+                row = cur.fetchone()
             if row:
                 return _json.loads(row["profile_json"] or "{}")
         except Exception:
@@ -524,24 +827,26 @@ class TelemetryStore:
         if not self._enabled:
             return fields
         try:
-            conn = self._connect()
             now = time.time()
-            row = conn.execute(
-                "SELECT profile_json FROM org_profiles WHERE org_id = ?", (org_id,)
-            ).fetchone()
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT profile_json FROM org_profiles WHERE org_id = %s", (org_id,)
+                )
+                row = cur.fetchone()
             current = _json.loads(row["profile_json"] or "{}") if row else {}
             current.update(fields)
             merged = _json.dumps(current)
-            conn.execute(
-                """
-                INSERT INTO org_profiles (org_id, profile_json, initialized, created_at, updated_at)
-                VALUES (?, ?, 0, ?, ?)
-                ON CONFLICT(org_id) DO UPDATE SET profile_json = excluded.profile_json,
-                                                  updated_at = excluded.updated_at
-                """,
-                (org_id, merged, now, now),
-            )
-            conn.commit()
+            with self._cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO org_profiles
+                        (org_id, profile_json, initialized, created_at, updated_at)
+                    VALUES (%s, %s, 0, %s, %s)
+                    ON CONFLICT(org_id) DO UPDATE SET profile_json = excluded.profile_json,
+                                                      updated_at = excluded.updated_at
+                    """,
+                    (org_id, merged, now, now),
+                )
             return current
         except Exception:
             return fields
@@ -555,10 +860,11 @@ class TelemetryStore:
         if not self._enabled:
             return True  # fail open — never gate on DB failure
         try:
-            conn = self._connect()
-            row = conn.execute(
-                "SELECT initialized FROM org_profiles WHERE org_id = ?", (org_id,)
-            ).fetchone()
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT initialized FROM org_profiles WHERE org_id = %s", (org_id,)
+                )
+                row = cur.fetchone()
             return bool(row["initialized"]) if row else False
         except Exception:
             return True  # fail open
@@ -572,17 +878,18 @@ class TelemetryStore:
         if not self._enabled:
             return
         try:
-            conn = self._connect()
             now = time.time()
-            conn.execute(
-                """
-                INSERT INTO org_profiles (org_id, profile_json, initialized, created_at, updated_at)
-                VALUES (?, '{}', 1, ?, ?)
-                ON CONFLICT(org_id) DO UPDATE SET initialized = 1, updated_at = excluded.updated_at
-                """,
-                (org_id, now, now),
-            )
-            conn.commit()
+            with self._cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO org_profiles
+                        (org_id, profile_json, initialized, created_at, updated_at)
+                    VALUES (%s, '{}', 1, %s, %s)
+                    ON CONFLICT(org_id) DO UPDATE SET initialized = 1,
+                                                      updated_at = excluded.updated_at
+                    """,
+                    (org_id, now, now),
+                )
         except Exception:
             pass
 
@@ -599,12 +906,14 @@ class TelemetryStore:
         if not self._enabled:
             return []
         try:
-            conn = self._connect()
-            rows = conn.execute(
-                "SELECT id, name, description, prompt_template, is_system, created_by, created_at, updated_at "
-                "FROM skills WHERE org_id = ? AND is_active = 1 ORDER BY name",
-                (org_id,),
-            ).fetchall()
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT id, name, description, prompt_template, is_system, "
+                    "created_by, created_at, updated_at "
+                    "FROM skills WHERE org_id = %s AND is_active = 1 ORDER BY name",
+                    (org_id,),
+                )
+                rows = cur.fetchall()
         except Exception:
             return []
         return [dict(row) for row in rows]
@@ -619,12 +928,14 @@ class TelemetryStore:
         if not self._enabled:
             return None
         try:
-            conn = self._connect()
-            row = conn.execute(
-                "SELECT id, name, description, prompt_template, is_system, created_by, created_at, updated_at "
-                "FROM skills WHERE org_id = ? AND name = ? AND is_active = 1",
-                (org_id, name),
-            ).fetchone()
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT id, name, description, prompt_template, is_system, "
+                    "created_by, created_at, updated_at "
+                    "FROM skills WHERE org_id = %s AND name = %s AND is_active = 1",
+                    (org_id, name),
+                )
+                row = cur.fetchone()
             return dict(row) if row else None
         except Exception:
             return None
@@ -655,14 +966,13 @@ class TelemetryStore:
         now = time.time()
         sid = _secrets_mod.token_hex(8)
         try:
-            conn = self._connect()
-            conn.execute(
-                "INSERT INTO skills (id, org_id, name, description, prompt_template, "
-                "is_active, is_system, created_by, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, 1, 0, ?, ?, ?)",
-                (sid, org_id, name, description, prompt_template, created_by, now, now),
-            )
-            conn.commit()
+            with self._cursor() as cur:
+                cur.execute(
+                    "INSERT INTO skills (id, org_id, name, description, prompt_template, "
+                    "is_active, is_system, created_by, created_at, updated_at) "
+                    "VALUES (%s, %s, %s, %s, %s, 1, 0, %s, %s, %s)",
+                    (sid, org_id, name, description, prompt_template, created_by, now, now),
+                )
             return self.get_skill(org_id, name) or {}
         except Exception:
             return {}
@@ -685,20 +995,22 @@ class TelemetryStore:
         if not updates:
             return self.get_skill(org_id, name)
         try:
-            conn = self._connect()
-            row = conn.execute(
-                "SELECT is_system FROM skills WHERE org_id = ? AND name = ? AND is_active = 1",
-                (org_id, name),
-            ).fetchone()
-            if not row or row["is_system"]:
-                return None
-            set_clause = ", ".join(f"{k} = ?" for k in updates)
-            values = list(updates.values()) + [time.time(), org_id, name]
-            conn.execute(
-                f"UPDATE skills SET {set_clause}, updated_at = ? WHERE org_id = ? AND name = ?",
-                values,
-            )
-            conn.commit()
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT is_system FROM skills "
+                    "WHERE org_id = %s AND name = %s AND is_active = 1",
+                    (org_id, name),
+                )
+                row = cur.fetchone()
+                if not row or row["is_system"]:
+                    return None
+                set_clause = ", ".join(f"{k} = %s" for k in updates)
+                values = list(updates.values()) + [time.time(), org_id, name]
+                cur.execute(
+                    f"UPDATE skills SET {set_clause}, updated_at = %s "
+                    f"WHERE org_id = %s AND name = %s",
+                    values,
+                )
             return self.get_skill(org_id, name)
         except Exception:
             return None
@@ -716,18 +1028,19 @@ class TelemetryStore:
         if not self._enabled:
             return False
         try:
-            conn = self._connect()
-            row = conn.execute(
-                "SELECT is_system FROM skills WHERE org_id = ? AND name = ? AND is_active = 1",
-                (org_id, name),
-            ).fetchone()
-            if not row or row["is_system"]:
-                return False
-            conn.execute(
-                "UPDATE skills SET is_active = 0 WHERE org_id = ? AND name = ?",
-                (org_id, name),
-            )
-            conn.commit()
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT is_system FROM skills "
+                    "WHERE org_id = %s AND name = %s AND is_active = 1",
+                    (org_id, name),
+                )
+                row = cur.fetchone()
+                if not row or row["is_system"]:
+                    return False
+                cur.execute(
+                    "UPDATE skills SET is_active = 0 WHERE org_id = %s AND name = %s",
+                    (org_id, name),
+                )
             return True
         except Exception:
             return False
@@ -755,12 +1068,13 @@ class TelemetryStore:
         if not self._enabled:
             return
         try:
-            conn = self._connect()
-            rows = conn.execute(
-                "SELECT tool_name, interpretation_hint, usage_rules, data_sensitivity "
-                "FROM tool_hints WHERE org_id = ? AND is_active = 1",
-                (org_id,),
-            ).fetchall()
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT tool_name, interpretation_hint, usage_rules, data_sensitivity "
+                    "FROM tool_hints WHERE org_id = %s AND is_active = 1",
+                    (org_id,),
+                )
+                rows = cur.fetchall()
             for row in rows:
                 self._hint_cache[org_id][row["tool_name"]] = {
                     "interpretation_hint": row["interpretation_hint"],
@@ -799,21 +1113,21 @@ class TelemetryStore:
         }
         if self._enabled:
             try:
-                conn = self._connect()
                 sid = _secrets_mod.token_hex(8)
-                conn.execute(
-                    """
-                    INSERT INTO tool_hints (id, org_id, tool_name, interpretation_hint,
-                        usage_rules, data_sensitivity, is_active)
-                    VALUES (?, ?, ?, ?, ?, ?, 1)
-                    ON CONFLICT(org_id, tool_name) DO UPDATE SET
-                        interpretation_hint = excluded.interpretation_hint,
-                        usage_rules = excluded.usage_rules,
-                        data_sensitivity = excluded.data_sensitivity
-                    """,
-                    (sid, org_id, tool_name, interpretation_hint, usage_rules, data_sensitivity),
-                )
-                conn.commit()
+                with self._cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO tool_hints (id, org_id, tool_name, interpretation_hint,
+                            usage_rules, data_sensitivity, is_active)
+                        VALUES (%s, %s, %s, %s, %s, %s, 1)
+                        ON CONFLICT(org_id, tool_name) DO UPDATE SET
+                            interpretation_hint = excluded.interpretation_hint,
+                            usage_rules = excluded.usage_rules,
+                            data_sensitivity = excluded.data_sensitivity
+                        """,
+                        (sid, org_id, tool_name, interpretation_hint,
+                         usage_rules, data_sensitivity),
+                    )
             except Exception:
                 pass
         # Invalidate cache so next get_tool_hint re-reads from DB
@@ -829,12 +1143,13 @@ class TelemetryStore:
         if not self._enabled:
             return []
         try:
-            conn = self._connect()
-            rows = conn.execute(
-                "SELECT tool_name, interpretation_hint, usage_rules, data_sensitivity "
-                "FROM tool_hints WHERE org_id = ? AND is_active = 1 ORDER BY tool_name",
-                (org_id,),
-            ).fetchall()
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT tool_name, interpretation_hint, usage_rules, data_sensitivity "
+                    "FROM tool_hints WHERE org_id = %s AND is_active = 1 ORDER BY tool_name",
+                    (org_id,),
+                )
+                rows = cur.fetchall()
         except Exception:
             return []
         return [
@@ -884,16 +1199,15 @@ class TelemetryStore:
         if not self._enabled:
             return {}
         try:
-            conn = self._connect()
-            conn.execute(
-                "INSERT INTO tasks "
-                "(task_id, user_id, org_id, goal, steps, status, created_at,"
-                " decision_context, decision_type, stakes_hint)"
-                " VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)",
-                (task_id, user_id, org_id, goal, _json.dumps(steps), now,
-                 decision_context, decision_type, stakes_hint),
-            )
-            conn.commit()
+            with self._cursor() as cur:
+                cur.execute(
+                    "INSERT INTO tasks "
+                    "(task_id, user_id, org_id, goal, steps, status, created_at,"
+                    " decision_context, decision_type, stakes_hint)"
+                    " VALUES (%s, %s, %s, %s, %s, 'active', %s, %s, %s, %s)",
+                    (task_id, user_id, org_id, goal, _json.dumps(steps), now,
+                     decision_context, decision_type, stakes_hint),
+                )
             return {
                 "task_id": task_id,
                 "user_id": user_id,
@@ -919,13 +1233,14 @@ class TelemetryStore:
         if not self._enabled:
             return None
         try:
-            conn = self._connect()
-            row = conn.execute(
-                "SELECT task_id, user_id, org_id, goal, steps, status, outcome,"
-                " created_at, completed_at, decision_context, decision_type, stakes_hint"
-                " FROM tasks WHERE task_id = ?",
-                (task_id,),
-            ).fetchone()
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT task_id, user_id, org_id, goal, steps, status, outcome,"
+                    " created_at, completed_at, decision_context, decision_type, stakes_hint"
+                    " FROM tasks WHERE task_id = %s",
+                    (task_id,),
+                )
+                row = cur.fetchone()
             if not row:
                 return None
             return {
@@ -956,19 +1271,20 @@ class TelemetryStore:
         if not self._enabled:
             return None
         try:
-            conn = self._connect()
-            row = conn.execute(
-                "SELECT user_id FROM tasks WHERE task_id = ? AND status = 'active'",
-                (task_id,),
-            ).fetchone()
-            if not row or row["user_id"] != user_id:
-                return None
-            now = time.time()
-            conn.execute(
-                "UPDATE tasks SET status = 'complete', outcome = ?, completed_at = ? WHERE task_id = ?",
-                (outcome, now, task_id),
-            )
-            conn.commit()
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT user_id FROM tasks WHERE task_id = %s AND status = 'active'",
+                    (task_id,),
+                )
+                row = cur.fetchone()
+                if not row or row["user_id"] != user_id:
+                    return None
+                now = time.time()
+                cur.execute(
+                    "UPDATE tasks SET status = 'complete', outcome = %s, "
+                    "completed_at = %s WHERE task_id = %s",
+                    (outcome, now, task_id),
+                )
             return self.get_task(task_id)
         except Exception:
             return None
@@ -1001,39 +1317,39 @@ class TelemetryStore:
         if not self._enabled:
             return None
         try:
-            conn = self._connect()
-            row = conn.execute(
-                "SELECT user_id FROM tasks WHERE task_id = ? AND status = 'active'",
-                (task_id,),
-            ).fetchone()
-            if not row or row["user_id"] != user_id:
-                return None
-
-            fields: list[str] = []
-            values: list[object] = []
-            if goal is not None:
-                fields.append("goal = ?")
-                values.append(goal)
-            if decision_context is not None:
-                fields.append("decision_context = ?")
-                values.append(decision_context)
-            if stakes_hint is not None:
-                fields.append("stakes_hint = ?")
-                values.append(stakes_hint)
-            if decision_type is not None:
-                fields.append("decision_type = ?")
-                values.append(decision_type)
-            if steps is not None:
-                fields.append("steps = ?")
-                values.append(_json.dumps(steps))
-
-            if fields:
-                values.append(task_id)
-                conn.execute(
-                    f"UPDATE tasks SET {', '.join(fields)} WHERE task_id = ?",
-                    values,
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT user_id FROM tasks WHERE task_id = %s AND status = 'active'",
+                    (task_id,),
                 )
-                conn.commit()
+                row = cur.fetchone()
+                if not row or row["user_id"] != user_id:
+                    return None
+
+                fields: list[str] = []
+                values: list[object] = []
+                if goal is not None:
+                    fields.append("goal = %s")
+                    values.append(goal)
+                if decision_context is not None:
+                    fields.append("decision_context = %s")
+                    values.append(decision_context)
+                if stakes_hint is not None:
+                    fields.append("stakes_hint = %s")
+                    values.append(stakes_hint)
+                if decision_type is not None:
+                    fields.append("decision_type = %s")
+                    values.append(decision_type)
+                if steps is not None:
+                    fields.append("steps = %s")
+                    values.append(_json.dumps(steps))
+
+                if fields:
+                    values.append(task_id)
+                    cur.execute(
+                        f"UPDATE tasks SET {', '.join(fields)} WHERE task_id = %s",
+                        values,
+                    )
 
             return self.get_task(task_id)
         except Exception:
@@ -1063,29 +1379,30 @@ class TelemetryStore:
         if not self._enabled:
             return []
         try:
-            conn = self._connect()
-            filters: list[str] = ["org_id = ?"]
+            filters: list[str] = ["org_id = %s"]
             params: list = [org_id]
             if status:
-                filters.append("status = ?")
+                filters.append("status = %s")
                 params.append(status)
             if from_ts is not None:
-                filters.append("created_at >= ?")
+                filters.append("created_at >= %s")
                 params.append(from_ts)
             if to_ts is not None:
-                filters.append("created_at <= ?")
+                filters.append("created_at <= %s")
                 params.append(to_ts)
             if exclude_process:
                 filters.append("(decision_type IS NULL OR decision_type != 'process')")
             where = "WHERE " + " AND ".join(filters)
             params.append(limit)
-            rows = conn.execute(
-                f"SELECT task_id, user_id, org_id, goal, steps, status, outcome,"
-                f" created_at, completed_at, decision_context, decision_type, stakes_hint"
-                f" FROM tasks {where}"
-                f" ORDER BY created_at DESC LIMIT ?",
-                params,
-            ).fetchall()
+            with self._cursor() as cur:
+                cur.execute(
+                    f"SELECT task_id, user_id, org_id, goal, steps, status, outcome,"
+                    f" created_at, completed_at, decision_context, decision_type, stakes_hint"
+                    f" FROM tasks {where}"
+                    f" ORDER BY created_at DESC LIMIT %s",
+                    params,
+                )
+                rows = cur.fetchall()
             return [
                 {
                     "task_id": row["task_id"],
@@ -1116,14 +1433,15 @@ class TelemetryStore:
         if not self._enabled:
             return []
         try:
-            conn = self._connect()
-            rows = conn.execute(
-                "SELECT task_id, user_id, org_id, goal, steps, status,"
-                " created_at, decision_context, decision_type, stakes_hint"
-                " FROM tasks WHERE user_id = ? AND status = 'active'"
-                " ORDER BY created_at DESC",
-                (user_id,),
-            ).fetchall()
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT task_id, user_id, org_id, goal, steps, status,"
+                    " created_at, decision_context, decision_type, stakes_hint"
+                    " FROM tasks WHERE user_id = %s AND status = 'active'"
+                    " ORDER BY created_at DESC",
+                    (user_id,),
+                )
+                rows = cur.fetchall()
             return [
                 {
                     "task_id": row["task_id"],
@@ -1181,20 +1499,19 @@ class TelemetryStore:
         if not self._enabled:
             return
         try:
-            conn = self._connect()
-            conn.execute(
-                "INSERT INTO tool_calls"
-                " (tool_name, called_at, duration_ms, success,"
-                "  error_type, error_message, user_id, request_id, response_size, input_body,"
-                "  response_preview, task_id)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    tool_name, time.time(), duration_ms, int(success),
-                    error_type, error_message, user_id, request_id, response_size, input_body,
-                    response_preview, task_id,
-                ),
-            )
-            conn.commit()
+            with self._cursor() as cur:
+                cur.execute(
+                    "INSERT INTO tool_calls"
+                    " (tool_name, called_at, duration_ms, success,"
+                    "  error_type, error_message, user_id, request_id, response_size, input_body,"
+                    "  response_preview, task_id)"
+                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    (
+                        tool_name, time.time(), duration_ms, int(success),
+                        error_type, error_message, user_id, request_id, response_size, input_body,
+                        response_preview, task_id,
+                    ),
+                )
         except Exception:
             pass  # telemetry must never break the gateway
 
@@ -1224,30 +1541,31 @@ class TelemetryStore:
             }
 
         try:
-            conn = self._connect()
-            where = "WHERE tool_name = ?" if tool_name else ""
+            where = "WHERE tool_name = %s" if tool_name else ""
             params: tuple = (tool_name,) if tool_name else ()
 
-            rows = conn.execute(
-                f"""
-                SELECT
-                    tool_name,
-                    COUNT(*)                                       AS call_count,
-                    SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END)  AS error_count,
-                    MAX(called_at)                                 AS last_called_ts,
-                    AVG(duration_ms)                               AS avg_ms,
-                    MAX(duration_ms)                               AS max_ms,
-                    AVG(response_size)                             AS avg_size,
-                    MAX(response_size)                             AS max_size,
-                    AVG(LENGTH(input_body))                        AS avg_input_size,
-                    MAX(LENGTH(input_body))                        AS max_input_size
-                FROM tool_calls
-                {where}
-                GROUP BY tool_name
-                ORDER BY call_count DESC
-                """,
-                params,
-            ).fetchall()
+            with self._cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT
+                        tool_name,
+                        COUNT(*)                                       AS call_count,
+                        SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END)  AS error_count,
+                        MAX(called_at)                                 AS last_called_ts,
+                        AVG(duration_ms)                               AS avg_ms,
+                        MAX(duration_ms)                               AS max_ms,
+                        AVG(response_size)                             AS avg_size,
+                        MAX(response_size)                             AS max_size,
+                        AVG(LENGTH(input_body))                        AS avg_input_size,
+                        MAX(LENGTH(input_body))                        AS max_input_size
+                    FROM tool_calls
+                    {where}
+                    GROUP BY tool_name
+                    ORDER BY call_count DESC
+                    """,
+                    params,
+                )
+                rows = cur.fetchall()
         except Exception as exc:
             return {"error": str(exc), "tools": []}
 
@@ -1309,28 +1627,29 @@ class TelemetryStore:
             return {"error": "telemetry disabled"}
 
         try:
-            conn = self._connect()
-            
-            # 1. Get raw sequence of recent calls
-            rows = conn.execute(
-                """
-                SELECT tool_name, called_at, success, user_id, request_id, response_size
-                FROM tool_calls
-                ORDER BY called_at DESC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
-            
-            # 2. Get breakdown by user (all time)
-            user_rows = conn.execute(
-                """
-                SELECT user_id, COUNT(*) as call_count
-                FROM tool_calls
-                GROUP BY user_id
-                ORDER BY call_count DESC
-                """
-            ).fetchall()
+            with self._cursor() as cur:
+                # 1. Get raw sequence of recent calls
+                cur.execute(
+                    """
+                    SELECT tool_name, called_at, success, user_id, request_id, response_size
+                    FROM tool_calls
+                    ORDER BY called_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                rows = cur.fetchall()
+
+                # 2. Get breakdown by user (all time)
+                cur.execute(
+                    """
+                    SELECT user_id, COUNT(*) as call_count
+                    FROM tool_calls
+                    GROUP BY user_id
+                    ORDER BY call_count DESC
+                    """
+                )
+                user_rows = cur.fetchall()
         except Exception as exc:
             return {"error": str(exc)}
 
@@ -1340,7 +1659,7 @@ class TelemetryStore:
             uid = row["user_id"] or "anonymous"
             if uid not in user_history:
                 user_history[uid] = []
-            
+
             ts = datetime.datetime.fromtimestamp(
                 row["called_at"], tz=datetime.UTC
             ).strftime("%H:%M:%S")
@@ -1355,7 +1674,7 @@ class TelemetryStore:
         return {
             "recent_sequences": user_history,
             "user_breakdown": {
-                row["user_id"] or "anonymous": row["call_count"] 
+                row["user_id"] or "anonymous": row["call_count"]
                 for row in user_rows
             }
         }
@@ -1373,18 +1692,19 @@ class TelemetryStore:
             return {"error": "telemetry disabled"}
 
         try:
-            conn = self._connect()
-            # Get calls ordered by user and time to reconstruct flows
-            rows = conn.execute(
-                """
-                SELECT user_id, request_id, tool_name, called_at
-                FROM tool_calls
-                WHERE success = 1
-                ORDER BY user_id, called_at ASC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
+            with self._cursor() as cur:
+                # Get calls ordered by user and time to reconstruct flows
+                cur.execute(
+                    """
+                    SELECT user_id, request_id, tool_name, called_at
+                    FROM tool_calls
+                    WHERE success = 1
+                    ORDER BY user_id, called_at ASC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                rows = cur.fetchall()
         except Exception as exc:
             return {"error": str(exc)}
 
@@ -1408,10 +1728,10 @@ class TelemetryStore:
                 current_flow = [tool]
             else:
                 current_flow.append(tool)
-            
+
             last_user = user
             last_time = time_ts
-        
+
         if current_flow:
             flows.append(current_flow)
 
@@ -1429,7 +1749,7 @@ class TelemetryStore:
 
         # Sort by frequency
         sorted_sequences = sorted(sequences.items(), key=lambda x: x[1], reverse=True)
-        
+
         return {
             "common_flows": [
                 {"sequence": seq, "count": count}
@@ -1451,21 +1771,22 @@ class TelemetryStore:
         if not self._enabled:
             return []
         try:
-            conn = self._connect()
             cutoff = time.time() - days * 86400
-            rows = conn.execute(
-                """
-                SELECT
-                    date(called_at, 'unixepoch') AS day,
-                    COUNT(*)                     AS calls,
-                    COUNT(DISTINCT user_id)      AS users
-                FROM tool_calls
-                WHERE called_at >= ?
-                GROUP BY day
-                ORDER BY day ASC
-                """,
-                (cutoff,),
-            ).fetchall()
+            with self._cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        to_char(to_timestamp(called_at), 'YYYY-MM-DD') AS day,
+                        COUNT(*)                                       AS calls,
+                        COUNT(DISTINCT user_id)                        AS users
+                    FROM tool_calls
+                    WHERE called_at >= %s
+                    GROUP BY day
+                    ORDER BY day ASC
+                    """,
+                    (cutoff,),
+                )
+                rows = cur.fetchall()
         except Exception:
             return []
         return [
@@ -1490,21 +1811,22 @@ class TelemetryStore:
         if not self._enabled:
             return {"users": [], "days": []}
         try:
-            conn = self._connect()
             cutoff = time.time() - days * 86400
-            rows = conn.execute(
-                """
-                SELECT
-                    date(called_at, 'unixepoch') AS day,
-                    COALESCE(user_id, 'unknown') AS user_id,
-                    COUNT(*)                     AS calls
-                FROM tool_calls
-                WHERE called_at >= ?
-                GROUP BY day, user_id
-                ORDER BY day ASC
-                """,
-                (cutoff,),
-            ).fetchall()
+            with self._cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        to_char(to_timestamp(called_at), 'YYYY-MM-DD') AS day,
+                        COALESCE(user_id, 'unknown')                   AS user_id,
+                        COUNT(*)                                       AS calls
+                    FROM tool_calls
+                    WHERE called_at >= %s
+                    GROUP BY day, user_id
+                    ORDER BY day ASC
+                    """,
+                    (cutoff,),
+                )
+                rows = cur.fetchall()
         except Exception:
             return {"users": [], "days": []}
 
@@ -1558,38 +1880,39 @@ class TelemetryStore:
         if not self._enabled:
             return []
         try:
-            conn = self._connect()
             filters: list[str] = []
             params: list[Any] = []
             if tool_name is not None:
-                filters.append("tool_name = ?")
+                filters.append("tool_name = %s")
                 params.append(tool_name)
             if user_id is not None:
-                filters.append("user_id = ?")
+                filters.append("user_id = %s")
                 params.append(user_id)
             if success is not None:
-                filters.append("success = ?")
+                filters.append("success = %s")
                 params.append(int(success))
             if error_type is not None:
-                filters.append("error_type = ?")
+                filters.append("error_type = %s")
                 params.append(error_type)
             if task_id is not None:
-                filters.append("task_id = ?")
+                filters.append("task_id = %s")
                 params.append(task_id)
             where = ("WHERE " + " AND ".join(filters)) if filters else ""
             params.extend([limit, offset])
-            rows = conn.execute(
-                f"""
-                SELECT id, tool_name, called_at, duration_ms, success,
-                       error_type, error_message, user_id, request_id, response_size, input_body,
-                       response_preview, task_id
-                FROM tool_calls
-                {where}
-                ORDER BY called_at DESC
-                LIMIT ? OFFSET ?
-                """,
-                params,
-            ).fetchall()
+            with self._cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT id, tool_name, called_at, duration_ms, success,
+                           error_type, error_message, user_id, request_id, response_size,
+                           input_body, response_preview, task_id
+                    FROM tool_calls
+                    {where}
+                    ORDER BY called_at DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    params,
+                )
+                rows = cur.fetchall()
         except Exception:
             return []
         result = []

@@ -22,6 +22,13 @@ postgresql = factories.postgresql("postgresql_proc")
 @pytest.fixture()
 def store(postgresql):
     """Function-scoped TelemetryStore backed by a fresh Postgres database."""
-    params = postgresql.get_dsn_parameters()
-    dsn = " ".join(f"{k}={v}" for k, v in params.items() if v)
+    info = postgresql.info
+    parts = {
+        "host": info.host,
+        "port": info.port,
+        "user": info.user,
+        "dbname": info.dbname,
+        "password": info.password,
+    }
+    dsn = " ".join(f"{k}={v}" for k, v in parts.items() if v)
     return TelemetryStore(dsn=dsn)

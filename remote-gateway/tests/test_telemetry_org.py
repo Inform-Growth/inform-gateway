@@ -52,15 +52,14 @@ def test_list_skills_excludes_inactive(store):
     assert store.list_skills("acme") == []
 
 def test_delete_skill_blocked_for_system_skills(store):
-    conn = store._connect()
     sid = _secrets.token_hex(8)
     now = __import__("time").time()
-    conn.execute(
-        "INSERT INTO skills (id, org_id, name, description, prompt_template, is_system, created_at, updated_at) "
-        "VALUES (?, 'acme', 'protected', 'system skill', 'template', 1, ?, ?)",
-        (sid, now, now),
-    )
-    conn.commit()
+    with store._cursor() as cur:
+        cur.execute(
+            "INSERT INTO skills (id, org_id, name, description, prompt_template, is_system, created_at, updated_at) "
+            "VALUES (%s, 'acme', 'protected', 'system skill', 'template', 1, %s, %s)",
+            (sid, now, now),
+        )
     assert store.delete_skill("acme", "protected") is False
     assert len(store.list_skills("acme")) == 1
 

@@ -63,10 +63,11 @@ def test_task_id_linked_to_tool_call(store):
         "attio__search_records", 55, True,
         user_id="alice", task_id=task["task_id"]
     )
-    conn = store._connect()
-    row = conn.execute(
-        "SELECT task_id FROM tool_calls WHERE tool_name = ?",
-        ("attio__search_records",),
-    ).fetchone()
+    with store._cursor() as cur:
+        cur.execute(
+            "SELECT task_id FROM tool_calls WHERE tool_name = %s",
+            ("attio__search_records",),
+        )
+        row = cur.fetchone()
     assert row is not None
     assert row["task_id"] == task["task_id"]
