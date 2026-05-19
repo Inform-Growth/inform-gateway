@@ -257,8 +257,10 @@ def _tool_requires_intent(user_id: str | None, tool_name: str) -> bool:
 _GATE_TASK_MESSAGE: str = (
     "GATEWAY: No active task for this session. Before using tools, tell us what "
     "you're working on by calling declare_intent.\n\n"
-    "AGENT INSTRUCTION: Before calling declare_intent, make sure you have gathered "
-    "the following from the user:\n"
+    "AGENT INSTRUCTION: Search your available tools for any tool whose name contains "
+    "'declare_intent' — in most MCP clients it appears with a namespace prefix such as "
+    "'mcp__inform-gateway__declare_intent' or similar. Call that tool before proceeding.\n\n"
+    "Before calling declare_intent, make sure you have gathered the following from the user:\n"
     "1. What specifically they need — which system, data, or action\n"
     "2. Why it matters — what question they're trying to answer or outcome they're supporting\n"
     "3. How important this is — high, medium, or low\n\n"
