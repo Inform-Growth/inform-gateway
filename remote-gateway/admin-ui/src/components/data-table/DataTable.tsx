@@ -106,7 +106,11 @@ export function DataTable<T>({
                       onRowClick && 'cursor-pointer hover:bg-secondary',
                       isSelected && 'bg-secondary',
                     )}
-                    onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                    onClick={onRowClick ? (e) => {
+                      // Don't open the detail sheet when clicking an interactive element (e.g. toggle switch)
+                      if ((e.target as HTMLElement).closest('button, [role="switch"]')) return;
+                      onRowClick(row.original);
+                    } : undefined}
                   >
                     {row.getVisibleCells().map((cell) => (
                       <TableCell key={cell.id}>

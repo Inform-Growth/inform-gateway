@@ -35,7 +35,7 @@ export default function App() {
           </Route>
         </Routes>
       </BrowserRouter>
-      <Toaster richColors position="top-right" />
+      <Toaster richColors position="bottom-right" />
     </QueryClientProvider>
   );
 }

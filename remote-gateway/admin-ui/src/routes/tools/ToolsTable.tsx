@@ -55,7 +55,6 @@ export function ToolsTable({ onRowClick }: { onRowClick: (tool: MergedTool) => v
       cell: ({ row }) => (
         <Switch
           checked={row.original.enabled}
-          onClick={(e) => e.stopPropagation()}
           onCheckedChange={(enabled) => {
             setGlobal.mutate(
               { tool_name: row.original.name, enabled },
