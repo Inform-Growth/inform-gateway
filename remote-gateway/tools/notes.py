@@ -1,25 +1,28 @@
 """
-GitHub-backed markdown notes tools.
+GitHub Issues-backed notes and friction reporting tools.
 
-Reads and writes .md files in a GitHub repository, providing a
-persistent notes store that survives gateway redeployments.
+All notes and issues are stored as GitHub Issues in the deployment repository.
+Notes use the label "type:note"; friction issues use structured labels.
 
 Required env vars:
-    GITHUB_TOKEN  — fine-grained PAT with Contents read+write on the repo
-    GITHUB_REPO   — owner/repo slug, e.g. "acme/inform-notes"
-    GITHUB_BRANCH — branch to read/write (default: "main")
-    NOTES_PATH    — folder inside GITHUB_REPO (default: "notes")
+    ISSUE_DEPLOYMENT_REPO          — owner/repo slug, e.g. "acme/gateway"
+    ISSUE_DEPLOYMENT_GITHUB_TOKEN  — fine-grained PAT with Issues: read+write
+    ISSUE_REPORT_DISABLED          — set to "true" to disable report_issue (kill switch)
 """
 from __future__ import annotations
 
-import base64
 import os
 from typing import Any
 
 
-def _github_headers() -> dict[str, str]:
-    """Return GitHub API request headers using GITHUB_TOKEN from env."""
-    token = os.environ.get("GITHUB_TOKEN", "")
+def _headers() -> dict[str, str]:
+    """Return GitHub API headers using ISSUE_DEPLOYMENT_GITHUB_TOKEN."""
+    token = os.environ.get("ISSUE_DEPLOYMENT_GITHUB_TOKEN", "")
+    if not token:
+        raise RuntimeError(
+            "ISSUE_DEPLOYMENT_GITHUB_TOKEN is not set. "
+            "Add a fine-grained GitHub PAT with Issues: read+write on ISSUE_DEPLOYMENT_REPO."
+        )
     return {
         "Authorization": f"Bearer {token}",
         "Accept": "application/vnd.github+json",
@@ -27,212 +30,188 @@ def _github_headers() -> dict[str, str]:
     }
 
 
-def _github_file_url(path: str) -> str:
-    """Return the GitHub Contents API URL for a file path."""
-    repo = os.environ.get("GITHUB_REPO", "")
-    return f"https://api.github.com/repos/{repo}/contents/{path}"
+def _issues_url() -> str:
+    """Return the GitHub Issues API URL for the deployment repo."""
+    repo = os.environ.get("ISSUE_DEPLOYMENT_REPO", "")
+    if not repo:
+        raise RuntimeError(
+            "ISSUE_DEPLOYMENT_REPO is not set. "
+            "Set it to owner/repo where GitHub Issues should be filed."
+        )
+    return f"https://api.github.com/repos/{repo}/issues"
 
 
-def _notes_path(filename: str) -> str:
-    """Resolve a filename to its full repo path under the notes folder."""
-    notes_base = os.environ.get("NOTES_PATH", "notes")
-    safe = os.path.basename(filename)
-    if not safe.endswith(".md"):
-        safe = safe + ".md"
-    return f"{notes_base}/{safe}"
+def _issue_url(number: int) -> str:
+    """Return the GitHub Issues API URL for a specific issue number."""
+    repo = os.environ.get("ISSUE_DEPLOYMENT_REPO", "")
+    if not repo:
+        raise RuntimeError(
+            "ISSUE_DEPLOYMENT_REPO is not set. "
+            "Set it to owner/repo where GitHub Issues should be filed."
+        )
+    return f"https://api.github.com/repos/{repo}/issues/{number}"
 
 
-def _issue_path(slug: str) -> str:
-    """Resolve a slug to its full repo path under the issues subfolder.
+def _ensure_label(name: str, color: str = "0075ca") -> None:
+    """Create a label in the deployment repo if it doesn't already exist."""
+    import httpx
 
-    Unlike _notes_path, this preserves the issues/ directory level.
-    """
-    notes_base = os.environ.get("NOTES_PATH", "notes")
-    safe = os.path.basename(slug)
-    if not safe.endswith(".md"):
-        safe = safe + ".md"
-    return f"{notes_base}/issues/{safe}"
+    repo = os.environ.get("ISSUE_DEPLOYMENT_REPO", "")
+    url = f"https://api.github.com/repos/{repo}/labels"
+    with httpx.Client() as client:
+        client.post(url, headers=_headers(), json={"name": name, "color": color})
+    # 201 = created, 422 = already exists — both are fine; errors are silently ignored
+
+
+def _find_note(slug: str) -> dict | None:
+    """Find the first open issue with type:note label matching the title."""
+    import httpx
+
+    with httpx.Client() as client:
+        resp = client.get(
+            _issues_url(),
+            headers=_headers(),
+            params={"labels": "type:note", "state": "open", "per_page": 100},
+        )
+    resp.raise_for_status()
+    for issue in resp.json():
+        if issue["title"] == slug:
+            return issue
+    return None
 
 
 def list_notes() -> dict:
-    """List all markdown notes stored in the gateway's notes folder.
+    """List all notes stored in the deployment repository.
 
-    Notes are stored in the GitHub repository and persist across redeployments.
+    Notes are GitHub Issues with the label "type:note". They persist
+    across redeployments and are shared across all agents on this gateway.
 
     Returns:
-        Dict with 'notes' list of filenames and their last-commit message.
+        Dict with 'notes' list and 'count'.
     """
     import httpx
 
-    notes_base = os.environ.get("NOTES_PATH", "notes")
-    repo = os.environ.get("GITHUB_REPO", "")
-    branch = os.environ.get("GITHUB_BRANCH", "main")
-    url = _github_file_url(notes_base)
-
     with httpx.Client() as client:
-        resp = client.get(url, headers=_github_headers(), params={"ref": branch})
-
-    if resp.status_code == 404:
-        return {"notes": [], "message": "No notes found — notes folder does not exist yet."}
-
+        resp = client.get(
+            _issues_url(),
+            headers=_headers(),
+            params={"labels": "type:note", "state": "open", "per_page": 100},
+        )
     resp.raise_for_status()
-    entries = resp.json()
     notes = [
-        {"name": e["name"], "path": e["path"], "sha": e["sha"]}
-        for e in entries
-        if e["type"] == "file" and e["name"].endswith(".md")
+        {
+            "slug": issue["title"],
+            "issue_number": issue["number"],
+            "created_at": issue["created_at"],
+            "updated_at": issue["updated_at"],
+            "html_url": issue["html_url"],
+        }
+        for issue in resp.json()
     ]
-    return {"notes": notes, "count": len(notes), "repo": repo, "branch": branch}
+    return {"notes": notes, "count": len(notes)}
 
 
-def read_note(filename: str) -> dict:
-    """Read a markdown note from the gateway's notes folder.
+def read_note(slug: str) -> dict:
+    """Read a note by its slug (title).
 
     Args:
-        filename: Note filename, with or without .md extension (e.g. "onboarding").
+        slug: The note title used when the note was written.
 
     Returns:
-        Dict with 'filename', 'content' (decoded markdown text), and 'sha'.
+        Dict with 'slug', 'content', 'issue_number', 'html_url' on success.
+        Dict with status='not_found' if no open note matches.
     """
-    import httpx
-
-    branch = os.environ.get("GITHUB_BRANCH", "main")
-    path = _notes_path(filename)
-    url = _github_file_url(path)
-
-    with httpx.Client() as client:
-        resp = client.get(url, headers=_github_headers(), params={"ref": branch})
-
-    if resp.status_code == 404:
-        return {"status": "not_found", "filename": os.path.basename(path)}
-
-    resp.raise_for_status()
-    data = resp.json()
-    content = base64.b64decode(data["content"]).decode("utf-8")
+    issue = _find_note(slug)
+    if not issue:
+        return {"status": "not_found", "slug": slug}
     return {
-        "filename": data["name"],
-        "path": data["path"],
-        "content": content,
-        "sha": data["sha"],
+        "slug": slug,
+        "content": issue.get("body", ""),
+        "issue_number": issue["number"],
+        "html_url": issue["html_url"],
     }
 
 
-def write_note(filename: str, content: str, commit_message: str = "") -> dict:
-    """Create or update a markdown note in the gateway's notes folder.
+def write_note(slug: str, content: str) -> dict:
+    """Create or update a note in the deployment repository.
 
-    The note is committed directly to the repository and persists across redeployments.
-    To update an existing note you do not need the SHA — it is fetched automatically.
+    Notes are stored as GitHub Issues with the label "type:note".
+    If a note with this slug already exists (open issue with same title),
+    its body is updated in place. Otherwise a new issue is created.
 
     Args:
-        filename: Note filename, with or without .md extension (e.g. "onboarding").
-        content: Full markdown content to write.
-        commit_message: Optional git commit message. Defaults to "chore: update <filename>".
+        slug: Short identifier for the note (used as the issue title).
+        content: Full markdown content of the note.
 
     Returns:
-        Dict confirming the commit with 'sha', 'filename', and 'commit_url'.
+        Dict with 'status' (created/updated), 'issue_number', 'html_url'.
     """
     import httpx
 
-    branch = os.environ.get("GITHUB_BRANCH", "main")
-    path = _notes_path(filename)
-    url = _github_file_url(path)
-    base_name = os.path.basename(path)
-    message = commit_message or f"chore: update {base_name}"
-
-    sha: str | None = None
+    _ensure_label("type:note")
+    existing = _find_note(slug)
     with httpx.Client() as client:
-        check = client.get(url, headers=_github_headers(), params={"ref": branch})
-        if check.status_code == 200:
-            sha = check.json()["sha"]
+        if existing:
+            resp = client.patch(
+                _issue_url(existing["number"]),
+                headers=_headers(),
+                json={"body": content},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return {
+                "status": "updated",
+                "slug": slug,
+                "issue_number": data["number"],
+                "html_url": data["html_url"],
+            }
+        else:
+            resp = client.post(
+                _issues_url(),
+                headers=_headers(),
+                json={"title": slug, "body": content, "labels": ["type:note"]},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return {
+                "status": "created",
+                "slug": slug,
+                "issue_number": data["number"],
+                "html_url": data["html_url"],
+            }
 
-        body: dict[str, Any] = {
-            "message": message,
-            "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
-            "branch": branch,
-        }
-        if sha:
-            body["sha"] = sha
 
-        resp = client.put(url, headers=_github_headers(), json=body)
+def delete_note(slug: str) -> dict:
+    """Delete (close) a note by its slug.
 
-    resp.raise_for_status()
-    result = resp.json()
-    commit = result.get("commit", {})
-    return {
-        "status": "ok",
-        "filename": base_name,
-        "path": path,
-        "sha": commit.get("sha", ""),
-        "commit_url": commit.get("html_url", ""),
-        "action": "updated" if sha else "created",
-    }
-
-
-def delete_note(filename: str, commit_message: str = "") -> dict:
-    """Delete a markdown note from the gateway's notes folder.
+    Closes the GitHub Issue that backs this note. The issue remains
+    visible in the closed state on GitHub but is removed from active notes.
 
     Args:
-        filename: Note filename, with or without .md extension.
-        commit_message: Optional git commit message. Defaults to "chore: delete <filename>".
+        slug: The note title used when the note was written.
 
     Returns:
-        Dict confirming deletion with 'filename' and 'commit_url'.
+        Dict with status='deleted' and 'issue_number' on success.
+        Dict with status='not_found' if no open note matches.
     """
     import httpx
 
-    branch = os.environ.get("GITHUB_BRANCH", "main")
-    path = _notes_path(filename)
-    url = _github_file_url(path)
-    base_name = os.path.basename(path)
+    issue = _find_note(slug)
+    if not issue:
+        return {"status": "not_found", "slug": slug}
 
     with httpx.Client() as client:
-        check = client.get(url, headers=_github_headers(), params={"ref": branch})
-        if check.status_code == 404:
-            return {"status": "not_found", "filename": base_name}
-        check.raise_for_status()
-        sha = check.json()["sha"]
-
-        body = {
-            "message": commit_message or f"chore: delete {base_name}",
-            "sha": sha,
-            "branch": branch,
-        }
-        resp = client.request("DELETE", url, headers=_github_headers(), json=body)
-
-        if resp.status_code in (409, 422):
-            # SHA is stale — a concurrent write changed the file between our GET and DELETE.
-            # Re-fetch the current SHA and retry once.
-            recheck = client.get(url, headers=_github_headers(), params={"ref": branch})
-            if recheck.status_code == 404:
-                return {"status": "not_found", "filename": base_name}
-            recheck.raise_for_status()
-            body["sha"] = recheck.json()["sha"]
-            resp = client.request("DELETE", url, headers=_github_headers(), json=body)
-
+        resp = client.patch(
+            _issue_url(issue["number"]),
+            headers=_headers(),
+            json={"state": "closed"},
+        )
     resp.raise_for_status()
-    result = resp.json()
-    commit = result.get("commit", {})
     return {
         "status": "deleted",
-        "filename": base_name,
-        "commit_url": commit.get("html_url", ""),
+        "slug": slug,
+        "issue_number": issue["number"],
     }
-
-
-def _deployment_repo_headers() -> dict[str, str]:
-    """Return GitHub API headers using INFORM_GATEWAY_GITHUB_TOKEN."""
-    token = os.environ.get("INFORM_GATEWAY_GITHUB_TOKEN", "")
-    return {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
-
-
-def _deployment_issue_url() -> str:
-    """Return the GitHub Issues API URL for the deployment repo."""
-    repo = os.environ.get("INFORM_GATEWAY_DEPLOYMENT_REPO", "")
-    return f"https://api.github.com/repos/{repo}/issues"
 
 
 def _format_issue_body(
@@ -243,17 +222,16 @@ def _format_issue_body(
     suggested_fix: str | None,
     related_tool: str | None,
 ) -> str:
-    """Render the standard issue body markdown."""
+    """Render the standard friction issue body markdown."""
     return (
         f"**Task ID:** {task_id}\n"
-        f"**Reported by:** agent (shadow-operating)\n"
         f"**Related tool:** {related_tool or 'n/a'}\n\n"
         f"## What the agent was trying to do\n{attempted_action}\n\n"
         f"## What actually happened\n{observed_failure}\n\n"
         f"## Agent hypothesis\n{agent_hypothesis}\n\n"
         f"## Suggested fix\n{suggested_fix or 'none'}\n\n"
         "---\n"
-        "*Filed automatically via `report_issue` during task execution. "
+        "*Filed via `report_issue` after user consent. "
         "See task audit trail for full context.*"
     )
 
@@ -279,10 +257,11 @@ def report_issue(
     suggested_fix: str | None = None,
     related_tool: str | None = None,
 ) -> dict:
-    """File a GitHub Issue on the deployment repo as part of shadow operating.
+    """File a GitHub Issue on the deployment repo when the agent encounters friction.
 
-    Invoked by agents during task execution when they encounter friction.
-    Not user-facing — the user never sees this call in conversation.
+    Agents should tell the user they hit friction and ask for consent before calling
+    this tool. Say: "I hit a snag with [tool] — [brief description]. Want me to log
+    this as a feedback issue?" Then call this if the user agrees.
 
     Two triggers: (1) FRICTION — agent would otherwise ask the user for help;
     (2) EFFICIENCY — a subtask required more than 2 tool calls to accomplish
@@ -306,7 +285,7 @@ def report_issue(
     """
     import httpx
 
-    if os.environ.get("INFORM_GATEWAY_REPORT_ISSUE_DISABLED", "").lower() == "true":
+    if os.environ.get("ISSUE_REPORT_DISABLED", "").lower() == "true":
         return {"status": "disabled", "task_id": task_id}
 
     labels = [
@@ -329,8 +308,8 @@ def report_issue(
     try:
         with httpx.Client() as client:
             resp = client.post(
-                _deployment_issue_url(),
-                headers=_deployment_repo_headers(),
+                _issues_url(),
+                headers=_headers(),
                 json={"title": title, "body": body, "labels": labels},
             )
         resp.raise_for_status()
@@ -349,10 +328,7 @@ def list_my_issues(
     label: str | None = None,
     limit: int = 20,
 ) -> list[dict]:
-    """List issues on the deployment repo.
-
-    Internal observability for CS operators and the fleet operator agent.
-    Not user-facing. Reads from INFORM_GATEWAY_DEPLOYMENT_REPO.
+    """List friction issues on the deployment repo.
 
     Args:
         state: Filter by issue state — "open", "closed", or "all".
@@ -360,8 +336,7 @@ def list_my_issues(
         limit: Maximum number of issues to return (default 20).
 
     Returns:
-        List of dicts with issue_number, title, labels (list of name strings),
-        state, created_at, and html_url.
+        List of dicts with issue_number, title, labels, state, created_at, html_url.
     """
     import httpx
 
@@ -371,8 +346,8 @@ def list_my_issues(
 
     with httpx.Client() as client:
         resp = client.get(
-            _deployment_issue_url(),
-            headers=_deployment_repo_headers(),
+            _issues_url(),
+            headers=_headers(),
             params=params,
         )
     resp.raise_for_status()
@@ -389,91 +364,11 @@ def list_my_issues(
     ]
 
 
-def write_issue(slug: str, content: str, commit_message: str = "") -> dict:
-    """DEPRECATED. Use report_issue instead.
-
-    write_issue wrote markdown files to the notes repo under notes/issues/.
-    All issue creation now goes to real GitHub Issues on the deployment repo
-    via report_issue. This function is unregistered and kept temporarily
-    for reference until existing notes/issues/ files are archived.
-    """
-    import httpx
-
-    branch = os.environ.get("GITHUB_BRANCH", "main")
-    path = _issue_path(slug)
-    url = _github_file_url(path)
-    message = commit_message or f"chore: record issue {slug}"
-
-    sha: str | None = None
-    with httpx.Client() as client:
-        check = client.get(url, headers=_github_headers(), params={"ref": branch})
-        if check.status_code == 200:
-            sha = check.json()["sha"]
-
-        body: dict[str, Any] = {
-            "message": message,
-            "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
-            "branch": branch,
-        }
-        if sha:
-            body["sha"] = sha
-
-        resp = client.put(url, headers=_github_headers(), json=body)
-
-    resp.raise_for_status()
-    result = resp.json()
-    commit = result.get("commit", {})
-    return {
-        "status": "ok",
-        "slug": slug,
-        "path": path,
-        "sha": commit.get("sha", ""),
-        "commit_url": commit.get("html_url", ""),
-        "action": "updated" if sha else "created",
-    }
-
-
-def list_issues() -> dict:
-    """DEPRECATED. Use list_my_issues instead.
-
-    list_issues listed markdown files from the notes repo issues folder.
-    All issue listing now goes through list_my_issues, which reads real
-    GitHub Issues from the deployment repo. This function is unregistered.
-    """
-    import httpx
-
-    notes_base = os.environ.get("NOTES_PATH", "notes")
-    repo = os.environ.get("GITHUB_REPO", "")
-    branch = os.environ.get("GITHUB_BRANCH", "main")
-    url = _github_file_url(f"{notes_base}/issues")
-
-    with httpx.Client() as client:
-        resp = client.get(url, headers=_github_headers(), params={"ref": branch})
-
-    if resp.status_code == 404:
-        return {"issues": [], "count": 0, "message": "No issues folder yet — none recorded."}
-
-    resp.raise_for_status()
-    entries = resp.json()
-    issues = [
-        {"name": e["name"], "path": e["path"], "sha": e["sha"]}
-        for e in entries
-        if e["type"] == "file" and e["name"].endswith(".md")
-    ]
-    return {"issues": issues, "count": len(issues), "repo": repo, "branch": branch}
-
-
 def register(mcp: Any) -> None:
-    """Register all notes tools on the given FastMCP server instance.
-
-    Args:
-        mcp: The FastMCP server instance (with telemetry patch already applied).
-    """
+    """Register all notes tools on the given FastMCP server instance."""
     mcp.tool()(list_notes)
     mcp.tool()(read_note)
     mcp.tool()(write_note)
     mcp.tool()(delete_note)
     mcp.tool()(report_issue)
     mcp.tool()(list_my_issues)
-    # write_issue and list_issues are intentionally NOT registered here.
-    # They are deprecated — use report_issue and list_my_issues instead.

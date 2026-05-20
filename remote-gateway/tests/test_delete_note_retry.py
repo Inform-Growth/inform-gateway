@@ -1,12 +1,6 @@
 """
-Unit tests for delete_note SHA conflict retry (Fix 4).
-
-The GitHub Contents API returns 409/422 when the SHA used in a DELETE
-is stale (another write happened between the GET and DELETE). delete_note
-must re-fetch the SHA and retry once.
-
-Run with:
-    pytest remote-gateway/tests/test_delete_note_retry.py -v
+Unit tests for GitHub Issues-backed notes tools (write_note, read_note,
+list_notes, delete_note).
 """
 from __future__ import annotations
 
@@ -14,13 +8,31 @@ import os
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tools.notes import delete_note
+
+@pytest.fixture(autouse=True)
+def deployment_env(monkeypatch):
+    monkeypatch.setenv("ISSUE_DEPLOYMENT_REPO", "org/test-gateway")
+    monkeypatch.setenv("ISSUE_DEPLOYMENT_GITHUB_TOKEN", "ghp_test")
 
 
-def _mock_response(json_data: dict, status_code: int = 200) -> MagicMock:
-    """Return a mock httpx response with raise_for_status as a no-op by default."""
+def _issue(number: int = 1, title: str = "my-note", body: str = "content") -> dict:
+    return {
+        "number": number,
+        "title": title,
+        "body": body,
+        "state": "open",
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-02T00:00:00Z",
+        "html_url": f"https://github.com/org/test-gateway/issues/{number}",
+        "labels": [{"name": "type:note"}],
+    }
+
+
+def _mock_resp(json_data, status_code: int = 200) -> MagicMock:
     m = MagicMock()
     m.status_code = status_code
     m.json = MagicMock(return_value=json_data)
@@ -28,115 +40,152 @@ def _mock_response(json_data: dict, status_code: int = 200) -> MagicMock:
     return m
 
 
-def _mock_client(get_responses=None, request_responses=None) -> MagicMock:
-    """Return a context-manager mock for httpx.Client."""
-    mock = MagicMock()
-    mock.__enter__ = MagicMock(return_value=mock)
-    mock.__exit__ = MagicMock(return_value=False)
-    if get_responses is not None:
-        mock.get.side_effect = get_responses
-    if request_responses is not None:
-        mock.request.side_effect = request_responses
-    return mock
+# ---- list_notes ----
+
+def test_list_notes_returns_open_notes():
+    from tools.notes import list_notes
+
+    with patch("httpx.Client") as mock_cls:
+        mock_client = MagicMock()
+        mock_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
+        mock_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = _mock_resp([_issue(1, "session-2026-05-19"), _issue(2, "onboarding")])
+
+        result = list_notes()
+
+    assert result["count"] == 2
+    assert result["notes"][0]["slug"] == "session-2026-05-19"
+    assert result["notes"][1]["slug"] == "onboarding"
 
 
-def test_delete_note_retries_on_409(monkeypatch):
-    """409 conflict triggers a re-fetch of the SHA and a second DELETE attempt."""
-    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
-    monkeypatch.setenv("GITHUB_REPO", "org/repo")
+def test_list_notes_empty():
+    from tools.notes import list_notes
 
-    first_get = _mock_response({"sha": "sha-stale", "name": "_test.md"})
-    second_get = _mock_response({"sha": "sha-fresh", "name": "_test.md"})
+    with patch("httpx.Client") as mock_cls:
+        mock_client = MagicMock()
+        mock_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
+        mock_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = _mock_resp([])
 
-    conflict_resp = _mock_response({}, status_code=409)
-    success_resp = _mock_response({
-        "commit": {"sha": "commit-abc", "html_url": "https://github.com/org/repo/commit/abc"}
-    })
+        result = list_notes()
 
-    mock_client = _mock_client(
-        get_responses=[first_get, second_get],
-        request_responses=[conflict_resp, success_resp],
-    )
-
-    with patch("httpx.Client", return_value=mock_client):
-        result = delete_note("_test")
-
-    assert result["status"] == "deleted"
-    assert mock_client.request.call_count == 2, "Expected exactly 2 DELETE attempts"
-
-    # Second DELETE must use the freshly fetched SHA
-    second_call_body = mock_client.request.call_args_list[1].kwargs["json"]
-    assert second_call_body["sha"] == "sha-fresh", (
-        f"Expected sha-fresh in second DELETE, got: {second_call_body['sha']}"
-    )
+    assert result["count"] == 0
+    assert result["notes"] == []
 
 
-def test_delete_note_retries_on_422(monkeypatch):
-    """422 conflict also triggers retry (GitHub uses both 409 and 422 for SHA mismatch)."""
-    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
-    monkeypatch.setenv("GITHUB_REPO", "org/repo")
+# ---- read_note ----
 
-    first_get = _mock_response({"sha": "sha-old", "name": "_test.md"})
-    second_get = _mock_response({"sha": "sha-new", "name": "_test.md"})
+def test_read_note_found():
+    from tools.notes import read_note
 
-    conflict_resp = _mock_response({}, status_code=422)
-    success_resp = _mock_response({
-        "commit": {"sha": "commit-xyz", "html_url": "https://github.com/org/repo/commit/xyz"}
-    })
+    with patch("httpx.Client") as mock_cls:
+        mock_client = MagicMock()
+        mock_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
+        mock_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = _mock_resp([_issue(5, "my-note", "hello world")])
 
-    mock_client = _mock_client(
-        get_responses=[first_get, second_get],
-        request_responses=[conflict_resp, success_resp],
-    )
+        result = read_note("my-note")
 
-    with patch("httpx.Client", return_value=mock_client):
-        result = delete_note("_test")
-
-    assert result["status"] == "deleted"
-    assert mock_client.request.call_count == 2
+    assert result["slug"] == "my-note"
+    assert result["content"] == "hello world"
+    assert result["issue_number"] == 5
 
 
-def test_delete_note_no_retry_on_success(monkeypatch):
-    """When first DELETE succeeds (200), no retry is issued."""
-    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
-    monkeypatch.setenv("GITHUB_REPO", "org/repo")
+def test_read_note_not_found():
+    from tools.notes import read_note
 
-    first_get = _mock_response({"sha": "sha-ok", "name": "_test.md"})
-    success_resp = _mock_response({
-        "commit": {"sha": "commit-ok", "html_url": "https://github.com/org/repo/commit/ok"}
-    })
+    with patch("httpx.Client") as mock_cls:
+        mock_client = MagicMock()
+        mock_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
+        mock_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = _mock_resp([])
 
-    mock_client = _mock_client(
-        get_responses=[first_get],
-        request_responses=[success_resp],
-    )
-
-    with patch("httpx.Client", return_value=mock_client):
-        result = delete_note("_test")
-
-    assert result["status"] == "deleted"
-    assert mock_client.request.call_count == 1, (
-        "Expected exactly 1 DELETE attempt (no retry needed)"
-    )
-    assert mock_client.get.call_count == 1, "Expected exactly 1 GET (no re-fetch)"
-
-
-def test_delete_note_returns_not_found_when_file_gone_during_retry(monkeypatch):
-    """If file disappears between first and retry GET, return not_found gracefully."""
-    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
-    monkeypatch.setenv("GITHUB_REPO", "org/repo")
-
-    first_get = _mock_response({"sha": "sha-stale", "name": "_test.md"})
-    not_found_get = _mock_response({}, status_code=404)
-
-    conflict_resp = _mock_response({}, status_code=409)
-
-    mock_client = _mock_client(
-        get_responses=[first_get, not_found_get],
-        request_responses=[conflict_resp],
-    )
-
-    with patch("httpx.Client", return_value=mock_client):
-        result = delete_note("_test")
+        result = read_note("missing-note")
 
     assert result["status"] == "not_found"
+    assert result["slug"] == "missing-note"
+
+
+# ---- write_note ----
+
+def test_write_note_creates_new_issue_when_not_found():
+    from tools.notes import write_note
+
+    created = _issue(10, "new-note", "new content")
+
+    with patch("httpx.Client") as mock_cls:
+        mock_client = MagicMock()
+        mock_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
+        mock_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = _mock_resp([])  # _find_note returns nothing
+        mock_client.post.return_value = _mock_resp(created, status_code=201)
+
+        result = write_note("new-note", "new content")
+
+    assert result["status"] == "created"
+    assert result["issue_number"] == 10
+    # _ensure_label posts to /labels, then write_note posts to /issues — 2 total
+    assert mock_client.post.call_count == 2
+    issue_create_call = mock_client.post.call_args_list[1]
+    assert issue_create_call[0][0].endswith("/issues")
+
+
+def test_write_note_updates_existing_issue():
+    from tools.notes import write_note
+
+    existing = _issue(7, "existing-note", "old content")
+    updated = _issue(7, "existing-note", "new content")
+
+    with patch("httpx.Client") as mock_cls:
+        mock_client = MagicMock()
+        mock_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
+        mock_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = _mock_resp([existing])
+        mock_client.patch.return_value = _mock_resp(updated)
+
+        result = write_note("existing-note", "new content")
+
+    assert result["status"] == "updated"
+    assert result["issue_number"] == 7
+    mock_client.patch.assert_called_once()
+    # _ensure_label posts to /labels; no issue-creation post
+    assert mock_client.post.call_count == 1
+    assert mock_client.post.call_args[0][0].endswith("/labels")
+
+
+# ---- delete_note ----
+
+def test_delete_note_closes_issue():
+    from tools.notes import delete_note
+
+    issue = _issue(3, "to-delete")
+
+    with patch("httpx.Client") as mock_cls:
+        mock_client = MagicMock()
+        mock_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
+        mock_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = _mock_resp([issue])
+        mock_client.patch.return_value = _mock_resp({**issue, "state": "closed"})
+
+        result = delete_note("to-delete")
+
+    assert result["status"] == "deleted"
+    assert result["issue_number"] == 3
+    call_json = mock_client.patch.call_args[1]["json"]
+    assert call_json["state"] == "closed"
+
+
+def test_delete_note_not_found():
+    from tools.notes import delete_note
+
+    with patch("httpx.Client") as mock_cls:
+        mock_client = MagicMock()
+        mock_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
+        mock_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = _mock_resp([])
+
+        result = delete_note("ghost-note")
+
+    assert result["status"] == "not_found"
+    assert result["slug"] == "ghost-note"
+    mock_client.patch.assert_not_called()

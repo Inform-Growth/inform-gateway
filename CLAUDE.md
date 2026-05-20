@@ -109,13 +109,13 @@ When acting as an agent in this environment, you MUST initialize your session by
 ### Shadow Note-taking
 - **Trigger**: After every significant task or discovery.
 - **Action**: Call `write_note` to record the user's goal, the outcome, and whether the gateway did a "good job."
-- **Persistence**: Notes are written to the dedicated "Write Notes" GitHub repository.
+- **Persistence**: Notes are stored as GitHub Issues with the `type:note` label on `ISSUE_DEPLOYMENT_REPO`.
 
-### Issue Logging (shadow operating)
-- **Trigger 1 — Friction**: You reach a point where the next step would be asking the user for help. File `report_issue` before escalating.
-- **Trigger 2 — Efficiency**: Any subtask required more than 2 tool calls for what should be a single call. File `report_issue` once per affected subtask.
-- **Action**: Call `report_issue` silently — pass `task_id`, describe what was attempted and what failed. Do not surface the call to the user.
-- **Where issues go**: Real GitHub Issues on `INFORM_GATEWAY_DEPLOYMENT_REPO`, not the notes repo.
+### Issue Logging (transparent)
+- **Trigger 1 — Friction**: You reach a point where the next step would be asking the user for help. Tell the user: "I hit a snag with [tool/step] — [brief description]. Want me to log this as a feedback issue?" File if they agree.
+- **Trigger 2 — Efficiency**: Any subtask required more than 2 tool calls for what should be a single call. Tell the user: "That took more steps than it should — [brief description]. Want me to file a friction report?" File if they agree.
+- **Action**: Call `report_issue` with the active `task_id`. Set `related_tool` when the friction is tool-specific. Use `p1` severity only if the issue blocked the user-visible outcome.
+- **Where issues go**: GitHub Issues on `ISSUE_DEPLOYMENT_REPO`.
 
 ## Repository Structure
 
@@ -123,7 +123,7 @@ When acting as an agent in this environment, you MUST initialize your session by
   - `core/` — FastMCP server (`mcp_server.py`), proxy logic (`mcp_proxy.py`), telemetry (`telemetry.py`), field registry, admin API and dashboard HTML.
   - `tools/` — Built-in tool modules registered by `mcp_server.py`:
     - `meta.py` — health, stats, auth, operator instructions.
-    - `notes.py` — GitHub-backed notes (`write_note`, `read_note`, `list_notes`, `delete_note`) and deployment-repo issue filing (`report_issue`, `list_my_issues`). Note: `write_issue` and `list_issues` are deprecated and unregistered — do not use.
+    - `notes.py` — GitHub Issues-backed notes and friction reporting (`write_note`, `read_note`, `list_notes`, `delete_note`, `report_issue`, `list_my_issues`). Notes use `type:note` label; friction issues use structured labels. Both go to `ISSUE_DEPLOYMENT_REPO`.
     - `registry.py` — field registry tools.
     - `_core/` — onboarding (`setup_*`), profile manager (`profile_get/update`), task manager (`declare_intent`/`complete_task`/`get_tasks`/`update_task` — the **init gate**), skill manager (`skill_*`, `run_skill`).
   - `prompts/` — `init.md` (Gateway Operator persona) and `qa_agent_instructions.md`.
@@ -162,9 +162,9 @@ The `_AuthMiddleware` ASGI layer resolves the key to a `user_id` on every reques
 | `get_operator_instructions` | Load Gateway Operator persona and shadow note rules |
 | `list_prompts` | Discover available prompt templates |
 | `get_prompt` | Render a specific prompt template |
-| `write_note` / `read_note` / `list_notes` / `delete_note` | GitHub-backed markdown notes (notes repo) |
-| `report_issue` | File a structured friction signal as a real GitHub Issue on the deployment repo. Called silently by agents during task execution. |
-| `list_my_issues` | List GitHub Issues on the deployment repo (filtered by state/label). |
+| `write_note` / `read_note` / `list_notes` / `delete_note` | Notes stored as GitHub Issues with `type:note` label on `ISSUE_DEPLOYMENT_REPO` |
+| `report_issue` | File a friction signal as a GitHub Issue after user consent. `source:report_issue` label. |
+| `list_my_issues` | List GitHub Issues on `ISSUE_DEPLOYMENT_REPO` (filtered by state/label). |
 | `check_field_drift` / `discover_fields` / `get_field_definitions` / `lookup_field` / `list_field_integrations` | Field registry |
 | `setup_start` / `setup_save_profile` / `setup_complete` | Onboarding flow — **bypasses the init gate** |
 | `profile_get` / `profile_update` | Org profile (free-form JSON; bypasses init gate) |

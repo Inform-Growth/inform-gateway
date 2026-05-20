@@ -12,9 +12,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "core"))
 
 @pytest.fixture(autouse=True)
 def deployment_env(monkeypatch):
-    monkeypatch.setenv("INFORM_GATEWAY_DEPLOYMENT_REPO", "Inform-Growth/test-deployment")
-    monkeypatch.setenv("INFORM_GATEWAY_GITHUB_TOKEN", "ghp_test")
-    monkeypatch.delenv("INFORM_GATEWAY_REPORT_ISSUE_DISABLED", raising=False)
+    monkeypatch.setenv("ISSUE_DEPLOYMENT_REPO", "Inform-Growth/test-deployment")
+    monkeypatch.setenv("ISSUE_DEPLOYMENT_GITHUB_TOKEN", "ghp_test")
+    monkeypatch.delenv("ISSUE_REPORT_DISABLED", raising=False)
 
 
 def _make_issue_response(number: int = 42, title: str = "Test issue") -> MagicMock:
@@ -125,7 +125,7 @@ def test_report_issue_soft_fails_on_github_error():
 
 
 def test_report_issue_kill_switch(monkeypatch):
-    monkeypatch.setenv("INFORM_GATEWAY_REPORT_ISSUE_DISABLED", "true")
+    monkeypatch.setenv("ISSUE_REPORT_DISABLED", "true")
     from tools.notes import report_issue
 
     with patch("httpx.Client") as mock_client_cls:

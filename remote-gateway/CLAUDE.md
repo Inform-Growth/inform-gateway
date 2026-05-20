@@ -13,7 +13,7 @@ The gateway includes a mandatory initialization step for all connecting agents.
 
 These instructions (defined in `prompts/init.md`) force the agent to adopt a "Gateway Operator" persona, which includes:
 - **Shadow Note-taking** — call `write_note` after every significant task
-- **Issue Filing** — call `report_issue` silently when hitting friction (tool failures, multi-step workarounds). Issues go to real GitHub Issues on `INFORM_GATEWAY_DEPLOYMENT_REPO`, not the notes repo.
+- **Issue Filing** — when hitting friction, tell the user and ask for consent before calling `report_issue`. Issues are GitHub Issues on `ISSUE_DEPLOYMENT_REPO`.
 
 ---
 
@@ -38,17 +38,13 @@ MCP_TRANSPORT=sse python remote-gateway/core/mcp_server.py
 | `MCP_SERVER_HOST` | No | SSE bind address (default: `0.0.0.0`) |
 | `MCP_SERVER_PORT` | No | SSE port (default: `8000`) |
 | `DATABASE_URL` | Yes (prod) | PostgreSQL connection string. Railway injects this automatically when a Postgres plugin is added to the service. |
-| `GITHUB_TOKEN` | Yes | PAT with Contents read+write on the notes repo |
-| `GITHUB_REPO` | Yes | `owner/repo` slug for the notes repo |
-| `GITHUB_BRANCH` | No | Branch for notes read/write (default: `main`) |
-| `NOTES_PATH` | No | Folder inside `GITHUB_REPO` to store notes (default: `notes`) |
+| `ISSUE_DEPLOYMENT_REPO` | Yes | `owner/repo` — the repo where notes and friction issues are filed as GitHub Issues |
+| `ISSUE_DEPLOYMENT_GITHUB_TOKEN` | Yes | Fine-grained PAT with `Issues: read+write` on the deployment repo |
+| `ISSUE_REPORT_DISABLED` | No | Kill switch — set to `"true"` to disable `report_issue` without removing the tool |
 | `GOOGLE_OAUTH_CLIENT_ID` | Google | OAuth client ID from Google Cloud Console |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Google | OAuth client secret |
 | `USER_GOOGLE_EMAIL` | Google | Account the workspace MCP authenticates as |
 | `WORKSPACE_MCP_CREDENTIALS_DIR` | Google | Persistent directory for cached OAuth tokens (e.g. `/data/google-workspace-creds`) |
-| `INFORM_GATEWAY_DEPLOYMENT_REPO` | `report_issue` | `owner/repo` — the repo where agent friction issues are filed |
-| `INFORM_GATEWAY_GITHUB_TOKEN` | `report_issue` | PAT or App token with `issues:write` scope on the deployment repo |
-| `INFORM_GATEWAY_REPORT_ISSUE_DISABLED` | No | Kill switch — set to `"true"` to disable issue filing without removing the tool |
 
 ---
 
@@ -103,5 +99,4 @@ Edit `mcp_connections.json`:
 
 - **Read-only enforcement**: Tools should be read-only by default.
 - **No hardcoded secrets**: Use `os.environ` exclusively.
-- **Shadow Note-taking**: Monitor the "Write Notes" repository regularly to understand user goals and identify where the gateway is failing to provide a "good job."
-- **Issue Backlog**: Review open issues on `INFORM_GATEWAY_DEPLOYMENT_REPO` (GitHub Issues, filtered by `source:report_issue` label) to stay ahead of friction and integration failures. Issues are filed automatically by agents during task execution.
+- **Notes & Issue Backlog**: Monitor `ISSUE_DEPLOYMENT_REPO` GitHub Issues — `type:note` for session notes, `source:report_issue` for friction signals. Review regularly to understand user goals and stay ahead of integration failures.

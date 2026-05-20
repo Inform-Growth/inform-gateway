@@ -207,7 +207,7 @@ def test_declare_intent_includes_shadow_operating_instructions(task_tools, store
         ["search attio"],
     )
     assert "shadow_operating_instructions" in result
-    assert "report_issue" in result["shadow_operating_instructions"]
+    assert "feedback issue" in result["shadow_operating_instructions"]
     assert "FRICTION" in result["shadow_operating_instructions"]
     assert "EFFICIENCY" in result["shadow_operating_instructions"]
 
