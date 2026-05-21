@@ -46,8 +46,8 @@
     },
     "buffer": {
       "transport": "stdio",
-      "command": "npx",
-      "args": ["--yes", "github:rodrigo-do-carmo/mcp-server-buffer"],
+      "command": "mcp-server-buffer",
+      "args": [],
       "env": {
         "BUFFER_ACCESS_TOKEN": "${BUFFER_ACCESS_TOKEN}"
       }
