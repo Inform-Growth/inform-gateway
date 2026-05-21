@@ -2,10 +2,18 @@
   "mcpServers": {
     "inform-gateway": {
       "type": "http",
-      "url": "https://your-gateway.railway.app/mcp",
+      "url": "http://localhost:8000/mcp",
       "headers": {
         "Authorization": "Bearer ${GATEWAY_USER_API_KEY}"
       }
     }
   }
 }
+
+// For production, swap the URL:
+// "url": "https://your-gateway.railway.app/mcp"
+//
+// Local dev prerequisites (one-time):
+//   brew services start postgresql@16
+//   createdb inform_gateway_dev
+//   # See dev.sh header comment or add-mcp-integration skill for full setup.

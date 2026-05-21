@@ -113,6 +113,38 @@ If it's missing or ended up on the same line as another variable (no trailing ne
 
 ---
 
+## First-time local dev setup (do once per machine)
+
+The local gateway needs a database to handle auth — without it every `/mcp` request returns 401.
+
+```bash
+# 1. Start Postgres (already installed via Homebrew)
+brew services start postgresql@16
+
+# 2. Create the dev database (gateway auto-creates its schema on first start)
+createdb inform_gateway_dev
+
+# 3. DATABASE_URL is already set in remote-gateway/.env:
+#    postgresql://jaronsander@localhost:5432/inform_gateway_dev
+
+# 4. Start the gateway once to initialize the schema
+MCP_TRANSPORT=combined python remote-gateway/core/mcp_server.py &
+sleep 6
+
+# 5. Register GATEWAY_USER_API_KEY (from ~/.claude/settings.json) in the local DB
+psql -d inform_gateway_dev -c "
+  INSERT INTO api_keys (key, user_id, created_at)
+  VALUES ('sk-7f3a26b57ac1cc73c120f906c7527d91', 'jaron', extract(epoch from now()))
+  ON CONFLICT (key) DO NOTHING;
+"
+# Kill the background gateway — use dev.sh going forward
+pkill -f "mcp_server.py"
+```
+
+The `.mcp.json` in the repo root connects Claude Code to `http://localhost:8000/mcp` using `${GATEWAY_USER_API_KEY}`. Run `./dev.sh` to start both gateway and admin UI, then reload Claude Code's MCP connection.
+
+---
+
 ## Step 5 — Test via .mcp.json (sandbox before touching the gateway)
 
 `.mcp.json` uses almost the same format as `mcp_connections.json`. Use it as a sandbox: Claude Code starts the subprocess directly, and tools immediately appear in the sidebar. No gateway restart, no port conflicts, no curl.

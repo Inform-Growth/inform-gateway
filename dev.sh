@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 # dev.sh — run the Remote Gateway and the admin-ui Vite dev server together.
 # Ctrl-C kills both. See docs/superpowers/specs/2026-05-05-admin-ui-react-port-design.md.
+#
+# Prerequisites (first-time setup):
+#   brew services start postgresql@16
+#   createdb inform_gateway_dev
+#   # DATABASE_URL is already set in remote-gateway/.env pointing at this DB.
+#   # The gateway auto-creates its schema on first start.
+#   # GATEWAY_USER_API_KEY in ~/.claude/settings.json is registered in the DB.
+#   # .mcp.json in repo root connects Claude Code directly to http://localhost:8000/mcp.
 set -euo pipefail
 
 cleanup() {
