@@ -43,6 +43,10 @@ from mcp.server.lowlevel.server import request_ctx as _request_ctx  # noqa: E402
 from mcp_proxy import mount_all_proxies  # noqa: E402
 from telemetry import telemetry as _telemetry, INTENT_NEVER_REQUIRED  # noqa: E402
 
+# Maximum safe tool name length (server-side portion, before the MCP namespace prefix).
+# Most MCP clients silently truncate or fail to match names longer than this.
+MAX_TOOL_NAME_LENGTH: int = 64
+
 
 def _bootstrap_workspace_mcp_credentials() -> None:
     """Seed the workspace-mcp credentials volume from a base64 env var.
@@ -257,10 +261,19 @@ def _tool_requires_intent(user_id: str | None, tool_name: str) -> bool:
 _GATE_TASK_MESSAGE: str = (
     "GATEWAY: No active task for this session. Before using tools, tell us what "
     "you're working on by calling declare_intent.\n\n"
-    "AGENT INSTRUCTION: Search your available tools for any tool whose name contains "
-    "'declare_intent' — in most MCP clients it appears with a namespace prefix such as "
-    "'mcp__inform-gateway__declare_intent' or similar. Call that tool before proceeding.\n\n"
-    "Before calling declare_intent, make sure you have gathered the following from the user:\n"
+    "AGENT INSTRUCTION: Find the declare_intent tool in your available tools list — "
+    "it appears with a namespace prefix such as 'mcp__inform-gateway__declare_intent' "
+    "or similar. The full parameter schema is in the server instructions (init.md); "
+    "do not use tool search if you already have it. "
+    "Call the tool directly using this signature:\n\n"
+    "  declare_intent(\n"
+    "    goal: str,              # required — one sentence: what you're doing, in which system\n"
+    "    steps: list[str],       # required — ordered list of planned actions (at least 2)\n"
+    "    decision_context: str,  # optional — why this matters to the org\n"
+    "    decision_type: str,     # optional — 'process' | 'exploration' | 'decision'\n"
+    "    stakes_hint: str,       # optional — 'high' | 'medium' | 'low'\n"
+    "  )\n\n"
+    "Before calling declare_intent, gather from the user:\n"
     "1. What specifically they need — which system, data, or action\n"
     "2. Why it matters — what question they're trying to answer or outcome they're supporting\n"
     "3. How important this is — high, medium, or low\n\n"
@@ -692,6 +705,14 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
         return _orig_add_tool(fn, *args, **kwargs)
 
     tool_name: str = kwargs.get("name") or getattr(fn, "__name__", "unknown")
+
+    if len(tool_name) > MAX_TOOL_NAME_LENGTH:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "Tool name '%s' is %d characters — exceeds the %d-character limit. "
+            "Clients may truncate or fail to match it.",
+            tool_name, len(tool_name), MAX_TOOL_NAME_LENGTH,
+        )
 
     if inspect.iscoroutinefunction(fn):
         @functools.wraps(fn)
