@@ -44,6 +44,14 @@
         ]
       }
     },
+    "buffer": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "mcp-server-buffer"],
+      "env": {
+        "BUFFER_ACCESS_TOKEN": "${BUFFER_ACCESS_TOKEN}"
+      }
+    },
     "google": {
       "_comment": "Unified Google Workspace MCP (Gmail + Calendar + Drive/Docs). Replaces the old @gongrzhe gmail proxy that had Gmail SMTP line-folding issues. Uses single-user OAuth: tokens are cached at WORKSPACE_MCP_CREDENTIALS_DIR (mounted on the Railway persistent volume so they survive restarts). First-time auth flow must be run somewhere with browser access; see README.",
       "transport": "stdio",
