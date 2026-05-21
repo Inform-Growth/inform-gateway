@@ -113,43 +113,47 @@ If it's missing or ended up on the same line as another variable (no trailing ne
 
 ---
 
-## Step 5 — Test locally
+## Step 5 — Test via .mcp.json (sandbox before touching the gateway)
 
-### 5a. Start the gateway
+`.mcp.json` uses almost the same format as `mcp_connections.json`. Use it as a sandbox: Claude Code starts the subprocess directly, and tools immediately appear in the sidebar. No gateway restart, no port conflicts, no curl.
 
+### 5a. Add to .mcp.json
+
+`.mcp.json` lives at the repo root (gitignored for local-only entries). Add the new integration with real credentials inline:
+
+```json
+{
+  "mcpServers": {
+    "<integration>": {
+      "command": "npx",
+      "args": ["--yes", "github:<owner>/<repo>"],
+      "env": {
+        "API_KEY": "your-real-key-here"
+      }
+    }
+  }
+}
+```
+
+### 5b. Verify in Claude Code
+
+Reload the MCP connection (Claude Code → Settings → MCP or restart the session). The integration's tools should appear in the tool list. Call one to confirm auth works.
+
+If the tool list is empty, the subprocess crashed — run the command manually in a terminal with the env var set to see the error:
 ```bash
-pkill -f "mcp_server.py" 2>/dev/null
-MCP_TRANSPORT=combined MCP_SERVER_PORT=8099 python remote-gateway/core/mcp_server.py &
-sleep 10
+API_KEY=your-real-key npx --yes github:<owner>/<repo>
 ```
 
-**Use port 8099, not 8000.** The `workspace-mcp` subprocess binds to `localhost:8000` and intercepts traffic before the gateway's `0.0.0.0:8000` binding.
+### 5c. Promote to gateway
 
-### 5b. Check startup logs
+Once it works in `.mcp.json`, translate to `mcp_connections.json`. The diff is mechanical:
+- Wrap in `"transport": "stdio"`
+- Replace real credential values with `${VAR_NAME}` placeholders
+- Add the real values to `remote-gateway/.env`
 
-Look for:
-```
-[proxy] '<integration>' connected — N tool(s) registered
-```
+The gateway will behave identically to what you tested in the sandbox.
 
-If you see `failed to connect`, the install command or env var is wrong. Read the error carefully — it will say either "Connection closed" (binary not found) or an auth error (env var missing).
-
-### 5c. Verify via admin API
-
-```bash
-curl -s "http://localhost:8099/admin/api/tools?token=inform-admin-2026" \
-  | python3 -c "
-import sys, json
-tools = json.load(sys.stdin)
-hits = [t for t in tools if '<integration>' in t['name']]
-print(f'<Integration> tools: {len(hits)}')
-for t in hits: print(f'  {t[\"name\"]}')
-"
-```
-
-**Admin API auth gotcha:** Use `?token=<ADMIN_TOKEN>` query param, NOT `Authorization: Bearer`. The Bearer path returns 403.
-
-A count of 0 with no startup error usually means the tool allowlist in `mcp_connections.json` excluded everything — double-check the `"allow"` list.
+> **Admin API note (if you need to verify after gateway restart):** Use `?token=<ADMIN_TOKEN>` query param, NOT `Authorization: Bearer`. Use port 8099 not 8000 (`workspace-mcp` binds 8000 locally).
 
 ---
 
@@ -172,6 +176,7 @@ git commit -m "feat: add <integration> MCP integration"
 | Tools show 0 after connect | Check `"allow"` list in connections config |
 | Admin API returns 403 | Use `?token=` query param, not `Authorization: Bearer` |
 | Server not reachable on :8000 | `workspace-mcp` occupies that port locally. Use :8099 |
+| Want faster feedback than gateway restart | Use `.mcp.json` as sandbox first (Step 5) |
 | Env var not picked up | Server reads `remote-gateway/.env`, not repo root `.env` |
 | Token merged with previous line | Use Edit tool to insert newline; don't use `echo >>` |
 | Integration in right file, wrong variable | Double-check `${VAR_NAME}` in `mcp_connections.json` matches what's in `.env` |
