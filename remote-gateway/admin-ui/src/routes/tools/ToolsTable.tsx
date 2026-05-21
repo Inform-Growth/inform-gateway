@@ -53,20 +53,26 @@ export function ToolsTable({ onRowClick }: { onRowClick: (tool: MergedTool) => v
       id: 'enabled',
       header: 'Global',
       cell: ({ row }) => (
-        <Switch
-          checked={row.original.enabled}
-          onCheckedChange={(enabled) => {
-            setGlobal.mutate(
-              { tool_name: row.original.name, enabled },
-              {
-                onSuccess: () =>
-                  toast.success(`${row.original.name} ${enabled ? 'enabled' : 'disabled'}`),
-                onError: (err) =>
-                  toast.error(err instanceof Error ? err.message : 'Failed to toggle'),
-              },
-            );
-          }}
-        />
+        // base-ui Switch renders a <span role="switch"> + a sibling <input> outside it.
+        // Its onClick dispatches a secondary PointerEvent on that input, which bubbles past
+        // the [role="switch"] guard in DataTable. Wrapping both elements in a div and
+        // stopping propagation here catches both events before they reach the TableRow.
+        <div onClick={(e) => e.stopPropagation()}>
+          <Switch
+            checked={row.original.enabled}
+            onCheckedChange={(enabled) => {
+              setGlobal.mutate(
+                { tool_name: row.original.name, enabled },
+                {
+                  onSuccess: () =>
+                    toast.success(`${row.original.name} ${enabled ? 'enabled' : 'disabled'}`),
+                  onError: (err) =>
+                    toast.error(err instanceof Error ? err.message : 'Failed to toggle'),
+                },
+              );
+            }}
+          />
+        </div>
       ),
     },
   ], [setGlobal]);
