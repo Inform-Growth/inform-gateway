@@ -45,11 +45,13 @@
       }
     },
     "buffer": {
-      "transport": "stdio",
-      "command": "mcp-server-buffer",
-      "args": [],
-      "env": {
-        "BUFFER_ACCESS_TOKEN": "${BUFFER_ACCESS_TOKEN}"
+      "transport": "http",
+      "url": "https://mcp.buffer.com/mcp",
+      "auth": {
+        "type": "header",
+        "headers": {
+          "Authorization": "Bearer ${BUFFER_ACCESS_TOKEN}"
+        }
       }
     },
     "google": {
