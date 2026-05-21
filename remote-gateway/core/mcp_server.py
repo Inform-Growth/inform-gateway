@@ -963,7 +963,7 @@ if __name__ == "__main__":
         # Mount SSE and streamable-http routes directly at the root.
         _combined = Starlette(
             routes=[
-                Mount("/admin", app=_create_admin_app(_telemetry, list_tools_fn=mcp.list_tools)),
+                Mount("/admin", app=_create_admin_app(_telemetry, list_tools_fn=_orig_list_tools)),
                 *_sse.routes,
                 *_http.routes,
                 Route("/health", health_check_handler),
