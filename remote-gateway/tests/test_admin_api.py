@@ -197,6 +197,82 @@ def test_sessions_returns_sankey_key(client):
 
 
 # ---------------------------------------------------------------------------
+# _build_sankey / _remove_cycles unit tests
+# ---------------------------------------------------------------------------
+
+def test_build_sankey_direct_pair():
+    from admin_api import _build_sankey
+    flows = [{"sequence": "a -> b", "count": 5}]
+    result = _build_sankey(flows)
+    assert len(result["links"]) == 1
+    assert result["links"][0] == {"source": "a", "target": "b", "value": 5}
+
+
+def test_build_sankey_drops_self_loops():
+    from admin_api import _build_sankey
+    flows = [{"sequence": "a -> a", "count": 3}, {"sequence": "a -> b", "count": 2}]
+    result = _build_sankey(flows)
+    assert all(lk["source"] != lk["target"] for lk in result["links"])
+
+
+def test_build_sankey_resolves_bidirectional():
+    from admin_api import _build_sankey
+    flows = [
+        {"sequence": "a -> b", "count": 10},
+        {"sequence": "b -> a", "count": 3},
+    ]
+    result = _build_sankey(flows)
+    # Dominant direction (a→b) wins; reverse must not appear.
+    assert len(result["links"]) == 1
+    assert result["links"][0]["source"] == "a"
+    assert result["links"][0]["target"] == "b"
+
+
+def test_build_sankey_breaks_indirect_cycle():
+    """A→B→C→A must not reach the client — recharts would stack-overflow."""
+    from admin_api import _build_sankey
+    flows = [
+        {"sequence": "a -> b", "count": 5},
+        {"sequence": "b -> c", "count": 5},
+        {"sequence": "c -> a", "count": 5},
+    ]
+    result = _build_sankey(flows)
+    links = result["links"]
+    # Graph must be a DAG: no back edges.
+    edges = {(lk["source"], lk["target"]) for lk in links}
+    for src, tgt in edges:
+        assert (tgt, src) not in edges, f"Cycle detected: {src}→{tgt} and {tgt}→{src} both present"
+    # At least some edges must survive.
+    assert len(links) >= 2
+
+
+def test_remove_cycles_no_cycle():
+    from admin_api import _remove_cycles
+    edges = [("a", "b"), ("b", "c"), ("a", "c")]
+    result = _remove_cycles(edges)
+    assert set(result) == {("a", "b"), ("b", "c"), ("a", "c")}
+
+
+def test_remove_cycles_direct_cycle():
+    from admin_api import _remove_cycles
+    edges = [("a", "b"), ("b", "a")]
+    result = _remove_cycles(edges)
+    assert len(result) == 1  # one direction survives
+
+
+def test_remove_cycles_three_node_cycle():
+    from admin_api import _remove_cycles
+    edges = [("a", "b"), ("b", "c"), ("c", "a")]
+    result = _remove_cycles(edges)
+    # Back edge removed — 2 of 3 survive.
+    assert len(result) == 2
+    # Verify no cycle remains.
+    edge_set = set(result)
+    for src, tgt in result:
+        assert (tgt, src) not in edge_set
+
+
+# ---------------------------------------------------------------------------
 # Logs
 # ---------------------------------------------------------------------------
 

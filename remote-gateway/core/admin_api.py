@@ -477,12 +477,54 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
     return Starlette(routes=routes)
 
 
+def _remove_cycles(edges: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Return edges with back-edges removed so the graph is a DAG.
+
+    Uses iterative DFS. When a back edge (edge to an in-progress ancestor) is
+    found it is dropped. This prevents recharts' Sankey layout — which does an
+    unbounded depth-first traversal — from entering infinite recursion.
+    """
+    from collections import defaultdict
+
+    adj: dict[str, list[str]] = defaultdict(list)
+    for src, tgt in edges:
+        adj[src].append(tgt)
+
+    visited: set[str] = set()
+    in_stack: set[str] = set()
+    back_edges: set[tuple[str, str]] = set()
+    all_nodes = {n for pair in edges for n in pair}
+
+    for start in all_nodes:
+        if start in visited:
+            continue
+        visited.add(start)
+        in_stack.add(start)
+        stack: list[tuple[str, any]] = [(start, iter(adj[start]))]
+        while stack:
+            node, neighbors = stack[-1]
+            try:
+                neighbor = next(neighbors)
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    in_stack.add(neighbor)
+                    stack.append((neighbor, iter(adj[neighbor])))
+                elif neighbor in in_stack:
+                    back_edges.add((node, neighbor))
+            except StopIteration:
+                in_stack.discard(node)
+                stack.pop()
+
+    return [(src, tgt) for src, tgt in edges if (src, tgt) not in back_edges]
+
+
 def _build_sankey(common_flows: list[dict]) -> dict:
     """Convert user_flow_analysis common_flows into D3-sankey nodes/links format.
 
     Only includes pair-level flows (sequence with exactly one "->").
     Bidirectional pairs (A→B and B→A) are resolved by keeping the dominant
-    direction (higher count); this prevents d3-sankey circular-link errors.
+    direction (higher count). Any remaining indirect cycles (A→B→C→A) are
+    broken by _remove_cycles before the data reaches the client.
 
     Args:
         common_flows: List of {"sequence": "tool_a -> tool_b", "count": N} dicts.
@@ -515,9 +557,15 @@ def _build_sankey(common_flows: list[dict]) -> dict:
             resolved[(src, tgt)] = count
         # else: reverse will be picked up when its key is iterated
 
+    # Break any remaining indirect cycles (e.g. A→B→C→A).
+    safe_edges = _remove_cycles(list(resolved.keys()))
+    safe_set = set(safe_edges)
+
     node_set: set[str] = set()
     links: list[dict] = []
     for (src, tgt), count in resolved.items():
+        if (src, tgt) not in safe_set:
+            continue
         node_set.add(src)
         node_set.add(tgt)
         links.append({"source": src, "target": tgt, "value": count})
