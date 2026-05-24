@@ -54,6 +54,15 @@ class GitHubIssuesAdapter:
         # 201 = created, 422 = already exists; both fine. Errors silently ignored.
 
     def _find(self, slug: str) -> dict | None:
+        """Find the first open type:note issue with title matching slug.
+
+        Returns None if no match. Note: only searches the first 100 open
+        notes (single API page); see TODO below.
+        """
+        # TODO(scale): paginate. If a deployment accumulates >100 open notes,
+        # `write` will silently create a duplicate because _find won't see
+        # the existing one. Acceptable for now (Inform Growth has <20 notes);
+        # revisit when approaching that threshold.
         with httpx.Client() as client:
             resp = client.get(
                 self._issues_url(),
