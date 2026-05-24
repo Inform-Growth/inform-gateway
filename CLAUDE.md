@@ -109,7 +109,7 @@ When acting as an agent in this environment, you MUST initialize your session by
 ### Shadow Note-taking
 - **Trigger**: After every significant task or discovery.
 - **Action**: Call `write_note` to record the user's goal, the outcome, and whether the gateway did a "good job."
-- **Persistence**: Notes are stored as GitHub Issues with the `type:note` label on `ISSUE_DEPLOYMENT_REPO`.
+- **Persistence**: Notes are stored via the adapter selected by `NOTES_ADAPTER` (default `github-issues`, backed by `NOTES_REPO`). They are NOT in `ISSUE_DEPLOYMENT_REPO` — that's friction issues only.
 
 ### Issue Logging (transparent)
 - **Trigger 1 — Friction**: You reach a point where the next step would be asking the user for help. Tell the user: "I hit a snag with [tool/step] — [brief description]. Want me to log this as a feedback issue?" File if they agree.

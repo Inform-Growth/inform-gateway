@@ -102,4 +102,4 @@ Edit `mcp_connections.json`:
 
 - **Read-only enforcement**: Tools should be read-only by default.
 - **No hardcoded secrets**: Use `os.environ` exclusively.
-- **Notes & Issue Backlog**: Monitor `ISSUE_DEPLOYMENT_REPO` GitHub Issues — `type:note` for session notes, `source:report_issue` for friction signals. Review regularly to understand user goals and stay ahead of integration failures.
+- **Notes & Issue Backlog**: Monitor two repos — `NOTES_REPO` for `type:note` session notes (via the configured notes adapter), and `ISSUE_DEPLOYMENT_REPO` for `source:report_issue` friction signals. Review both regularly to understand user goals and stay ahead of integration failures.
