@@ -35,7 +35,7 @@ class NotesAdapter(Protocol):
         """List all notes.
 
         Returns [{"slug": str, "id": str, "url": str, "created_at": str, "updated_at": str}, ...].
-        Ordering is adapter-defined.
+        Returns an empty list if no notes exist. Ordering is adapter-defined.
         """
         ...
 
@@ -58,7 +58,8 @@ def get_adapter() -> NotesAdapter:
     """Return a fresh adapter instance per call. Selection is env-var driven.
 
     Reads NOTES_ADAPTER (default: "github-issues"). Raises RuntimeError if the
-    name is unknown or if the chosen adapter's __init__ raises (missing env, etc.).
+    name is unknown. Any exception raised by the chosen adapter's __init__
+    (e.g., RuntimeError on missing env vars) propagates as-is.
     """
     name = os.environ.get("NOTES_ADAPTER", "github-issues")
     registry = _registry()

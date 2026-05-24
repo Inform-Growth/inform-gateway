@@ -6,4 +6,5 @@ class GitHubIssuesAdapter:
     """Stub. Real implementation lands in Task 2."""
 
     def __init__(self) -> None:
+        # TODO(task-2): validate NOTES_REPO + NOTES_GITHUB_TOKEN; raise RuntimeError if missing.
         pass
