@@ -115,11 +115,41 @@ class GitHubIssuesAdapter:
             return None
         return self._to_result(issue, content=issue.get("body", ""))
 
-    # list() and delete() in Task 3
     def list(self) -> list[dict]:  # noqa: A003 — Protocol shape
-        """List all notes. Implemented in Task 3."""
-        raise NotImplementedError("Implemented in Task 3")
+        """Return all open notes, each as a dict with slug, id, url, issue_number, created_at, updated_at."""
+        with httpx.Client() as client:
+            resp = client.get(
+                self._issues_url(),
+                headers=self._headers(),
+                params={"labels": "type:note", "state": "open", "per_page": 100},
+            )
+        resp.raise_for_status()
+        return [
+            {
+                "slug": issue["title"],
+                "id": str(issue["number"]),
+                "url": issue["html_url"],
+                "issue_number": issue["number"],
+                "created_at": issue["created_at"],
+                "updated_at": issue["updated_at"],
+            }
+            for issue in resp.json()
+        ]
 
     def delete(self, slug: str) -> dict:
-        """Delete a note by slug. Implemented in Task 3."""
-        raise NotImplementedError("Implemented in Task 3")
+        """Close the GitHub Issue backing this note. Returns status dict."""
+        issue = self._find(slug)
+        if not issue:
+            return {"status": "not_found", "slug": slug}
+        with httpx.Client() as client:
+            resp = client.patch(
+                self._issue_url(issue["number"]),
+                headers=self._headers(),
+                json={"state": "closed"},
+            )
+        resp.raise_for_status()
+        return {
+            "status": "deleted",
+            "slug": slug,
+            "issue_number": issue["number"],
+        }

@@ -138,3 +138,70 @@ def test_read_missing_returns_none():
         result = GitHubIssuesAdapter().read("ghost")
 
     assert result is None
+
+
+# ---- list ----
+
+def test_list_returns_open_notes():
+    from tools.integrations.notes.adapters.github_issues import GitHubIssuesAdapter
+
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.return_value = _mock_resp(
+            [_issue(1, "session-2026-05-19"), _issue(2, "onboarding")]
+        )
+
+        result = GitHubIssuesAdapter().list()
+
+    assert len(result) == 2
+    assert result[0]["slug"] == "session-2026-05-19"
+    assert result[1]["slug"] == "onboarding"
+    assert result[0]["created_at"] == "2026-01-01T00:00:00Z"
+    assert result[0]["updated_at"] == "2026-01-02T00:00:00Z"
+    assert result[0]["id"] == "1"
+
+
+def test_list_empty():
+    from tools.integrations.notes.adapters.github_issues import GitHubIssuesAdapter
+
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.return_value = _mock_resp([])
+
+        result = GitHubIssuesAdapter().list()
+
+    assert result == []
+
+
+# ---- delete ----
+
+def test_delete_closes_issue():
+    from tools.integrations.notes.adapters.github_issues import GitHubIssuesAdapter
+
+    issue = _issue(3, "to-delete")
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.return_value = _mock_resp([issue])
+        client.patch.return_value = _mock_resp({**issue, "state": "closed"})
+
+        result = GitHubIssuesAdapter().delete("to-delete")
+
+    assert result["status"] == "deleted"
+    assert result["slug"] == "to-delete"
+    assert result["issue_number"] == 3
+    call_json = client.patch.call_args[1]["json"]
+    assert call_json["state"] == "closed"
+
+
+def test_delete_not_found():
+    from tools.integrations.notes.adapters.github_issues import GitHubIssuesAdapter
+
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.return_value = _mock_resp([])
+
+        result = GitHubIssuesAdapter().delete("ghost")
+
+    assert result["status"] == "not_found"
+    assert result["slug"] == "ghost"
+    client.patch.assert_not_called()
