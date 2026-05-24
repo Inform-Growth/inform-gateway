@@ -29,7 +29,7 @@ def _make_issue_response(number: int = 42, title: str = "Test issue") -> MagicMo
 
 
 def test_report_issue_returns_issue_url():
-    from tools.notes import report_issue
+    from tools.friction import report_issue
 
     with patch("httpx.Client") as mock_client_cls:
         mock_client = MagicMock()
@@ -57,7 +57,7 @@ def test_report_issue_returns_issue_url():
 
 
 def test_report_issue_posts_to_correct_repo():
-    from tools.notes import report_issue
+    from tools.friction import report_issue
 
     with patch("httpx.Client") as mock_client_cls:
         mock_client = MagicMock()
@@ -81,7 +81,7 @@ def test_report_issue_posts_to_correct_repo():
 
 
 def test_report_issue_body_contains_task_id():
-    from tools.notes import report_issue
+    from tools.friction import report_issue
 
     with patch("httpx.Client") as mock_client_cls:
         mock_client = MagicMock()
@@ -103,7 +103,7 @@ def test_report_issue_body_contains_task_id():
 
 
 def test_report_issue_soft_fails_on_github_error():
-    from tools.notes import report_issue
+    from tools.friction import report_issue
 
     with patch("httpx.Client") as mock_client_cls:
         mock_client = MagicMock()
@@ -126,7 +126,7 @@ def test_report_issue_soft_fails_on_github_error():
 
 def test_report_issue_kill_switch(monkeypatch):
     monkeypatch.setenv("ISSUE_REPORT_DISABLED", "true")
-    from tools.notes import report_issue
+    from tools.friction import report_issue
 
     with patch("httpx.Client") as mock_client_cls:
         result = report_issue(
@@ -143,7 +143,7 @@ def test_report_issue_kill_switch(monkeypatch):
 
 
 def test_report_issue_no_tool_label_when_related_tool_absent():
-    from tools.notes import report_issue
+    from tools.friction import report_issue
 
     with patch("httpx.Client") as mock_client_cls:
         mock_client = MagicMock()
@@ -164,7 +164,7 @@ def test_report_issue_no_tool_label_when_related_tool_absent():
 
 
 def test_list_my_issues_returns_open_issues():
-    from tools.notes import list_my_issues
+    from tools.friction import list_my_issues
 
     mock_resp = MagicMock()
     mock_resp.status_code = 200
@@ -195,7 +195,7 @@ def test_list_my_issues_returns_open_issues():
 
 
 def test_list_my_issues_passes_state_and_label_params():
-    from tools.notes import list_my_issues
+    from tools.friction import list_my_issues
 
     mock_resp = MagicMock()
     mock_resp.status_code = 200
