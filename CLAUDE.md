@@ -123,7 +123,8 @@ When acting as an agent in this environment, you MUST initialize your session by
   - `core/` — FastMCP server (`mcp_server.py`), proxy logic (`mcp_proxy.py`), telemetry (`telemetry.py`), field registry, admin API and dashboard HTML.
   - `tools/` — Built-in tool modules registered by `mcp_server.py`:
     - `meta.py` — health, stats, auth, operator instructions.
-    - `notes.py` — GitHub Issues-backed notes and friction reporting (`write_note`, `read_note`, `list_notes`, `delete_note`, `report_issue`, `list_my_issues`). Notes use `type:note` label; friction issues use structured labels. Both go to `ISSUE_DEPLOYMENT_REPO`.
+    - `friction.py` **[custom]** — `report_issue` / `list_my_issues`. Gateway-internal friction reporting; reads `ISSUE_DEPLOYMENT_REPO`.
+    - `integrations/notes/` **[custom]** — pluggable notes storage (`write_note` / `read_note` / `list_notes` / `delete_note`). `NotesAdapter` Protocol + `GitHubIssuesAdapter` backend (reads `NOTES_REPO`). Stays `[custom]` until a second adapter (e.g. SQLite-backed for downstream clients) is added.
     - `registry.py` — field registry tools.
     - `_core/` — onboarding (`setup_*`), profile manager (`profile_get/update`), task manager (`declare_intent`/`complete_task`/`get_tasks`/`update_task` — the **init gate**), skill manager (`skill_*`, `run_skill`).
   - `prompts/` — `init.md` (Gateway Operator persona) and `qa_agent_instructions.md`.
@@ -162,8 +163,8 @@ The `_AuthMiddleware` ASGI layer resolves the key to a `user_id` on every reques
 | `get_operator_instructions` | Load Gateway Operator persona and shadow note rules |
 | `list_prompts` | Discover available prompt templates |
 | `get_prompt` | Render a specific prompt template |
-| `write_note` / `read_note` / `list_notes` / `delete_note` | Notes stored as GitHub Issues with `type:note` label on `ISSUE_DEPLOYMENT_REPO` |
-| `report_issue` | File a friction signal as a GitHub Issue after user consent. `source:report_issue` label. |
+| `write_note` / `read_note` / `list_notes` / `delete_note` | Notes stored via the adapter configured by `NOTES_ADAPTER` (default: `github-issues`, backed by `NOTES_REPO`). |
+| `report_issue` | File a friction signal as a GitHub Issue after user consent. `source:report_issue` label. Issues land on `ISSUE_DEPLOYMENT_REPO`. |
 | `list_my_issues` | List GitHub Issues on `ISSUE_DEPLOYMENT_REPO` (filtered by state/label). |
 | `check_field_drift` / `discover_fields` / `get_field_definitions` / `lookup_field` / `list_field_integrations` | Field registry |
 | `setup_start` / `setup_save_profile` / `setup_complete` | Onboarding flow — **bypasses the init gate** |
