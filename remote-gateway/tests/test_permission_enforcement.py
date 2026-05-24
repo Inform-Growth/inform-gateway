@@ -64,7 +64,9 @@ def _import_server_with_permission_mock(has_permission_return: bool):
     mod_tel.INTENT_NEVER_REQUIRED = frozenset()
     sys.modules["telemetry"] = mod_tel
 
-    for tool_mod in ("tools", "tools.meta", "tools.notes", "tools.registry", "tools.attio"):
+    for tool_mod in ("tools", "tools.meta", "tools.friction", "tools.registry",
+                     "tools.integrations", "tools.integrations.notes",
+                     "tools.integrations.attio"):
         if tool_mod not in sys.modules:
             m = types.ModuleType(tool_mod)
             sys.modules[tool_mod] = m

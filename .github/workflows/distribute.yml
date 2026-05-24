@@ -78,8 +78,11 @@ jobs:
           # Excluded intentionally:
           #   remote-gateway/core/mcp_server.py — each deployment owns its own
           #     tool registration (which integrations are wired up, etc.)
-          #   remote-gateway/tools/notes.py — GitHub-backed notes are inform-gateway
-          #     internal only; downstream deployments use DB-backed storage instead
+          #   remote-gateway/tools/friction.py — gateway-internal friction reporting
+          #     (reads ISSUE_DEPLOYMENT_REPO); not pluggable.
+          #   remote-gateway/tools/integrations/notes/ — pluggable notes adapter
+          #     (currently GitHub Issues backend); stays [custom] until a second
+          #     adapter (e.g. SQLite-backed for downstream clients) is added.
           #   docs/superpowers/plans/ and docs/superpowers/specs/ — development
           #     plans and specs specific to inform-gateway; each downstream repo
           #     maintains its own planning docs

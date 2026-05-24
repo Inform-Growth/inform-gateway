@@ -20,14 +20,15 @@ def _load_extract_key():
     """Extract _AuthMiddleware._extract_key without triggering server startup."""
     # Stub every heavy import mcp_server.py touches at module level.
     # Track which modules we inject so we can remove them afterwards and avoid
-    # polluting sys.modules for other test files (e.g. test_delete_note_retry.py
-    # imports the real tools.notes; leaving a stub would break it).
+    # polluting sys.modules for other test files that import the real modules.
     stubs = [
         "mcp", "mcp.server", "mcp.server.fastmcp",
         "mcp.server.lowlevel", "mcp.server.lowlevel.server",
         "field_registry", "mcp_proxy", "telemetry",
-        "tools", "tools.apollo", "tools.attio", "tools.email_tools",
-        "tools.meta", "tools.notes", "tools.registry", "tools.wiza",
+        "tools", "tools.meta", "tools.friction", "tools.registry",
+        "tools.integrations", "tools.integrations.notes",
+        "tools.integrations.apollo", "tools.integrations.attio",
+        "tools.integrations.email_tools", "tools.integrations.wiza",
         "tools._core", "tools._core.onboarding", "tools._core.profile_manager",
         "tools._core.skill_manager", "tools._core.task_manager",
     ]
