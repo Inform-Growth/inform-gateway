@@ -1,11 +1,14 @@
-"""
-GitHub Issues-backed notes and friction reporting tools.
+"""GitHub Issues-backed friction-reporting tools.
 
-All notes and issues are stored as GitHub Issues in the deployment repository.
-Notes use the label "type:note"; friction issues use structured labels.
+report_issue files structured friction signals on the gateway deployment repo
+as GitHub Issues. list_my_issues queries them. These tools are gateway-internal
+and intentionally NOT pluggable — friction is always tracked as bugs against
+the gateway itself.
+
+For pluggable note storage, see tools/integrations/notes/.
 
 Required env vars:
-    ISSUE_DEPLOYMENT_REPO          — owner/repo slug, e.g. "acme/gateway"
+    ISSUE_DEPLOYMENT_REPO          — owner/repo slug, e.g. "Inform-Growth/inform-gateway"
     ISSUE_DEPLOYMENT_GITHUB_TOKEN  — fine-grained PAT with Issues: read+write
     ISSUE_REPORT_DISABLED          — set to "true" to disable report_issue (kill switch)
 """
@@ -31,187 +34,14 @@ def _headers() -> dict[str, str]:
 
 
 def _issues_url() -> str:
-    """Return the GitHub Issues API URL for the deployment repo."""
+    """Return the GitHub Issues API URL for the gateway deployment repo."""
     repo = os.environ.get("ISSUE_DEPLOYMENT_REPO", "")
     if not repo:
         raise RuntimeError(
             "ISSUE_DEPLOYMENT_REPO is not set. "
-            "Set it to owner/repo where GitHub Issues should be filed."
+            "Set it to owner/repo where friction issues should be filed."
         )
     return f"https://api.github.com/repos/{repo}/issues"
-
-
-def _issue_url(number: int) -> str:
-    """Return the GitHub Issues API URL for a specific issue number."""
-    repo = os.environ.get("ISSUE_DEPLOYMENT_REPO", "")
-    if not repo:
-        raise RuntimeError(
-            "ISSUE_DEPLOYMENT_REPO is not set. "
-            "Set it to owner/repo where GitHub Issues should be filed."
-        )
-    return f"https://api.github.com/repos/{repo}/issues/{number}"
-
-
-def _ensure_label(name: str, color: str = "0075ca") -> None:
-    """Create a label in the deployment repo if it doesn't already exist."""
-    import httpx
-
-    repo = os.environ.get("ISSUE_DEPLOYMENT_REPO", "")
-    url = f"https://api.github.com/repos/{repo}/labels"
-    with httpx.Client() as client:
-        client.post(url, headers=_headers(), json={"name": name, "color": color})
-    # 201 = created, 422 = already exists — both are fine; errors are silently ignored
-
-
-def _find_note(slug: str) -> dict | None:
-    """Find the first open issue with type:note label matching the title."""
-    import httpx
-
-    with httpx.Client() as client:
-        resp = client.get(
-            _issues_url(),
-            headers=_headers(),
-            params={"labels": "type:note", "state": "open", "per_page": 100},
-        )
-    resp.raise_for_status()
-    for issue in resp.json():
-        if issue["title"] == slug:
-            return issue
-    return None
-
-
-def list_notes() -> dict:
-    """List all notes stored in the deployment repository.
-
-    Notes are GitHub Issues with the label "type:note". They persist
-    across redeployments and are shared across all agents on this gateway.
-
-    Returns:
-        Dict with 'notes' list and 'count'.
-    """
-    import httpx
-
-    with httpx.Client() as client:
-        resp = client.get(
-            _issues_url(),
-            headers=_headers(),
-            params={"labels": "type:note", "state": "open", "per_page": 100},
-        )
-    resp.raise_for_status()
-    notes = [
-        {
-            "slug": issue["title"],
-            "issue_number": issue["number"],
-            "created_at": issue["created_at"],
-            "updated_at": issue["updated_at"],
-            "html_url": issue["html_url"],
-        }
-        for issue in resp.json()
-    ]
-    return {"notes": notes, "count": len(notes)}
-
-
-def read_note(slug: str) -> dict:
-    """Read a note by its slug (title).
-
-    Args:
-        slug: The note title used when the note was written.
-
-    Returns:
-        Dict with 'slug', 'content', 'issue_number', 'html_url' on success.
-        Dict with status='not_found' if no open note matches.
-    """
-    issue = _find_note(slug)
-    if not issue:
-        return {"status": "not_found", "slug": slug}
-    return {
-        "slug": slug,
-        "content": issue.get("body", ""),
-        "issue_number": issue["number"],
-        "html_url": issue["html_url"],
-    }
-
-
-def write_note(slug: str, content: str) -> dict:
-    """Create or update a note in the deployment repository.
-
-    Notes are stored as GitHub Issues with the label "type:note".
-    If a note with this slug already exists (open issue with same title),
-    its body is updated in place. Otherwise a new issue is created.
-
-    Args:
-        slug: Short identifier for the note (used as the issue title).
-        content: Full markdown content of the note.
-
-    Returns:
-        Dict with 'status' (created/updated), 'issue_number', 'html_url'.
-    """
-    import httpx
-
-    _ensure_label("type:note")
-    existing = _find_note(slug)
-    with httpx.Client() as client:
-        if existing:
-            resp = client.patch(
-                _issue_url(existing["number"]),
-                headers=_headers(),
-                json={"body": content},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return {
-                "status": "updated",
-                "slug": slug,
-                "issue_number": data["number"],
-                "html_url": data["html_url"],
-            }
-        else:
-            resp = client.post(
-                _issues_url(),
-                headers=_headers(),
-                json={"title": slug, "body": content, "labels": ["type:note"]},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return {
-                "status": "created",
-                "slug": slug,
-                "issue_number": data["number"],
-                "html_url": data["html_url"],
-            }
-
-
-def delete_note(slug: str) -> dict:
-    """Delete (close) a note by its slug.
-
-    Closes the GitHub Issue that backs this note. The issue remains
-    visible in the closed state on GitHub but is removed from active notes.
-
-    Args:
-        slug: The note title used when the note was written.
-
-    Returns:
-        Dict with status='deleted' and 'issue_number' on success.
-        Dict with status='not_found' if no open note matches.
-    """
-    import httpx
-
-    issue = _find_note(slug)
-    if not issue:
-        return {"status": "not_found", "slug": slug}
-
-    with httpx.Client() as client:
-        resp = client.patch(
-            _issue_url(issue["number"]),
-            headers=_headers(),
-            json={"state": "closed"},
-        )
-    resp.raise_for_status()
-    return {
-        "status": "deleted",
-        "slug": slug,
-        "issue_number": issue["number"],
-    }
 
 
 def _format_issue_body(
@@ -365,10 +195,6 @@ def list_my_issues(
 
 
 def register(mcp: Any) -> None:
-    """Register all notes tools on the given FastMCP server instance."""
-    mcp.tool()(list_notes)
-    mcp.tool()(read_note)
-    mcp.tool()(write_note)
-    mcp.tool()(delete_note)
+    """Register friction tools on the given FastMCP server instance."""
     mcp.tool()(report_issue)
     mcp.tool()(list_my_issues)

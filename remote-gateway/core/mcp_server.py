@@ -861,17 +861,18 @@ import sys as _sys  # noqa: E402
 
 _sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tools import apollo as _apollo_tools  # noqa: E402
-from tools import attio as _attio_tools  # noqa: E402
-from tools import email_tools as _email_tools  # noqa: E402
 from tools import meta as _meta_tools  # noqa: E402
-from tools import notes as _notes_tools  # noqa: E402
+from tools import friction as _friction_tools  # noqa: E402
+from tools.integrations import notes as _notes_tools  # noqa: E402
 from tools import registry as _registry_tools  # noqa: E402
-from tools import wiza as _wiza_tools  # noqa: E402
 from tools._core import onboarding as _onboarding_tools  # noqa: E402
 from tools._core import profile_manager as _profile_manager_tools  # noqa: E402
 from tools._core import skill_manager as _skill_manager_tools  # noqa: E402
 from tools._core import task_manager as _task_manager_tools  # noqa: E402
+from tools.integrations import apollo as _apollo_tools  # noqa: E402
+from tools.integrations import attio as _attio_tools  # noqa: E402
+from tools.integrations import email_tools as _email_tools  # noqa: E402
+from tools.integrations import wiza as _wiza_tools  # noqa: E402
 
 
 class _RequestAwareUser:
@@ -903,6 +904,7 @@ _user_view = _RequestAwareUser()
 
 _meta_tools.register(mcp, lambda: mcp.name, _telemetry)
 _notes_tools.register(mcp)
+_friction_tools.register(mcp)
 _registry_tools.register(mcp, registry)
 _attio_tools.register(mcp)  # must register after telemetry patch is applied
 _email_tools.register(mcp)

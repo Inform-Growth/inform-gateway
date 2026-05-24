@@ -188,7 +188,7 @@ No content is moved or duplicated. Tests we just closed (#10, #12, #13) need no 
 |---|---|---|
 | `tests/test_notes_adapter.py` | NEW. `get_adapter()` factory: default, override, unknown name. | Pure-Python; no HTTP. |
 | `tests/test_github_issues_adapter.py` | NEW. CRUD against mocked HTTP. Covers: write-creates, write-updates-existing, read-hit, read-miss, list-ordering, delete-closes, delete-not-found, missing-env-raises. | Use `httpx.MockTransport` for deterministic responses. |
-| `tests/test_delete_note_retry.py` | UPDATE. Switch envvars from `ISSUE_DEPLOYMENT_*` to `NOTES_REPO` / `NOTES_GITHUB_TOKEN`. Logic identical. | Retry-on-409/422 behavior preserved in the adapter. |
+| `tests/test_delete_note_retry.py` | DELETE. Despite the name, this file was a near-duplicate of `test_notes.py`'s unit coverage with no actual retry-on-409/422 logic. Its surface is fully covered by the new `test_github_issues_adapter.py`. | |
 | `tests/test_report_issue.py` | UNCHANGED. Still uses `ISSUE_DEPLOYMENT_*`. | `report_issue` now lives in `tools/friction.py` — adjust import path only. |
 | `tests/test_notes.py` | DELETE. This is an integration test that hits a real GitHub repo; the new `test_github_issues_adapter.py` covers the same surface deterministically with mocked HTTP. The Definition-of-Done smoke test against a live gateway covers the real-API path manually post-deploy. | |
 

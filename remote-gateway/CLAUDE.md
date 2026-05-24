@@ -38,8 +38,11 @@ MCP_TRANSPORT=sse python remote-gateway/core/mcp_server.py
 | `MCP_SERVER_HOST` | No | SSE bind address (default: `0.0.0.0`) |
 | `MCP_SERVER_PORT` | No | SSE port (default: `8000`) |
 | `DATABASE_URL` | Yes (prod) | PostgreSQL connection string. Railway injects this automatically when a Postgres plugin is added to the service. |
-| `ISSUE_DEPLOYMENT_REPO` | Yes | `owner/repo` — the repo where notes and friction issues are filed as GitHub Issues |
-| `ISSUE_DEPLOYMENT_GITHUB_TOKEN` | Yes | Fine-grained PAT with `Issues: read+write` on the deployment repo |
+| `NOTES_ADAPTER` | No | Notes storage backend (default: `github-issues`). |
+| `NOTES_REPO` | Yes (when adapter=github-issues) | `owner/repo` for notes (e.g. `Inform-Growth/inform-notes`). |
+| `NOTES_GITHUB_TOKEN` | Yes (when adapter=github-issues) | Fine-grained PAT with `Issues: read+write` on `NOTES_REPO`. |
+| `ISSUE_DEPLOYMENT_REPO` | Yes | `owner/repo` for friction issues (bugs about the gateway). |
+| `ISSUE_DEPLOYMENT_GITHUB_TOKEN` | Yes | Fine-grained PAT with `Issues: read+write` on the gateway repo. |
 | `ISSUE_REPORT_DISABLED` | No | Kill switch — set to `"true"` to disable `report_issue` without removing the tool |
 | `GOOGLE_OAUTH_CLIENT_ID` | Google | OAuth client ID from Google Cloud Console |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Google | OAuth client secret |
@@ -99,4 +102,4 @@ Edit `mcp_connections.json`:
 
 - **Read-only enforcement**: Tools should be read-only by default.
 - **No hardcoded secrets**: Use `os.environ` exclusively.
-- **Notes & Issue Backlog**: Monitor `ISSUE_DEPLOYMENT_REPO` GitHub Issues — `type:note` for session notes, `source:report_issue` for friction signals. Review regularly to understand user goals and stay ahead of integration failures.
+- **Notes & Issue Backlog**: Monitor two repos — `NOTES_REPO` for `type:note` session notes (via the configured notes adapter), and `ISSUE_DEPLOYMENT_REPO` for `source:report_issue` friction signals. Review both regularly to understand user goals and stay ahead of integration failures.
