@@ -86,4 +86,9 @@ def delete_note(slug: str) -> dict:
     Returns:
         Dict with status='deleted' on success or status='not_found'.
     """
-    return get_adapter().delete(slug)
+    result = get_adapter().delete(slug)
+    return {
+        "status": result["status"],
+        "slug": result["slug"],
+        "issue_number": result.get("issue_number"),
+    }
