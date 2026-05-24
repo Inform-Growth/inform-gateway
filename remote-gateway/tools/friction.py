@@ -19,6 +19,7 @@ from typing import Any
 
 
 def _headers() -> dict[str, str]:
+    """Return GitHub API headers using ISSUE_DEPLOYMENT_GITHUB_TOKEN."""
     token = os.environ.get("ISSUE_DEPLOYMENT_GITHUB_TOKEN", "")
     if not token:
         raise RuntimeError(
@@ -33,6 +34,7 @@ def _headers() -> dict[str, str]:
 
 
 def _issues_url() -> str:
+    """Return the GitHub Issues API URL for the gateway deployment repo."""
     repo = os.environ.get("ISSUE_DEPLOYMENT_REPO", "")
     if not repo:
         raise RuntimeError(

@@ -1,4 +1,4 @@
-"""Tests for report_issue and list_my_issues in tools/notes.py."""
+"""Tests for report_issue and list_my_issues in tools/friction.py."""
 from __future__ import annotations
 import os
 import sys
