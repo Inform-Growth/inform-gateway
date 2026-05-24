@@ -1,4 +1,4 @@
-"""Unit tests for GitHubIssuesAdapter (write, read; list/delete in next task)."""
+"""Unit tests for GitHubIssuesAdapter (init validation, write, read, list, delete)."""
 from __future__ import annotations
 
 import os
