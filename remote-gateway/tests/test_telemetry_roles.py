@@ -93,7 +93,18 @@ def test_bootstrap_admin_roles_skips_unknown_users(store):
 
 
 def test_bootstrap_admin_roles_never_demotes(store):
-    """bootstrap_admin_roles maintains admin status; never demotes."""
+    """An admin not listed in the bootstrap call stays admin."""
+    store.add_api_key("alice@example.com", "sk-alice")
+    store.add_api_key("bob@example.com", "sk-bob")
+    store.set_user_role("alice@example.com", "admin")
+    store.bootstrap_admin_roles(["bob@example.com"])
+    assert store.is_admin("alice@example.com") is True
+    assert store.is_admin("bob@example.com") is True
+
+
+def test_bootstrap_admin_roles_returns_admin_in_promoted_on_rerun(store):
+    """Re-running bootstrap on an already-admin user still reports them as promoted
+    (the spec semantics: 'promoted' = users we ran UPDATE on, regardless of net change)."""
     store.add_api_key("alice@example.com", "sk-alice")
     store.set_user_role("alice@example.com", "admin")
     result = store.bootstrap_admin_roles(["alice@example.com"])
