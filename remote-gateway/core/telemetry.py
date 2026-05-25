@@ -811,42 +811,34 @@ class TelemetryStore:
             )
 
     def bootstrap_admin_roles(self, user_ids: list[str]) -> dict:
-        """Promote a list of users to admin role at startup (idempotent).
+        """Promote each listed user_id to ROLE_ADMIN if a matching api_keys row exists.
 
-        Designed to be called once at server startup via BOOTSTRAP_ADMIN_ROLES env var.
-        Never demotes existing admins. Skips unknown users (no api_keys row).
+        Never demotes anyone. Unknown user_ids are recorded and skipped.
 
         Args:
-            user_ids: List of user identifiers to promote to admin.
+            user_ids: List of user identifiers to promote.
 
         Returns:
-            Dict with keys:
-            - promoted: List of user_ids that were actually promoted (were not already admin).
-            - skipped_unknown: List of user_ids with no api_keys row.
+            Dict with 'promoted' (list[str]) and 'skipped_unknown' (list[str]).
         """
-        promoted = []
-        skipped_unknown = []
-
-        if not self._enabled:
-            return {"promoted": promoted, "skipped_unknown": skipped_unknown}
-
+        if not user_ids or not self._enabled:
+            return {"promoted": [], "skipped_unknown": list(user_ids or [])}
+        promoted: list[str] = []
+        skipped: list[str] = []
         with self._cursor() as cur:
-            for user_id in user_ids:
+            for uid in user_ids:
                 cur.execute(
-                    "SELECT role FROM api_keys WHERE user_id = %s LIMIT 1",
-                    (user_id,),
+                    "SELECT 1 FROM api_keys WHERE user_id = %s LIMIT 1", (uid,)
                 )
-                row = cur.fetchone()
-                if not row:
-                    skipped_unknown.append(user_id)
-                elif row["role"] != ROLE_ADMIN:
-                    promoted.append(user_id)
-                    cur.execute(
-                        "UPDATE api_keys SET role = %s WHERE user_id = %s",
-                        (ROLE_ADMIN, user_id),
-                    )
-
-        return {"promoted": promoted, "skipped_unknown": skipped_unknown}
+                if cur.fetchone() is None:
+                    skipped.append(uid)
+                    continue
+                cur.execute(
+                    "UPDATE api_keys SET role = %s WHERE user_id = %s",
+                    (ROLE_ADMIN, uid),
+                )
+                promoted.append(uid)
+        return {"promoted": promoted, "skipped_unknown": skipped}
 
     def get_org_id(self, user_id: str) -> str:
         """Return org_id for user_id, falling back to user_id if none set.

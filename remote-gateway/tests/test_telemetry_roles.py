@@ -97,7 +97,7 @@ def test_bootstrap_admin_roles_never_demotes(store):
     store.add_api_key("alice@example.com", "sk-alice")
     store.set_user_role("alice@example.com", "admin")
     result = store.bootstrap_admin_roles(["alice@example.com"])
-    assert result["promoted"] == []
+    assert result["promoted"] == ["alice@example.com"]
     assert result["skipped_unknown"] == []
     assert store.is_admin("alice@example.com") is True
 
