@@ -2,7 +2,7 @@
 
 Adapters implement the NotesAdapter Protocol to provide a pluggable backend
 for write_note / read_note / list_notes / delete_note. The active adapter is
-selected per-invocation by the NOTES_ADAPTER env var (default: github-issues).
+selected per-invocation by the NOTES_ADAPTER env var (default: github-files).
 
 Each adapter declares its own required env vars in its docstring and raises
 RuntimeError on instantiation if any are missing.
@@ -76,19 +76,19 @@ class NotesAdapter(Protocol):
 
 def _registry() -> dict[str, type]:
     """Lazy-load the adapter registry to avoid circular imports."""
-    from tools.integrations.notes.adapters.github_issues import GitHubIssuesAdapter
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
 
-    return {"github-issues": GitHubIssuesAdapter}
+    return {"github-files": GitHubFilesAdapter}
 
 
 def get_adapter() -> NotesAdapter:
     """Return a fresh adapter instance per call. Selection is env-var driven.
 
-    Reads NOTES_ADAPTER (default: "github-issues"). Raises RuntimeError if the
+    Reads NOTES_ADAPTER (default: "github-files"). Raises RuntimeError if the
     name is unknown. Any exception raised by the chosen adapter's __init__
     (e.g., RuntimeError on missing env vars) propagates as-is.
     """
-    name = os.environ.get("NOTES_ADAPTER", "github-issues")
+    name = os.environ.get("NOTES_ADAPTER", "github-files")
     registry = _registry()
     if name not in registry:
         raise RuntimeError(

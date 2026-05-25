@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sys
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -16,23 +17,46 @@ def notes_env(monkeypatch):
     monkeypatch.delenv("NOTES_ADAPTER", raising=False)
 
 
-def test_get_adapter_default_is_github_issues():
+def _mock_repo_get():
+    """Patch httpx so GitHubFilesAdapter.__init__ does not call the network."""
+    ctx = patch("httpx.Client")
+    mock_cls = ctx.start()
+    mock_client = MagicMock()
+    mock_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
+    mock_cls.return_value.__exit__ = MagicMock(return_value=False)
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.raise_for_status = MagicMock()
+    resp.json = MagicMock(return_value={"default_branch": "main"})
+    mock_client.get.return_value = resp
+    return ctx
+
+
+def test_get_adapter_default_is_github_files():
     from tools.integrations.notes.adapter import get_adapter
-    from tools.integrations.notes.adapters.github_issues import GitHubIssuesAdapter
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
 
-    adapter = get_adapter()
+    ctx = _mock_repo_get()
+    try:
+        adapter = get_adapter()
+    finally:
+        ctx.stop()
 
-    assert isinstance(adapter, GitHubIssuesAdapter)
+    assert isinstance(adapter, GitHubFilesAdapter)
 
 
 def test_get_adapter_respects_notes_adapter_env(monkeypatch):
     from tools.integrations.notes.adapter import get_adapter
-    from tools.integrations.notes.adapters.github_issues import GitHubIssuesAdapter
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
 
-    monkeypatch.setenv("NOTES_ADAPTER", "github-issues")
-    adapter = get_adapter()
+    monkeypatch.setenv("NOTES_ADAPTER", "github-files")
+    ctx = _mock_repo_get()
+    try:
+        adapter = get_adapter()
+    finally:
+        ctx.stop()
 
-    assert isinstance(adapter, GitHubIssuesAdapter)
+    assert isinstance(adapter, GitHubFilesAdapter)
 
 
 def test_get_adapter_unknown_name_raises(monkeypatch):
@@ -44,13 +68,26 @@ def test_get_adapter_unknown_name_raises(monkeypatch):
         get_adapter()
 
 
+def test_get_adapter_github_issues_alias_is_no_longer_registered(monkeypatch):
+    from tools.integrations.notes.adapter import get_adapter
+
+    monkeypatch.setenv("NOTES_ADAPTER", "github-issues")
+
+    with pytest.raises(RuntimeError, match="Unknown NOTES_ADAPTER"):
+        get_adapter()
+
+
 def test_get_adapter_returns_fresh_instance_each_call():
     from tools.integrations.notes.adapter import get_adapter
 
-    a = get_adapter()
-    b = get_adapter()
+    ctx = _mock_repo_get()
+    try:
+        a = get_adapter()
+        b = get_adapter()
+    finally:
+        ctx.stop()
 
-    assert a is not b  # per-invocation, not cached
+    assert a is not b
 
 
 def test_notes_adapter_error_carries_diagnostics():
