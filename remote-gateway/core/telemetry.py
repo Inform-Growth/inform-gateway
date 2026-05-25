@@ -56,6 +56,11 @@ toggling them on would lock the org out of bootstrap operations (you cannot
 declare_intent if declare_intent itself requires intent).
 """
 
+ROLE_USER = "user"
+ROLE_ADMIN = "admin"
+VALID_ROLES: frozenset[str] = frozenset({ROLE_USER, ROLE_ADMIN})
+"""Roles accepted by set_user_role. Custom roles are out of scope for now."""
+
 _SCHEMA_STATEMENTS: list[str] = [
     """
     CREATE TABLE IF NOT EXISTS api_keys (
@@ -153,6 +158,9 @@ _SCHEMA_STATEMENTS: list[str] = [
         created_at   DOUBLE PRECISION NOT NULL,
         completed_at DOUBLE PRECISION
     )
+    """,
+    """
+    ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user'
     """,
 ]
 
@@ -748,6 +756,28 @@ class TelemetryStore:
             return row["user_id"] if row else None
         except Exception:
             return None
+
+    def get_role(self, user_id: str) -> str | None:
+        """Return the role of the user, or None if user_id has no api_keys row."""
+        if not self._enabled:
+            return None
+        try:
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT role FROM api_keys WHERE user_id = %s LIMIT 1", (user_id,)
+                )
+                row = cur.fetchone()
+            return row["role"] if row else None
+        except Exception:
+            return None
+
+    def is_admin(self, user_id: str) -> bool:
+        """Single chokepoint for admin checks. Currently: role == 'admin'.
+
+        Future role-and-permission-sets work can swap this implementation
+        without touching the call sites in tools/admin.py or tools/meta.py.
+        """
+        return self.get_role(user_id) == ROLE_ADMIN
 
     def get_org_id(self, user_id: str) -> str:
         """Return org_id for user_id, falling back to user_id if none set.
