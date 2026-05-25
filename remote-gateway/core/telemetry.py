@@ -346,9 +346,17 @@ class TelemetryStore:
             return key
         with self._cursor() as cur:
             cur.execute(
-                "INSERT INTO api_keys (key, user_id, org_id, created_at) "
-                "VALUES (%s, %s, %s, %s)",
-                (key, user_id, org_id, time.time()),
+                """
+                INSERT INTO api_keys (key, user_id, org_id, created_at, role)
+                VALUES (
+                    %s, %s, %s, %s,
+                    COALESCE(
+                        (SELECT role FROM api_keys WHERE user_id = %s LIMIT 1),
+                        'user'
+                    )
+                )
+                """,
+                (key, user_id, org_id, time.time(), user_id),
             )
         return key
 

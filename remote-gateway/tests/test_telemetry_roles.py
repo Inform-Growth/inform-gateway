@@ -54,3 +54,21 @@ def test_set_user_role_unknown_user_is_noop(store):
     """No api_keys row -> no error, no effect."""
     store.set_user_role("nobody@example.com", "admin")
     assert store.get_role("nobody@example.com") is None
+
+
+def test_add_api_key_inherits_admin_role(store):
+    """Second key for an existing admin user stays admin."""
+    store.add_api_key("alice@example.com", "sk-alice-1")
+    store.set_user_role("alice@example.com", "admin")
+    store.add_api_key("alice@example.com", "sk-alice-2")
+    with store._cursor() as cur:
+        cur.execute(
+            "SELECT role FROM api_keys WHERE key = %s", ("sk-alice-2",)
+        )
+        row = cur.fetchone()
+    assert row["role"] == "admin"
+
+
+def test_add_api_key_defaults_new_user_to_user_role(store):
+    store.add_api_key("bob@example.com", "sk-bob")
+    assert store.get_role("bob@example.com") == "user"
