@@ -537,6 +537,24 @@ def _get_call_ids() -> tuple[str | None, str | None]:
     return user_id, request_id
 
 
+def _require_admin() -> str:
+    """Resolve the calling user_id and require role='admin'.
+
+    Resolution path: live request context first (HTTP transports), then
+    the _current_user ContextVar (stdio + tests).
+
+    Returns:
+        The caller's user_id.
+
+    Raises:
+        PermissionError: If no caller is resolved or the caller is not an admin.
+    """
+    user_id = _resolve_user_from_request_ctx() or _current_user.get()
+    if user_id is None or not _telemetry.is_admin(user_id):
+        raise PermissionError("admin role required")
+    return user_id
+
+
 def _calculate_response_size(result: Any) -> int:
     """Return the approximate size of the result in characters."""
     try:
