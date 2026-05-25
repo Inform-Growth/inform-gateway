@@ -1,8 +1,9 @@
 """MCP tool functions for notes — thin delegators to the configured NotesAdapter.
 
 The adapter is selected per-invocation via `get_adapter()` so env-var changes
-during local dev are picked up without restart. Return shapes preserve the
-fields existing consumers expect (slug, content, html_url, status, issue_number).
+during local dev are picked up without restart. Return shapes carry slug,
+content, html_url, status from the adapter. `issue_number` is present for
+backward compatibility but is None under the file-based adapter.
 """
 from __future__ import annotations
 
@@ -60,7 +61,7 @@ def write_note(slug: str, content: str) -> dict:
     Otherwise a new note is created.
 
     Args:
-        slug: Short identifier for the note (used as the issue title).
+        slug: Short identifier for the note (becomes the filename: notes/<slug>.md).
         content: Full markdown content of the note.
 
     Returns:
@@ -78,7 +79,7 @@ def write_note(slug: str, content: str) -> dict:
 def delete_note(slug: str) -> dict:
     """Delete a note by its slug.
 
-    For issue-based backends, closes the issue. Returns not_found if absent.
+    Removes the note file from the notes repo. Returns not_found if absent.
 
     Args:
         slug: The note title used when the note was written.

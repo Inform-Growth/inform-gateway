@@ -138,20 +138,16 @@ def _dir_entry(name: str, type_: str = "file", sha: str = "x", path: str | None 
     }
 
 
-def _commit(path: str, date_committed: str, date_authored: str | None = None) -> dict:
-    return {
-        "sha": f"commit-{path}-{date_committed}",
-        "commit": {
-            "committer": {"date": date_committed},
-            "author": {"date": date_authored or date_committed},
-        },
-        "files": [{"filename": path}],
-    }
-
-
 # ---- list ----
 
-def test_list_returns_md_files_with_dates():
+def test_list_returns_md_files_with_empty_timestamps():
+    """List enumerates top-level `notes/*.md` files; timestamps left blank for now.
+
+    The previous implementation tried to derive created_at/updated_at from
+    `GET /commits?path=notes`, but GitHub's List Commits API does not return
+    a `files` field on each commit (only the single-commit detail endpoint
+    does). Until per-file commit queries are added, timestamps are empty.
+    """
     from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
 
     files = [
@@ -160,18 +156,11 @@ def test_list_returns_md_files_with_dates():
         _dir_entry("issues", type_="dir"),         # ignored
         _dir_entry("notes-not-md.txt", sha="sX"),  # ignored
     ]
-    # Newest-first commits per the contract; list builds {oldest, newest} per path
-    commits = [
-        _commit("notes/manifesto.md", "2026-05-20T00:00:00Z"),
-        _commit("notes/manifesto.md", "2026-05-10T00:00:00Z"),
-        _commit("notes/draft.md", "2026-05-15T00:00:00Z"),
-    ]
     with patch("httpx.Client") as mock_cls:
         client = _mock_client_ctx(mock_cls)
         client.get.side_effect = [
             _mock_resp(_repo_meta("main")),
             _mock_resp(files),
-            _mock_resp(commits),
         ]
 
         result = GitHubFilesAdapter().list()
@@ -180,10 +169,10 @@ def test_list_returns_md_files_with_dates():
     by_slug = {n["slug"]: n for n in result}
     assert by_slug["manifesto"]["id"] == "s1"
     assert by_slug["manifesto"]["path"] == "notes/manifesto.md"
-    assert by_slug["manifesto"]["created_at"] == "2026-05-10T00:00:00Z"
-    assert by_slug["manifesto"]["updated_at"] == "2026-05-20T00:00:00Z"
-    assert by_slug["draft"]["created_at"] == "2026-05-15T00:00:00Z"
-    assert by_slug["draft"]["updated_at"] == "2026-05-15T00:00:00Z"
+    assert by_slug["manifesto"]["created_at"] == ""
+    assert by_slug["manifesto"]["updated_at"] == ""
+    assert by_slug["draft"]["id"] == "s2"
+    assert by_slug["draft"]["created_at"] == ""
 
 
 def test_list_returns_empty_when_notes_dir_missing():

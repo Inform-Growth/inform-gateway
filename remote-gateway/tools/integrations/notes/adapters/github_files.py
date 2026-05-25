@@ -92,8 +92,6 @@ class GitHubFilesAdapter:
                 return None
             resp.raise_for_status()
         except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                return None
             raise self._wrap(e) from e
         except httpx.RequestError as e:
             raise self._wrap(e) from e
@@ -109,7 +107,15 @@ class GitHubFilesAdapter:
         }
 
     def list(self) -> list[dict]:  # noqa: A003 — Protocol shape
-        """Return all top-level `notes/*.md` files with created_at/updated_at."""
+        """Return all top-level `notes/*.md` files.
+
+        TODO(timestamps): `created_at`/`updated_at` are left empty for now.
+        Deriving them from `GET /commits?path=notes` does not work — the
+        List Commits API omits the `files` field, so we can't attribute
+        commits to individual files. Fix is a per-file `GET /commits?path=
+        notes/{slug}.md&per_page=1` (one extra API call per note); deferred
+        until UI needs the timestamps.
+        """
         try:
             with httpx.Client() as client:
                 contents = client.get(
@@ -118,13 +124,6 @@ class GitHubFilesAdapter:
                 if contents.status_code == 404:
                     return []
                 contents.raise_for_status()
-
-                commits = client.get(
-                    f"{self._repo_url()}/commits",
-                    headers=self._headers(),
-                    params={"path": "notes", "per_page": 100},
-                )
-                commits.raise_for_status()
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 return []
@@ -137,33 +136,17 @@ class GitHubFilesAdapter:
             for entry in contents.json()
             if entry["type"] == "file" and entry["name"].endswith(".md")
         ]
-        # Build {path: (oldest_date, newest_date)} from commits.
-        # GitHub returns commits newest-first.
-        dates: dict[str, tuple[str, str]] = {}
-        for commit in commits.json():
-            committed = commit["commit"]["committer"]["date"]
-            for f in commit.get("files") or []:
-                path = f["filename"]
-                if path in dates:
-                    oldest, _ = dates[path]
-                    # newest_date stays the same (first-seen because newest-first)
-                    dates[path] = (committed, dates[path][1])
-                else:
-                    dates[path] = (committed, committed)
-
         result: list[dict] = []
         for entry in files:
-            path = entry["path"]
-            created, updated = dates.get(path, ("", ""))
             slug = entry["name"][: -len(".md")]
             result.append(
                 {
                     "slug": slug,
                     "id": entry["sha"],
                     "url": entry["html_url"],
-                    "path": path,
-                    "created_at": created,
-                    "updated_at": updated,
+                    "path": entry["path"],
+                    "created_at": "",
+                    "updated_at": "",
                 }
             )
         return result
