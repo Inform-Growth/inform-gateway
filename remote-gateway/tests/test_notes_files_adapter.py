@@ -346,6 +346,24 @@ def test_delete_missing_returns_not_found():
     client.request.assert_not_called()
 
 
+# ---- timeout hardening ----
+
+def test_httpx_client_is_constructed_with_explicit_timeout():
+    """Pin the explicit timeout — httpx's 5s default got bit during smoke test."""
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.return_value = _mock_resp(_repo_meta("main"))
+
+        GitHubFilesAdapter()
+
+    # Every httpx.Client() invocation must pass a non-default timeout.
+    for call in mock_cls.call_args_list:
+        assert "timeout" in call.kwargs, f"Client() called without timeout: {call}"
+        assert call.kwargs["timeout"] >= 10, f"timeout too aggressive: {call.kwargs['timeout']}"
+
+
 # ---- error surfacing (#35) ----
 
 def test_list_raises_on_500_from_contents():

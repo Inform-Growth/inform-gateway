@@ -17,6 +17,11 @@ from typing import Any
 import httpx
 from tools.integrations.notes.adapter import NotesAdapterError
 
+# Default httpx timeout is 5s, which is aggressive for GitHub under load.
+# Smoke-tested 2026-05-25: the GET-before-DELETE pair hit a transient
+# 5s timeout. 30s matches what the migration script already uses.
+_HTTP_TIMEOUT_SECONDS = 30
+
 
 class GitHubFilesAdapter:
     """NotesAdapter backed by markdown files under `notes/` in a GitHub repo."""
@@ -73,7 +78,7 @@ class GitHubFilesAdapter:
 
     def _fetch_default_branch(self) -> str:
         try:
-            with httpx.Client() as client:
+            with httpx.Client(timeout=_HTTP_TIMEOUT_SECONDS) as client:
                 resp = client.get(self._repo_url(), headers=self._headers())
                 resp.raise_for_status()
         except (httpx.HTTPStatusError, httpx.RequestError) as e:
@@ -86,7 +91,7 @@ class GitHubFilesAdapter:
         """Return note dict with slug, content, id (sha), url, path; None if not found."""
         path = self._path_for(slug)
         try:
-            with httpx.Client() as client:
+            with httpx.Client(timeout=_HTTP_TIMEOUT_SECONDS) as client:
                 resp = client.get(self._contents_url(path), headers=self._headers())
             if resp.status_code == 404:
                 return None
@@ -115,7 +120,7 @@ class GitHubFilesAdapter:
         timestamps rather than failing. Listing 30 notes = ~31 API calls.
         """
         try:
-            with httpx.Client() as client:
+            with httpx.Client(timeout=_HTTP_TIMEOUT_SECONDS) as client:
                 contents = client.get(
                     self._contents_url("notes"), headers=self._headers()
                 )
@@ -170,7 +175,7 @@ class GitHubFilesAdapter:
         path = self._path_for(slug)
         existing_sha: str | None = None
         try:
-            with httpx.Client() as client:
+            with httpx.Client(timeout=_HTTP_TIMEOUT_SECONDS) as client:
                 get_resp = client.get(self._contents_url(path), headers=self._headers())
                 if get_resp.status_code != 404:
                     get_resp.raise_for_status()
@@ -209,7 +214,7 @@ class GitHubFilesAdapter:
         """Delete notes/{slug}.md on the default branch."""
         path = self._path_for(slug)
         try:
-            with httpx.Client() as client:
+            with httpx.Client(timeout=_HTTP_TIMEOUT_SECONDS) as client:
                 get_resp = client.get(self._contents_url(path), headers=self._headers())
                 if get_resp.status_code == 404:
                     return {"status": "not_found", "slug": slug}
