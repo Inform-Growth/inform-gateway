@@ -41,3 +41,14 @@ def test_admin_tools_in_intent_never_required():
     assert "set_user_role" in INTENT_NEVER_REQUIRED
     assert "set_tool_permission" in INTENT_NEVER_REQUIRED
     assert "set_skill_permission" in INTENT_NEVER_REQUIRED
+
+
+def test_admin_tools_in_gate_bypass():
+    """Admin permission management tools must bypass the org-initialization gate
+    too — an admin bootstrapping a fresh deployment can't first run setup_complete
+    and then provision users; the chicken-and-egg defeats the point of #29."""
+    from mcp_server import _GATE_BYPASS
+    assert "list_users" in _GATE_BYPASS
+    assert "set_user_role" in _GATE_BYPASS
+    assert "set_tool_permission" in _GATE_BYPASS
+    assert "set_skill_permission" in _GATE_BYPASS
