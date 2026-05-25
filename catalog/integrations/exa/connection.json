@@ -1,0 +1,14 @@
+{
+  "transport": "http",
+  "url": "https://mcp.exa.ai/mcp",
+  "rate_limit": {
+    "rpm": 20,
+    "concurrency": 2
+  },
+  "auth": {
+    "type": "header",
+    "headers": {
+      "x-api-key": "${EXA_API_KEY}"
+    }
+  }
+}

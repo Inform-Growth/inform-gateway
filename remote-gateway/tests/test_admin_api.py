@@ -527,3 +527,48 @@ def test_delete_tool_intent_clears_override(client):
     )
     assert resp.status_code == 200
     assert store.get_tool_intent_override("alice@example.com", "search_records") is None
+
+
+# ---------------------------------------------------------------------------
+# User Role
+# ---------------------------------------------------------------------------
+
+def test_set_user_role_promotes(client):
+    c, store = client
+    store.add_api_key("alice@example.com", "sk-alice")
+    resp = c.put(
+        f"/api/users/alice@example.com/role?token={TOKEN}",
+        json={"role": "admin"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"ok": True, "user_id": "alice@example.com", "role": "admin"}
+    assert store.is_admin("alice@example.com") is True
+
+
+def test_set_user_role_invalid_role_returns_400(client):
+    c, store = client
+    store.add_api_key("alice@example.com", "sk-alice")
+    resp = c.put(
+        f"/api/users/alice@example.com/role?token={TOKEN}",
+        json={"role": "superadmin"},
+    )
+    assert resp.status_code == 400
+
+
+def test_set_user_role_missing_body_returns_400(client):
+    c, store = client
+    store.add_api_key("alice@example.com", "sk-alice")
+    resp = c.put(
+        f"/api/users/alice@example.com/role?token={TOKEN}", json={}
+    )
+    assert resp.status_code == 400
+
+
+def test_list_users_includes_role_field(client):
+    c, store = client
+    store.add_api_key("alice@example.com", "sk-alice")
+    store.set_user_role("alice@example.com", "admin")
+    resp = c.get(f"/api/users?token={TOKEN}")
+    assert resp.status_code == 200
+    users = {u["user_id"]: u for u in resp.json()}
+    assert users["alice@example.com"]["role"] == "admin"

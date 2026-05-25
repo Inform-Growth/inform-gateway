@@ -3,7 +3,10 @@ import { ApiError, api } from './api';
 import { getToken, setToken, captureTokenFromUrl } from './auth';
 
 describe('auth', () => {
-  beforeEach(() => sessionStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
 
   it('captures and strips token from URL', () => {
     history.replaceState(null, '', '/admin/dashboard?token=abc&foo=bar');
@@ -12,16 +15,18 @@ describe('auth', () => {
     expect(window.location.search).toBe('?foo=bar');
   });
 
-  it('persists set token in sessionStorage', () => {
+  it('persists set token in localStorage', () => {
     setToken('xyz');
-    expect(sessionStorage.getItem('admin_token')).toBe('xyz');
+    expect(localStorage.getItem('admin_token')).toBe('xyz');
     expect(getToken()).toBe('xyz');
   });
 });
 
 describe('api', () => {
   beforeEach(() => {
-    sessionStorage.setItem('admin_token', 'tkn');
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem('admin_token', 'tkn');
     vi.stubGlobal('fetch', vi.fn());
   });
 

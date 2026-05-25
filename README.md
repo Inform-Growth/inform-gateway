@@ -4,6 +4,8 @@
 
 The Agent Gateway is a centralized MCP server that bridges the gap between raw data sources (Apollo, Attio, Exa, etc.) and AI agents. It provides a unified, governed interface for all business data, ensuring that every agent in the organization has access to clean, pre-labeled, and documented fields.
 
+http://localhost:8000/admin/?token=inform-admin-2026
+
 ## Core Mandates
 
 1. **Shadow Note-taking**: Every session's value is automatically captured in a dedicated GitHub "Write Notes" repository. This serves as the institutional memory of the gateway's usage and performance.

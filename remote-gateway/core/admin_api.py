@@ -21,8 +21,7 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
-
-from telemetry import INTENT_NEVER_REQUIRED
+from telemetry import INTENT_NEVER_REQUIRED, VALID_ROLES
 
 _logger = logging.getLogger(__name__)
 
@@ -111,6 +110,23 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         if deleted == 0:
             return JSONResponse({"error": "user not found"}, status_code=404)
         return JSONResponse({"deleted": deleted, "user_id": user_id})
+
+    async def api_user_role_set(request: Request) -> Response:
+        if not _is_authorized(request):
+            return _forbidden()
+        user_id = request.path_params["user_id"]
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid json body"}, status_code=400)
+        role = body.get("role")
+        if role not in VALID_ROLES:
+            return JSONResponse(
+                {"error": f"role must be one of {sorted(VALID_ROLES)}"},
+                status_code=400,
+            )
+        telemetry.set_user_role(user_id, role)
+        return JSONResponse({"ok": True, "user_id": user_id, "role": role})
 
     async def api_permissions_get(request: Request) -> Response:
         if not _is_authorized(request):
@@ -448,6 +464,7 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         Route("/api/users", api_users_list, methods=["GET"]),
         Route("/api/users", api_users_create, methods=["POST"]),
         Route("/api/users/{user_id}", api_users_delete, methods=["DELETE"]),
+        Route("/api/users/{user_id}/role", api_user_role_set, methods=["PUT"]),
         Route("/api/permissions/{user_id}", api_permissions_get, methods=["GET"]),
         Route("/api/permissions/{user_id}/{tool_name:path}", api_permissions_set, methods=["PUT"]),
         Route("/api/skill-permissions/{user_id}", api_skill_permissions_get, methods=["GET"]),

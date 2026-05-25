@@ -3,7 +3,10 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/data-table/DataTable';
-import { useOperators, useDeleteOperator, type Operator } from '@/hooks/useOperators';
+import { useOperators, useDeleteOperator, useSetUserRole, type Operator } from '@/hooks/useOperators';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 
@@ -16,10 +19,38 @@ export function OperatorsTable({
 }) {
   const { data, isLoading } = useOperators();
   const del = useDeleteOperator();
+  const setRole = useSetUserRole();
 
   const columns = useMemo<ColumnDef<Operator>[]>(() => [
     { accessorKey: 'user_id', header: 'User ID' },
     { accessorKey: 'key', header: 'Key', cell: (c) => <span className="font-mono text-xs">{c.getValue<string>()}</span> },
+    {
+      accessorKey: 'role',
+      header: 'Role',
+      cell: ({ row }) => (
+        <Select
+          value={row.original.role}
+          onValueChange={(next) => {
+            if (!next) return;
+            setRole.mutate(
+              { user_id: row.original.user_id, role: next },
+              {
+                onSuccess: () => toast.success(`${row.original.user_id} is now ${next}`),
+                onError: (err) => toast.error(err instanceof Error ? err.message : 'Update failed'),
+              },
+            );
+          }}
+        >
+          <SelectTrigger className="h-7 w-24" onClick={(e) => e.stopPropagation()}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="user">User</SelectItem>
+            <SelectItem value="admin">Admin</SelectItem>
+          </SelectContent>
+        </Select>
+      ),
+    },
     { accessorKey: 'call_count', header: 'Calls' },
     {
       accessorKey: 'last_active',
@@ -50,7 +81,7 @@ export function OperatorsTable({
         </Button>
       ),
     },
-  ], [del]);
+  ], [del, setRole]);
 
   if (isLoading) return <Skeleton className="h-64 w-full" />;
 

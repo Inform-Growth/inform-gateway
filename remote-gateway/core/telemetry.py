@@ -48,6 +48,8 @@ INTENT_NEVER_REQUIRED: frozenset[str] = frozenset({
     "get_operator_instructions", "create_user",
     "profile_get", "profile_update",
     "list_prompts", "get_prompt",
+    "list_users", "set_user_role",
+    "set_tool_permission", "set_skill_permission",
 })
 """Tools that are always exempt from the intent (declare_intent) gate.
 
@@ -55,6 +57,11 @@ The admin API rejects any attempt to require intent for these tools, since
 toggling them on would lock the org out of bootstrap operations (you cannot
 declare_intent if declare_intent itself requires intent).
 """
+
+ROLE_USER = "user"
+ROLE_ADMIN = "admin"
+VALID_ROLES: frozenset[str] = frozenset({ROLE_USER, ROLE_ADMIN})
+"""Roles accepted by set_user_role. Custom roles are out of scope for now."""
 
 _SCHEMA_STATEMENTS: list[str] = [
     """
@@ -153,6 +160,9 @@ _SCHEMA_STATEMENTS: list[str] = [
         created_at   DOUBLE PRECISION NOT NULL,
         completed_at DOUBLE PRECISION
     )
+    """,
+    """
+    ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user'
     """,
 ]
 
@@ -338,9 +348,17 @@ class TelemetryStore:
             return key
         with self._cursor() as cur:
             cur.execute(
-                "INSERT INTO api_keys (key, user_id, org_id, created_at) "
-                "VALUES (%s, %s, %s, %s)",
-                (key, user_id, org_id, time.time()),
+                """
+                INSERT INTO api_keys (key, user_id, org_id, created_at, role)
+                VALUES (
+                    %s, %s, %s, %s,
+                    COALESCE(
+                        (SELECT role FROM api_keys WHERE user_id = %s LIMIT 1),
+                        'user'
+                    )
+                )
+                """,
+                (key, user_id, org_id, time.time(), user_id),
             )
         return key
 
@@ -369,12 +387,13 @@ class TelemetryStore:
                     SELECT
                         ak.user_id,
                         ak.key,
+                        ak.role,
                         ak.created_at,
                         COUNT(tc.id)      AS call_count,
                         MAX(tc.called_at) AS last_active
                     FROM api_keys ak
                     LEFT JOIN tool_calls tc ON ak.user_id = tc.user_id
-                    GROUP BY ak.user_id, ak.key
+                    GROUP BY ak.user_id, ak.key, ak.role
                     ORDER BY ak.created_at DESC
                     """
                 )
@@ -385,6 +404,7 @@ class TelemetryStore:
             {
                 "user_id": row["user_id"],
                 "key": row["key"],
+                "role": row["role"],
                 "created_at": datetime.datetime.fromtimestamp(
                     row["created_at"], tz=datetime.UTC
                 ).strftime("%Y-%m-%dT%H:%MZ"),
@@ -748,6 +768,81 @@ class TelemetryStore:
             return row["user_id"] if row else None
         except Exception:
             return None
+
+    def get_role(self, user_id: str) -> str | None:
+        """Return the role of the user, or None if user_id has no api_keys row."""
+        if not self._enabled:
+            return None
+        try:
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT role FROM api_keys WHERE user_id = %s LIMIT 1", (user_id,)
+                )
+                row = cur.fetchone()
+            return row["role"] if row else None
+        except Exception:
+            return None
+
+    def is_admin(self, user_id: str) -> bool:
+        """Single chokepoint for admin checks. Currently: role == 'admin'.
+
+        Future role-and-permission-sets work can swap this implementation
+        without touching the call sites in tools/admin.py or tools/meta.py.
+        """
+        return self.get_role(user_id) == ROLE_ADMIN
+
+    def set_user_role(self, user_id: str, role: str) -> None:
+        """Set the role for every api_keys row matching user_id.
+
+        Args:
+            user_id: The user to update.
+            role: Must be a member of VALID_ROLES.
+
+        Raises:
+            ValueError: If role is not in VALID_ROLES.
+
+        No-op if user_id has no rows in api_keys.
+        """
+        if role not in VALID_ROLES:
+            raise ValueError(
+                f"role must be one of {sorted(VALID_ROLES)}, got {role!r}"
+            )
+        if not self._enabled:
+            return
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE api_keys SET role = %s WHERE user_id = %s", (role, user_id)
+            )
+
+    def bootstrap_admin_roles(self, user_ids: list[str]) -> dict:
+        """Promote each listed user_id to ROLE_ADMIN if a matching api_keys row exists.
+
+        Never demotes anyone. Unknown user_ids are recorded and skipped.
+
+        Args:
+            user_ids: List of user identifiers to promote.
+
+        Returns:
+            Dict with 'promoted' (list[str]) and 'skipped_unknown' (list[str]).
+        """
+        if not user_ids or not self._enabled:
+            return {"promoted": [], "skipped_unknown": list(user_ids or [])}
+        promoted: list[str] = []
+        skipped: list[str] = []
+        with self._cursor() as cur:
+            for uid in user_ids:
+                cur.execute(
+                    "SELECT 1 FROM api_keys WHERE user_id = %s LIMIT 1", (uid,)
+                )
+                if cur.fetchone() is None:
+                    skipped.append(uid)
+                    continue
+                cur.execute(
+                    "UPDATE api_keys SET role = %s WHERE user_id = %s",
+                    (ROLE_ADMIN, uid),
+                )
+                promoted.append(uid)
+        return {"promoted": promoted, "skipped_unknown": skipped}
 
     def get_org_id(self, user_id: str) -> str:
         """Return org_id for user_id, falling back to user_id if none set.

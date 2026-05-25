@@ -207,6 +207,10 @@ _GATE_BYPASS: frozenset[str] = frozenset({
     "profile_get",
     "profile_update",
     "create_user",
+    "list_users",
+    "set_user_role",
+    "set_tool_permission",
+    "set_skill_permission",
     "get_operator_instructions",
     "list_prompts",
     "get_prompt",
@@ -535,6 +539,24 @@ def _get_call_ids() -> tuple[str | None, str | None]:
     except LookupError:
         request_id = None
     return user_id, request_id
+
+
+def _require_admin() -> str:
+    """Resolve the calling user_id and require role='admin'.
+
+    Resolution path: live request context first (HTTP transports), then
+    the _current_user ContextVar (stdio + tests).
+
+    Returns:
+        The caller's user_id.
+
+    Raises:
+        PermissionError: If no caller is resolved or the caller is not an admin.
+    """
+    user_id = _resolve_user_from_request_ctx() or _current_user.get()
+    if user_id is None or not _telemetry.is_admin(user_id):
+        raise PermissionError("admin role required")
+    return user_id
 
 
 def _calculate_response_size(result: Any) -> int:
@@ -873,6 +895,7 @@ from tools.integrations import apollo as _apollo_tools  # noqa: E402
 from tools.integrations import attio as _attio_tools  # noqa: E402
 from tools.integrations import email_tools as _email_tools  # noqa: E402
 from tools.integrations import wiza as _wiza_tools  # noqa: E402
+from tools import admin as _admin_tools  # noqa: E402
 
 
 class _RequestAwareUser:
@@ -914,6 +937,7 @@ _onboarding_tools.register(mcp, _telemetry, _user_view)
 _skill_manager_tools.register(mcp, _telemetry, _user_view)
 _profile_manager_tools.register(mcp, _telemetry, _user_view)
 _task_manager_tools.register(mcp, _telemetry, _user_view)
+_admin_tools.register(mcp, _telemetry)
 
 
 # ---------------------------------------------------------------------------
@@ -947,6 +971,18 @@ def validated(integration: str, response: dict[str, Any]) -> dict[str, Any]:
 
 if __name__ == "__main__":
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
+
+    admin_ids_raw = os.environ.get("BOOTSTRAP_ADMIN_USER_IDS", "")
+    if admin_ids_raw.strip():
+        user_ids = [s.strip() for s in admin_ids_raw.split(",") if s.strip()]
+        result = _telemetry.bootstrap_admin_roles(user_ids)
+        print(
+            f"[admin-bootstrap] promoted {len(result['promoted'])} users, "
+            f"skipped {len(result['skipped_unknown'])} unknown: "
+            f"promoted={result['promoted']} skipped={result['skipped_unknown']}",
+            flush=True,
+        )
+
     if transport in ("sse", "combined"):
         import uvicorn
         from starlette.applications import Starlette
