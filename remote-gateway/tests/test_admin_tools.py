@@ -214,3 +214,30 @@ def test_set_skill_permission_blocks_non_admin(store, monkeypatch):
             )
     finally:
         server._current_user.reset(token)
+
+
+from tools.meta import make_create_user  # noqa: E402
+
+
+def test_create_user_requires_admin(store, monkeypatch):
+    monkeypatch.setattr(server, "_telemetry", store)
+    store.add_api_key("bob@example.com", "sk-bob")  # non-admin
+    token = server._current_user.set("bob@example.com")
+    try:
+        with pytest.raises(PermissionError):
+            make_create_user(store)("ghost@example.com", "")
+    finally:
+        server._current_user.reset(token)
+
+
+def test_create_user_allows_admin(store, monkeypatch):
+    monkeypatch.setattr(server, "_telemetry", store)
+    store.add_api_key("alice@example.com", "sk-alice")
+    store.set_user_role("alice@example.com", "admin")
+    token = server._current_user.set("alice@example.com")
+    try:
+        result = make_create_user(store)("new_user", "")
+    finally:
+        server._current_user.reset(token)
+    assert result["user_id"] == "new_user"
+    assert result["key"].startswith("sk-")

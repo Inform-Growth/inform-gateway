@@ -57,7 +57,7 @@ def make_create_user(telemetry: Any) -> Callable[[str, str], dict]:
     """Return a create_user tool function bound to the given telemetry instance."""
 
     def create_user(user_id: str, key: str = "") -> dict:
-        """Create an API key for a new user. Admin only.
+        """Create an API key for a new user. Admin only (role='admin').
 
         Generates a new API key and associates it with the given user identifier.
         The key is returned once — store it immediately. Share it with the user
@@ -71,6 +71,9 @@ def make_create_user(telemetry: Any) -> Callable[[str, str], dict]:
         Returns:
             Dict with user_id, key, and connection instructions.
         """
+        from mcp_server import _require_admin
+
+        _require_admin()
         created_key = telemetry.add_api_key(user_id, key or None)
         return {
             "user_id": user_id,
