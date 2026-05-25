@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import os
+from typing import Any
 
 import httpx
 from tools.integrations.notes.adapter import NotesAdapterError
@@ -166,3 +167,43 @@ class GitHubFilesAdapter:
                 }
             )
         return result
+
+    def write(self, slug: str, content: str) -> dict:
+        """Create or update notes/{slug}.md on the default branch."""
+        path = self._path_for(slug)
+        existing_sha: str | None = None
+        try:
+            with httpx.Client() as client:
+                get_resp = client.get(self._contents_url(path), headers=self._headers())
+                if get_resp.status_code != 404:
+                    get_resp.raise_for_status()
+                    existing_sha = get_resp.json()["sha"]
+
+                action = "update" if existing_sha else "create"
+                payload: dict[str, Any] = {
+                    "message": f"notes: {action} {slug} via gateway",
+                    "content": base64.b64encode(content.encode()).decode(),
+                    "branch": self._branch,
+                }
+                if existing_sha:
+                    payload["sha"] = existing_sha
+
+                put_resp = client.put(
+                    self._contents_url(path),
+                    headers=self._headers(),
+                    json=payload,
+                )
+                put_resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise self._wrap(e) from e
+        except httpx.RequestError as e:
+            raise self._wrap(e) from e
+
+        body = put_resp.json()
+        return {
+            "slug": slug,
+            "id": body["content"]["sha"],
+            "url": body["content"]["html_url"],
+            "path": body["content"]["path"],
+            "status": "updated" if existing_sha else "created",
+        }
