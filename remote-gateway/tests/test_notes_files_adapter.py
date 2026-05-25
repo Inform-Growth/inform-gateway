@@ -322,3 +322,57 @@ def test_delete_missing_returns_not_found():
     assert result["status"] == "not_found"
     assert result["slug"] == "ghost"
     client.request.assert_not_called()
+
+
+# ---- error surfacing (#35) ----
+
+def test_list_raises_on_500_from_contents():
+    from tools.integrations.notes.adapter import NotesAdapterError
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(None, status_code=500, text="upstream boom"),
+        ]
+
+        with pytest.raises(NotesAdapterError) as excinfo:
+            GitHubFilesAdapter().list()
+
+    assert excinfo.value.status == 500
+    assert excinfo.value.repo == "org/test-notes"
+    assert excinfo.value.token_fingerprint == "ghp_…"
+    assert "upstream boom" in excinfo.value.body
+
+
+def test_read_raises_on_403_from_contents():
+    from tools.integrations.notes.adapter import NotesAdapterError
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(None, status_code=403, text="forbidden"),
+        ]
+
+        with pytest.raises(NotesAdapterError) as excinfo:
+            GitHubFilesAdapter().read("any-note")
+
+    assert excinfo.value.status == 403
+
+
+def test_init_raises_on_network_error_to_repo():
+    from tools.integrations.notes.adapter import NotesAdapterError
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = httpx.ConnectError("dns fail")
+
+        with pytest.raises(NotesAdapterError) as excinfo:
+            GitHubFilesAdapter()
+
+    assert excinfo.value.status is None
+    assert "dns fail" in excinfo.value.body
