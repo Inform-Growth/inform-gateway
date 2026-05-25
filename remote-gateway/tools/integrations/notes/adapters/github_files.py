@@ -207,3 +207,32 @@ class GitHubFilesAdapter:
             "path": body["content"]["path"],
             "status": "updated" if existing_sha else "created",
         }
+
+    def delete(self, slug: str) -> dict:
+        """Delete notes/{slug}.md on the default branch."""
+        path = self._path_for(slug)
+        try:
+            with httpx.Client() as client:
+                get_resp = client.get(self._contents_url(path), headers=self._headers())
+                if get_resp.status_code == 404:
+                    return {"status": "not_found", "slug": slug}
+                get_resp.raise_for_status()
+                sha = get_resp.json()["sha"]
+
+                del_resp = client.request(
+                    "DELETE",
+                    self._contents_url(path),
+                    headers=self._headers(),
+                    json={
+                        "message": f"notes: delete {slug} via gateway",
+                        "sha": sha,
+                        "branch": self._branch,
+                    },
+                )
+                del_resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise self._wrap(e) from e
+        except httpx.RequestError as e:
+            raise self._wrap(e) from e
+
+        return {"status": "deleted", "slug": slug, "path": path}
