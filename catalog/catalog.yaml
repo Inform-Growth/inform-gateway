@@ -1,0 +1,93 @@
+# catalog.yaml — registry of pre-baked integrations available for installation.
+#
+# When scaffolding a new client gateway via `copier copy`, the multi-select
+# question reads this manifest to present available integrations. The
+# `scripts/install_integration.py <slug>` CLI uses this manifest to drive
+# post-scaffold installs.
+#
+# Adding a new integration:
+#   1. Create catalog/integrations/<slug>/ with tool.py (if Python),
+#      connection.json (if MCP proxy), and README.md (required).
+#   2. Add an entry below.
+#
+# Field reference:
+#   name            — Human-readable name for the multi-select prompt.
+#   description     — One-line description shown alongside the name.
+#   kind            — python | proxy | both
+#                       python: install copies tool.py into runtime tools/integrations/
+#                       proxy:  install merges connection.json into mcp_connections.json
+#                       both:   does both (Python tools override or supplement the proxy)
+#   default_select  — Pre-checked in the Copier multi-select.
+#   env_vars        — Required environment variables (printed after install).
+#   register_call   — Snippet appended to mcp_server.py's catalog-managed
+#                     registration block (Python integrations only). The corresponding
+#                     import is generated automatically as:
+#                       from tools.integrations import <slug> as _<slug>_tools
+#                     and the register_call snippet runs with that alias in scope.
+
+version: 1
+
+integrations:
+  apollo:
+    name: Apollo.io
+    description: Lead enrichment and people/company search via Apollo REST API.
+    kind: python
+    default_select: true
+    env_vars: [APOLLO_API_KEY]
+    register_call: "_apollo_tools.register(mcp)"
+
+  attio:
+    name: Attio CRM
+    description: Attio CRM record search/create/upsert (Python overrides on top of attio-mcp proxy).
+    kind: both
+    default_select: true
+    env_vars: [ATTIO_API_KEY]
+    register_call: "_attio_tools.register(mcp)"
+
+  buffer:
+    name: Buffer
+    description: Social media post scheduling via Buffer's hosted MCP server.
+    kind: proxy
+    default_select: false
+    env_vars: [BUFFER_ACCESS_TOKEN]
+
+  exa:
+    name: Exa
+    description: Neural web search via Exa's hosted MCP server.
+    kind: proxy
+    default_select: true
+    env_vars: [EXA_API_KEY]
+
+  github:
+    name: GitHub
+    description: File read/write and issue read on GitHub repos via the official MCP server.
+    kind: proxy
+    default_select: false
+    env_vars: [GITHUB_TOKEN]
+
+  google:
+    name: Google Workspace
+    description: Gmail + Calendar + Drive/Docs via the unified workspace-mcp server (single-user OAuth).
+    kind: proxy
+    default_select: false
+    env_vars:
+      - GOOGLE_OAUTH_CLIENT_ID
+      - GOOGLE_OAUTH_CLIENT_SECRET
+      - USER_GOOGLE_EMAIL
+      - WORKSPACE_MCP_CREDENTIALS_DIR
+
+  wiza:
+    name: Wiza
+    description: Person enrichment (mobile/email) via Wiza Individual Reveal REST API.
+    kind: python
+    default_select: false
+    env_vars: [WIZA_API_KEY]
+    register_call: "_wiza_tools.register(mcp)"
+
+  email_tools:
+    name: Email body normalizer
+    description: Strips quoted replies and signatures from email bodies. No external API.
+    kind: python
+    default_select: false
+    env_vars: []
+    register_call: "_email_tools.register(mcp)"

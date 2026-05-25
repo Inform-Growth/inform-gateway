@@ -13,7 +13,9 @@ function wrapper(qc: QueryClient) {
 
 describe('useOperators', () => {
   beforeEach(() => {
-    sessionStorage.setItem('admin_token', 'tkn');
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem('admin_token', 'tkn');
     vi.stubGlobal('fetch', vi.fn());
   });
 
@@ -36,7 +38,9 @@ describe('useOperators', () => {
 
 describe('useCreateOperator', () => {
   beforeEach(() => {
-    sessionStorage.setItem('admin_token', 'tkn');
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem('admin_token', 'tkn');
     vi.stubGlobal('fetch', vi.fn());
   });
 
@@ -64,7 +68,9 @@ describe('useCreateOperator', () => {
 
 describe('useDeleteOperator', () => {
   beforeEach(() => {
-    sessionStorage.setItem('admin_token', 'tkn');
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem('admin_token', 'tkn');
     vi.stubGlobal('fetch', vi.fn());
   });
 

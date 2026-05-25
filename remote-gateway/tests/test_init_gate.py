@@ -1,8 +1,8 @@
 """Verify init gate logic: uninitialized orgs get a redirect, initialized pass."""
 from __future__ import annotations
+
 import sys
 from pathlib import Path
-import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 sys.modules.pop("telemetry", None)
@@ -31,3 +31,24 @@ def test_gate_passes_for_unauthenticated_user(store):
     org_id = None  # _get_org_id returns None for sid=None
     should_gate = org_id is not None and not store.is_initialized(org_id or "")
     assert should_gate is False
+
+
+def test_admin_tools_in_intent_never_required():
+    """Admin permission management tools must bypass the intent gate so an admin
+    can provision users without first calling declare_intent."""
+    from telemetry import INTENT_NEVER_REQUIRED
+    assert "list_users" in INTENT_NEVER_REQUIRED
+    assert "set_user_role" in INTENT_NEVER_REQUIRED
+    assert "set_tool_permission" in INTENT_NEVER_REQUIRED
+    assert "set_skill_permission" in INTENT_NEVER_REQUIRED
+
+
+def test_admin_tools_in_gate_bypass():
+    """Admin permission management tools must bypass the org-initialization gate
+    too — an admin bootstrapping a fresh deployment can't first run setup_complete
+    and then provision users; the chicken-and-egg defeats the point of #29."""
+    from mcp_server import _GATE_BYPASS
+    assert "list_users" in _GATE_BYPASS
+    assert "set_user_role" in _GATE_BYPASS
+    assert "set_tool_permission" in _GATE_BYPASS
+    assert "set_skill_permission" in _GATE_BYPASS

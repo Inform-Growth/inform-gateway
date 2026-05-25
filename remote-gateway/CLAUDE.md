@@ -44,6 +44,7 @@ MCP_TRANSPORT=sse python remote-gateway/core/mcp_server.py
 | `ISSUE_DEPLOYMENT_REPO` | Yes | `owner/repo` for friction issues (bugs about the gateway). |
 | `ISSUE_DEPLOYMENT_GITHUB_TOKEN` | Yes | Fine-grained PAT with `Issues: read+write` on the gateway repo. |
 | `ISSUE_REPORT_DISABLED` | No | Kill switch — set to `"true"` to disable `report_issue` without removing the tool |
+| `BOOTSTRAP_ADMIN_USER_IDS` | No | Comma-separated user_ids to promote to role='admin' on every startup. Idempotent; never demotes. Unknown user_ids are logged and skipped. |
 | `GOOGLE_OAUTH_CLIENT_ID` | Google | OAuth client ID from Google Cloud Console |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Google | OAuth client secret |
 | `USER_GOOGLE_EMAIL` | Google | Account the workspace MCP authenticates as |
@@ -103,3 +104,9 @@ Edit `mcp_connections.json`:
 - **Read-only enforcement**: Tools should be read-only by default.
 - **No hardcoded secrets**: Use `os.environ` exclusively.
 - **Notes & Issue Backlog**: Monitor two repos — `NOTES_REPO/notes/*.md` for durable session notes (via the configured notes adapter), and `ISSUE_DEPLOYMENT_REPO` for `source:report_issue` friction signals. Review both regularly to understand user goals and stay ahead of integration failures.
+
+### Admin role
+
+A new `api_keys.role` column distinguishes `'admin'` from `'user'`. Five tools are admin-gated (require `role='admin'` on the caller): `create_user`, `list_users`, `set_user_role`, `set_tool_permission`, `set_skill_permission`. Seed admins on startup via the `BOOTSTRAP_ADMIN_USER_IDS` env var. The UI exposes a role-select cell on the Operators page, backed by `PUT /api/users/{user_id}/role`.
+
+Custom roles and role→permission-set lookups are out of scope here — tracked separately.

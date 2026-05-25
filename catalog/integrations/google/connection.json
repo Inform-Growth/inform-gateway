@@ -1,0 +1,14 @@
+{
+  "_comment": "Unified Google Workspace MCP (Gmail + Calendar + Drive/Docs). Uses single-user OAuth: tokens are cached at WORKSPACE_MCP_CREDENTIALS_DIR (mount this on the persistent volume so they survive restarts). First-time auth flow must be run somewhere with browser access; see README.md.",
+  "transport": "stdio",
+  "command": "uvx",
+  "args": ["workspace-mcp", "--tool-tier", "core"],
+  "env": {
+    "GOOGLE_OAUTH_CLIENT_ID": "${GOOGLE_OAUTH_CLIENT_ID}",
+    "GOOGLE_OAUTH_CLIENT_SECRET": "${GOOGLE_OAUTH_CLIENT_SECRET}",
+    "USER_GOOGLE_EMAIL": "${USER_GOOGLE_EMAIL}",
+    "WORKSPACE_MCP_CREDENTIALS_DIR": "${WORKSPACE_MCP_CREDENTIALS_DIR}",
+    "PORT": "8765",
+    "WORKSPACE_MCP_PORT": "8765"
+  }
+}
