@@ -13,6 +13,33 @@ import os
 from typing import Protocol
 
 
+class NotesAdapterError(RuntimeError):
+    """Adapter-level failure with enough context to diagnose.
+
+    Raised by adapters when an upstream call fails. Carries the HTTP
+    status (or None for network errors), a truncated response body,
+    the repo we were talking to, and a fingerprint of the token in
+    use so silent empty results are no longer possible.
+    """
+
+    def __init__(
+        self,
+        *,
+        status: int | None,
+        body: str,
+        repo: str,
+        token_fingerprint: str,
+    ) -> None:
+        self.status = status
+        self.body = body
+        self.repo = repo
+        self.token_fingerprint = token_fingerprint
+        super().__init__(
+            f"NotesAdapterError(status={status}, repo={repo}, "
+            f"token={token_fingerprint}): {body}"
+        )
+
+
 class NotesAdapter(Protocol):
     """Storage backend contract for notes."""
 

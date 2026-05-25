@@ -51,3 +51,22 @@ def test_get_adapter_returns_fresh_instance_each_call():
     b = get_adapter()
 
     assert a is not b  # per-invocation, not cached
+
+
+def test_notes_adapter_error_carries_diagnostics():
+    from tools.integrations.notes.adapter import NotesAdapterError
+
+    err = NotesAdapterError(
+        status=403,
+        body="forbidden",
+        repo="org/test-notes",
+        token_fingerprint="ghp_…",
+    )
+
+    assert err.status == 403
+    assert err.body == "forbidden"
+    assert err.repo == "org/test-notes"
+    assert err.token_fingerprint == "ghp_…"
+    assert "403" in str(err)
+    assert "org/test-notes" in str(err)
+    assert "ghp_…" in str(err)
