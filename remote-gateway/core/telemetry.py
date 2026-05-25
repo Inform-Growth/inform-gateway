@@ -810,6 +810,44 @@ class TelemetryStore:
                 "UPDATE api_keys SET role = %s WHERE user_id = %s", (role, user_id)
             )
 
+    def bootstrap_admin_roles(self, user_ids: list[str]) -> dict:
+        """Promote a list of users to admin role at startup (idempotent).
+
+        Designed to be called once at server startup via BOOTSTRAP_ADMIN_ROLES env var.
+        Never demotes existing admins. Skips unknown users (no api_keys row).
+
+        Args:
+            user_ids: List of user identifiers to promote to admin.
+
+        Returns:
+            Dict with keys:
+            - promoted: List of user_ids that were actually promoted (were not already admin).
+            - skipped_unknown: List of user_ids with no api_keys row.
+        """
+        promoted = []
+        skipped_unknown = []
+
+        if not self._enabled:
+            return {"promoted": promoted, "skipped_unknown": skipped_unknown}
+
+        with self._cursor() as cur:
+            for user_id in user_ids:
+                cur.execute(
+                    "SELECT role FROM api_keys WHERE user_id = %s LIMIT 1",
+                    (user_id,),
+                )
+                row = cur.fetchone()
+                if not row:
+                    skipped_unknown.append(user_id)
+                elif row["role"] != ROLE_ADMIN:
+                    promoted.append(user_id)
+                    cur.execute(
+                        "UPDATE api_keys SET role = %s WHERE user_id = %s",
+                        (ROLE_ADMIN, user_id),
+                    )
+
+        return {"promoted": promoted, "skipped_unknown": skipped_unknown}
+
     def get_org_id(self, user_id: str) -> str:
         """Return org_id for user_id, falling back to user_id if none set.
 

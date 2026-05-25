@@ -72,3 +72,38 @@ def test_add_api_key_inherits_admin_role(store):
 def test_add_api_key_defaults_new_user_to_user_role(store):
     store.add_api_key("bob@example.com", "sk-bob")
     assert store.get_role("bob@example.com") == "user"
+
+
+def test_bootstrap_admin_roles_promotes_known_users(store):
+    """bootstrap_admin_roles promotes existing users to admin."""
+    store.add_api_key("alice@example.com", "sk-alice")
+    store.add_api_key("bob@example.com", "sk-bob")
+    result = store.bootstrap_admin_roles(["alice@example.com", "bob@example.com"])
+    assert sorted(result["promoted"]) == ["alice@example.com", "bob@example.com"]
+    assert result["skipped_unknown"] == []
+    assert store.is_admin("alice@example.com") is True
+    assert store.is_admin("bob@example.com") is True
+
+
+def test_bootstrap_admin_roles_skips_unknown_users(store):
+    """bootstrap_admin_roles skips users with no api_keys row."""
+    result = store.bootstrap_admin_roles(["nobody@example.com"])
+    assert result["promoted"] == []
+    assert result["skipped_unknown"] == ["nobody@example.com"]
+
+
+def test_bootstrap_admin_roles_never_demotes(store):
+    """bootstrap_admin_roles maintains admin status; never demotes."""
+    store.add_api_key("alice@example.com", "sk-alice")
+    store.set_user_role("alice@example.com", "admin")
+    result = store.bootstrap_admin_roles(["alice@example.com"])
+    assert result["promoted"] == []
+    assert result["skipped_unknown"] == []
+    assert store.is_admin("alice@example.com") is True
+
+
+def test_bootstrap_admin_roles_empty_list_is_noop(store):
+    """bootstrap_admin_roles with empty list is a no-op."""
+    result = store.bootstrap_admin_roles([])
+    assert result["promoted"] == []
+    assert result["skipped_unknown"] == []
