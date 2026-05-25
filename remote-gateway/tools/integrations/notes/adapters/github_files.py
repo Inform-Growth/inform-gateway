@@ -10,6 +10,7 @@ Required env vars:
 """
 from __future__ import annotations
 
+import base64
 import os
 
 import httpx
@@ -77,3 +78,31 @@ class GitHubFilesAdapter:
         except (httpx.HTTPStatusError, httpx.RequestError) as e:
             raise self._wrap(e) from e
         return resp.json()["default_branch"]
+
+    # ---- NotesAdapter contract ----
+
+    def read(self, slug: str) -> dict | None:
+        """Return note dict with slug, content, id (sha), url, path; None if not found."""
+        path = self._path_for(slug)
+        try:
+            with httpx.Client() as client:
+                resp = client.get(self._contents_url(path), headers=self._headers())
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            raise self._wrap(e) from e
+        except httpx.RequestError as e:
+            raise self._wrap(e) from e
+
+        payload = resp.json()
+        content = base64.b64decode(payload["content"]).decode()
+        return {
+            "slug": slug,
+            "content": content,
+            "id": payload["sha"],
+            "url": payload["html_url"],
+            "path": payload["path"],
+        }
