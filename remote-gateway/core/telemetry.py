@@ -779,6 +779,29 @@ class TelemetryStore:
         """
         return self.get_role(user_id) == ROLE_ADMIN
 
+    def set_user_role(self, user_id: str, role: str) -> None:
+        """Set the role for every api_keys row matching user_id.
+
+        Args:
+            user_id: The user to update.
+            role: Must be a member of VALID_ROLES.
+
+        Raises:
+            ValueError: If role is not in VALID_ROLES.
+
+        No-op if user_id has no rows in api_keys.
+        """
+        if role not in VALID_ROLES:
+            raise ValueError(
+                f"role must be one of {sorted(VALID_ROLES)}, got {role!r}"
+            )
+        if not self._enabled:
+            return
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE api_keys SET role = %s WHERE user_id = %s", (role, user_id)
+            )
+
     def get_org_id(self, user_id: str) -> str:
         """Return org_id for user_id, falling back to user_id if none set.
 

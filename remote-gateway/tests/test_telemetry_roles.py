@@ -4,6 +4,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 
 
@@ -17,3 +19,38 @@ def test_role_column_defaults_to_user(store):
 def test_get_role_returns_none_for_unknown_user(store):
     assert store.get_role("nobody@example.com") is None
     assert store.is_admin("nobody@example.com") is False
+
+
+def test_set_user_role_roundtrip(store):
+    store.add_api_key("alice@example.com", "sk-alice")
+    store.set_user_role("alice@example.com", "admin")
+    assert store.get_role("alice@example.com") == "admin"
+    assert store.is_admin("alice@example.com") is True
+    store.set_user_role("alice@example.com", "user")
+    assert store.is_admin("alice@example.com") is False
+
+
+def test_set_user_role_rejects_invalid_role(store):
+    store.add_api_key("alice@example.com", "sk-alice")
+    with pytest.raises(ValueError):
+        store.set_user_role("alice@example.com", "superadmin")
+
+
+def test_set_user_role_updates_all_keys_for_user(store):
+    """Multi-key invariant: set_user_role moves every row for a user_id."""
+    store.add_api_key("alice@example.com", "sk-alice-1")
+    store.add_api_key("alice@example.com", "sk-alice-2")
+    store.set_user_role("alice@example.com", "admin")
+    with store._cursor() as cur:
+        cur.execute(
+            "SELECT role FROM api_keys WHERE user_id = %s ORDER BY key",
+            ("alice@example.com",),
+        )
+        roles = [r["role"] for r in cur.fetchall()]
+    assert roles == ["admin", "admin"]
+
+
+def test_set_user_role_unknown_user_is_noop(store):
+    """No api_keys row -> no error, no effect."""
+    store.set_user_role("nobody@example.com", "admin")
+    assert store.get_role("nobody@example.com") is None
