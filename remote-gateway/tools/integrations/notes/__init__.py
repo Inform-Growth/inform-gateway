@@ -1,7 +1,8 @@
 """Notes integration — pluggable storage backend.
 
 See adapter.py for the NotesAdapter Protocol and the env-var-driven factory.
-The adapter is currently routed to GitHub Issues by default (see adapters/github_issues.py).
+The default adapter routes to markdown files at notes/*.md in NOTES_REPO
+(see adapters/github_files.py).
 """
 from __future__ import annotations
 
