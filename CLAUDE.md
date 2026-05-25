@@ -160,6 +160,10 @@ The `_AuthMiddleware` ASGI layer resolves the key to a `user_id` on every reques
 | `get_tool_stats` | Per-tool call counts, error rates, latency |
 | `get_session_usage` | Tool call sequences and per-user breakdown |
 | `create_user` | Admin — create an API key for a new operator |
+| `list_users` | Admin — list all gateway users with role and activity |
+| `set_user_role` | Admin — set a user's role (`user` or `admin`) |
+| `set_tool_permission` | Admin — bulk grant/revoke per-tool access for a user |
+| `set_skill_permission` | Admin — bulk grant/revoke per-skill access for a user |
 | `get_operator_instructions` | Load Gateway Operator persona and shadow note rules |
 | `list_prompts` | Discover available prompt templates |
 | `get_prompt` | Render a specific prompt template |
@@ -203,6 +207,10 @@ Every tool call is recorded automatically (timing, success/failure, `user_id`, `
 - **No Hardcoded Credentials.** Use `os.environ` exclusively.
 - **Read-Only by Default.** Mutating operations require explicit admin approval in code review.
 - **Field Registry.** Wrap all tool responses with `validated("<integration>", result)` to ensure field consistency and drift detection. YAML schemas live in `context/fields/`.
+
+### Friction-to-test discipline
+
+Every PR that closes a `source:report_issue` issue must state which test was added that would have caught the gap — or explicitly note that no test could have caught it (e.g. missing-feature gaps that need agent-contract tests, tracked separately). This keeps the test suite getting strictly stronger over time and prevents the same shape of friction from re-shipping.
 
 ## Admin Guardrails
 
