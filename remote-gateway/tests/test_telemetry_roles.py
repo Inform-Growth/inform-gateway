@@ -118,3 +118,12 @@ def test_bootstrap_admin_roles_empty_list_is_noop(store):
     result = store.bootstrap_admin_roles([])
     assert result["promoted"] == []
     assert result["skipped_unknown"] == []
+
+
+def test_list_users_includes_role(store):
+    store.add_api_key("alice@example.com", "sk-alice")
+    store.add_api_key("bob@example.com", "sk-bob")
+    store.set_user_role("alice@example.com", "admin")
+    users = {u["user_id"]: u for u in store.list_users()}
+    assert users["alice@example.com"]["role"] == "admin"
+    assert users["bob@example.com"]["role"] == "user"

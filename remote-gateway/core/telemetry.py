@@ -385,12 +385,13 @@ class TelemetryStore:
                     SELECT
                         ak.user_id,
                         ak.key,
+                        ak.role,
                         ak.created_at,
                         COUNT(tc.id)      AS call_count,
                         MAX(tc.called_at) AS last_active
                     FROM api_keys ak
                     LEFT JOIN tool_calls tc ON ak.user_id = tc.user_id
-                    GROUP BY ak.user_id, ak.key
+                    GROUP BY ak.user_id, ak.key, ak.role
                     ORDER BY ak.created_at DESC
                     """
                 )
@@ -401,6 +402,7 @@ class TelemetryStore:
             {
                 "user_id": row["user_id"],
                 "key": row["key"],
+                "role": row["role"],
                 "created_at": datetime.datetime.fromtimestamp(
                     row["created_at"], tz=datetime.UTC
                 ).strftime("%Y-%m-%dT%H:%MZ"),
