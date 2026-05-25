@@ -140,14 +140,8 @@ def _dir_entry(name: str, type_: str = "file", sha: str = "x", path: str | None 
 
 # ---- list ----
 
-def test_list_returns_md_files_with_empty_timestamps():
-    """List enumerates top-level `notes/*.md` files; timestamps left blank for now.
-
-    The previous implementation tried to derive created_at/updated_at from
-    `GET /commits?path=notes`, but GitHub's List Commits API does not return
-    a `files` field on each commit (only the single-commit detail endpoint
-    does). Until per-file commit queries are added, timestamps are empty.
-    """
+def test_list_returns_md_files_with_per_file_timestamps():
+    """list() makes a per-file GET /commits call to populate timestamps."""
     from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
 
     files = [
@@ -156,11 +150,21 @@ def test_list_returns_md_files_with_empty_timestamps():
         _dir_entry("issues", type_="dir"),         # ignored
         _dir_entry("notes-not-md.txt", sha="sX"),  # ignored
     ]
+    # GitHub returns commits newest-first per file.
+    manifesto_commits = [
+        {"sha": "m2", "commit": {"committer": {"date": "2026-05-20T00:00:00Z"}}},
+        {"sha": "m1", "commit": {"committer": {"date": "2026-05-10T00:00:00Z"}}},
+    ]
+    draft_commits = [
+        {"sha": "d1", "commit": {"committer": {"date": "2026-05-15T00:00:00Z"}}},
+    ]
     with patch("httpx.Client") as mock_cls:
         client = _mock_client_ctx(mock_cls)
         client.get.side_effect = [
             _mock_resp(_repo_meta("main")),
             _mock_resp(files),
+            _mock_resp(manifesto_commits),
+            _mock_resp(draft_commits),
         ]
 
         result = GitHubFilesAdapter().list()
@@ -169,10 +173,39 @@ def test_list_returns_md_files_with_empty_timestamps():
     by_slug = {n["slug"]: n for n in result}
     assert by_slug["manifesto"]["id"] == "s1"
     assert by_slug["manifesto"]["path"] == "notes/manifesto.md"
-    assert by_slug["manifesto"]["created_at"] == ""
-    assert by_slug["manifesto"]["updated_at"] == ""
-    assert by_slug["draft"]["id"] == "s2"
-    assert by_slug["draft"]["created_at"] == ""
+    assert by_slug["manifesto"]["created_at"] == "2026-05-10T00:00:00Z"
+    assert by_slug["manifesto"]["updated_at"] == "2026-05-20T00:00:00Z"
+    assert by_slug["draft"]["created_at"] == "2026-05-15T00:00:00Z"
+    assert by_slug["draft"]["updated_at"] == "2026-05-15T00:00:00Z"
+
+    # Verify the per-file commits calls used the right path query param
+    commits_call_urls_and_params = [
+        (call.args[0], call.kwargs.get("params"))
+        for call in client.get.call_args_list[2:]  # skip repo_meta + contents
+    ]
+    paths_queried = [params["path"] for _, params in commits_call_urls_and_params]
+    assert sorted(paths_queried) == ["notes/draft.md", "notes/manifesto.md"]
+
+
+def test_list_emits_empty_timestamps_when_file_has_no_commits():
+    """A file with no commits returned (e.g. orphaned) gets empty timestamps, not a crash."""
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+
+    files = [_dir_entry("orphan.md", sha="orph")]
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(files),
+            _mock_resp([]),  # empty commits response
+        ]
+
+        result = GitHubFilesAdapter().list()
+
+    assert len(result) == 1
+    assert result[0]["slug"] == "orphan"
+    assert result[0]["created_at"] == ""
+    assert result[0]["updated_at"] == ""
 
 
 def test_list_returns_empty_when_notes_dir_missing():

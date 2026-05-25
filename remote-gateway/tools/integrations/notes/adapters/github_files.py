@@ -107,14 +107,12 @@ class GitHubFilesAdapter:
         }
 
     def list(self) -> list[dict]:  # noqa: A003 — Protocol shape
-        """Return all top-level `notes/*.md` files.
+        """Return all top-level `notes/*.md` files with commit-derived timestamps.
 
-        TODO(timestamps): `created_at`/`updated_at` are left empty for now.
-        Deriving them from `GET /commits?path=notes` does not work — the
-        List Commits API omits the `files` field, so we can't attribute
-        commits to individual files. Fix is a per-file `GET /commits?path=
-        notes/{slug}.md&per_page=1` (one extra API call per note); deferred
-        until UI needs the timestamps.
+        For each file, issues a per-file `GET /commits?path=notes/{slug}.md`
+        to derive `created_at` (oldest commit) and `updated_at` (newest).
+        Files with no commit history (e.g. orphaned via UI) get empty
+        timestamps rather than failing. Listing 30 notes = ~31 API calls.
         """
         try:
             with httpx.Client() as client:
@@ -124,32 +122,48 @@ class GitHubFilesAdapter:
                 if contents.status_code == 404:
                     return []
                 contents.raise_for_status()
+
+                files = [
+                    entry
+                    for entry in contents.json()
+                    if entry["type"] == "file" and entry["name"].endswith(".md")
+                ]
+
+                result: list[dict] = []
+                for entry in files:
+                    path = entry["path"]
+                    commits_resp = client.get(
+                        f"{self._repo_url()}/commits",
+                        headers=self._headers(),
+                        params={"path": path, "per_page": 100},
+                    )
+                    commits_resp.raise_for_status()
+                    commits = commits_resp.json()
+                    if commits:
+                        # GitHub returns newest-first.
+                        updated_at = commits[0]["commit"]["committer"]["date"]
+                        created_at = commits[-1]["commit"]["committer"]["date"]
+                    else:
+                        updated_at = ""
+                        created_at = ""
+                    slug = entry["name"][: -len(".md")]
+                    result.append(
+                        {
+                            "slug": slug,
+                            "id": entry["sha"],
+                            "url": entry["html_url"],
+                            "path": path,
+                            "created_at": created_at,
+                            "updated_at": updated_at,
+                        }
+                    )
+                return result
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 return []
             raise self._wrap(e) from e
         except httpx.RequestError as e:
             raise self._wrap(e) from e
-
-        files = [
-            entry
-            for entry in contents.json()
-            if entry["type"] == "file" and entry["name"].endswith(".md")
-        ]
-        result: list[dict] = []
-        for entry in files:
-            slug = entry["name"][: -len(".md")]
-            result.append(
-                {
-                    "slug": slug,
-                    "id": entry["sha"],
-                    "url": entry["html_url"],
-                    "path": entry["path"],
-                    "created_at": "",
-                    "updated_at": "",
-                }
-            )
-        return result
 
     def write(self, slug: str, content: str) -> dict:
         """Create or update notes/{slug}.md on the default branch."""
