@@ -125,3 +125,77 @@ def test_read_returns_none_when_missing():
         result = GitHubFilesAdapter().read("ghost")
 
     assert result is None
+
+
+def _dir_entry(name: str, type_: str = "file", sha: str = "x", path: str | None = None) -> dict:
+    p = path or f"notes/{name}"
+    return {
+        "name": name,
+        "path": p,
+        "sha": sha,
+        "type": type_,
+        "html_url": f"https://github.com/org/test-notes/blob/main/{p}",
+    }
+
+
+def _commit(path: str, date_committed: str, date_authored: str | None = None) -> dict:
+    return {
+        "sha": f"commit-{path}-{date_committed}",
+        "commit": {
+            "committer": {"date": date_committed},
+            "author": {"date": date_authored or date_committed},
+        },
+        "files": [{"filename": path}],
+    }
+
+
+# ---- list ----
+
+def test_list_returns_md_files_with_dates():
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+
+    files = [
+        _dir_entry("manifesto.md", sha="s1"),
+        _dir_entry("draft.md", sha="s2"),
+        _dir_entry("issues", type_="dir"),         # ignored
+        _dir_entry("notes-not-md.txt", sha="sX"),  # ignored
+    ]
+    # Newest-first commits per the contract; list builds {oldest, newest} per path
+    commits = [
+        _commit("notes/manifesto.md", "2026-05-20T00:00:00Z"),
+        _commit("notes/manifesto.md", "2026-05-10T00:00:00Z"),
+        _commit("notes/draft.md", "2026-05-15T00:00:00Z"),
+    ]
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(files),
+            _mock_resp(commits),
+        ]
+
+        result = GitHubFilesAdapter().list()
+
+    assert len(result) == 2
+    by_slug = {n["slug"]: n for n in result}
+    assert by_slug["manifesto"]["id"] == "s1"
+    assert by_slug["manifesto"]["path"] == "notes/manifesto.md"
+    assert by_slug["manifesto"]["created_at"] == "2026-05-10T00:00:00Z"
+    assert by_slug["manifesto"]["updated_at"] == "2026-05-20T00:00:00Z"
+    assert by_slug["draft"]["created_at"] == "2026-05-15T00:00:00Z"
+    assert by_slug["draft"]["updated_at"] == "2026-05-15T00:00:00Z"
+
+
+def test_list_returns_empty_when_notes_dir_missing():
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(None, status_code=404, text="not found"),
+        ]
+
+        result = GitHubFilesAdapter().list()
+
+    assert result == []
