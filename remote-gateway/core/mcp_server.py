@@ -891,6 +891,7 @@ from tools.integrations import apollo as _apollo_tools  # noqa: E402
 from tools.integrations import attio as _attio_tools  # noqa: E402
 from tools.integrations import email_tools as _email_tools  # noqa: E402
 from tools.integrations import wiza as _wiza_tools  # noqa: E402
+from tools import admin as _admin_tools  # noqa: E402
 
 
 class _RequestAwareUser:
@@ -932,6 +933,7 @@ _onboarding_tools.register(mcp, _telemetry, _user_view)
 _skill_manager_tools.register(mcp, _telemetry, _user_view)
 _profile_manager_tools.register(mcp, _telemetry, _user_view)
 _task_manager_tools.register(mcp, _telemetry, _user_view)
+_admin_tools.register(mcp, _telemetry)
 
 
 # ---------------------------------------------------------------------------
@@ -965,6 +967,18 @@ def validated(integration: str, response: dict[str, Any]) -> dict[str, Any]:
 
 if __name__ == "__main__":
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
+
+    admin_ids_raw = os.environ.get("BOOTSTRAP_ADMIN_USER_IDS", "")
+    if admin_ids_raw.strip():
+        user_ids = [s.strip() for s in admin_ids_raw.split(",") if s.strip()]
+        result = _telemetry.bootstrap_admin_roles(user_ids)
+        print(
+            f"[admin-bootstrap] promoted {len(result['promoted'])} users, "
+            f"skipped {len(result['skipped_unknown'])} unknown: "
+            f"promoted={result['promoted']} skipped={result['skipped_unknown']}",
+            flush=True,
+        )
+
     if transport in ("sse", "combined"):
         import uvicorn
         from starlette.applications import Starlette
