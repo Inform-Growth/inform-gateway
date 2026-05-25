@@ -48,6 +48,8 @@ INTENT_NEVER_REQUIRED: frozenset[str] = frozenset({
     "get_operator_instructions", "create_user",
     "profile_get", "profile_update",
     "list_prompts", "get_prompt",
+    "list_users", "set_user_role",
+    "set_tool_permission", "set_skill_permission",
 })
 """Tools that are always exempt from the intent (declare_intent) gate.
 
