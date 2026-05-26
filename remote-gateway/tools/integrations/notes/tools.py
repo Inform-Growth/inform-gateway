@@ -33,22 +33,31 @@ def list_notes() -> dict:
     return {"notes": rendered, "count": len(rendered)}
 
 
-def read_note(slug: str) -> dict:
-    """Read a note by its slug (title).
+def read_note(slug: str, folder: str | None = None) -> dict:
+    """Read a note by its slug.
+
+    With folder hint: reads notes/<folder>/<slug>.md directly. The hint is
+    authoritative — if no file exists at that exact path, returns not_found
+    (does not search other folders).
+
+    Without folder: searches all folders for the slug (slugs are globally
+    unique). Returns the file if found, otherwise not_found.
 
     Args:
-        slug: The note title used when the note was written.
+        slug: The note slug used when the note was written.
+        folder: Optional folder hint to skip the tree lookup.
 
     Returns:
-        Dict with 'slug', 'content', 'issue_number', 'html_url' on success.
-        Dict with status='not_found' if no open note matches.
+        Dict with 'slug', 'content', 'folder', 'issue_number', 'html_url' on
+        success. Dict with status='not_found' if no note matches.
     """
-    result = get_adapter().read(slug)
+    result = get_adapter().read(slug, folder=folder)
     if result is None:
         return {"status": "not_found", "slug": slug}
     return {
         "slug": result["slug"],
         "content": result["content"],
+        "folder": result.get("folder"),
         "issue_number": result.get("issue_number"),
         "html_url": result["url"],
     }
@@ -83,18 +92,22 @@ def write_note(slug: str, content: str, folder: str | None = None) -> dict:
     }
 
 
-def delete_note(slug: str) -> dict:
+def delete_note(slug: str, folder: str | None = None) -> dict:
     """Delete a note by its slug.
 
-    Removes the note file from the notes repo. Returns not_found if absent.
+    With folder hint: deletes notes/<folder>/<slug>.md directly. Hint is
+    authoritative — does not fall back to a tree search on miss.
+
+    Without folder: searches all folders for the slug, deletes if found.
 
     Args:
-        slug: The note title used when the note was written.
+        slug: The note slug used when the note was written.
+        folder: Optional folder hint.
 
     Returns:
         Dict with status='deleted' on success or status='not_found'.
     """
-    result = get_adapter().delete(slug)
+    result = get_adapter().delete(slug, folder=folder)
     return {
         "status": result["status"],
         "slug": result["slug"],

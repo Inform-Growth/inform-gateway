@@ -791,3 +791,50 @@ def test_write_note_tool_omits_folder_when_none():
 
     fake_adapter.write.assert_called_once_with("x", "c", folder=None)
     assert result["folder"] is None
+
+
+# ---- tool-layer: read_note + delete_note ----
+
+def test_read_note_tool_passes_folder_through():
+    from tools.integrations.notes import tools as notes_tools
+
+    fake_adapter = MagicMock()
+    fake_adapter.read.return_value = {
+        "slug": "comp", "content": "hi", "id": "s",
+        "url": "https://example/blob/main/notes/marketing/comp.md",
+        "path": "notes/marketing/comp.md", "folder": "marketing",
+    }
+    with patch("tools.integrations.notes.tools.get_adapter", return_value=fake_adapter):
+        result = notes_tools.read_note("comp", folder="marketing")
+
+    fake_adapter.read.assert_called_once_with("comp", folder="marketing")
+    assert result["content"] == "hi"
+    assert result["folder"] == "marketing"
+    assert result["html_url"].endswith("notes/marketing/comp.md")
+
+
+def test_read_note_tool_missing_returns_not_found():
+    from tools.integrations.notes import tools as notes_tools
+
+    fake_adapter = MagicMock()
+    fake_adapter.read.return_value = None
+    with patch("tools.integrations.notes.tools.get_adapter", return_value=fake_adapter):
+        result = notes_tools.read_note("ghost", folder="marketing")
+
+    assert result["status"] == "not_found"
+    assert result["slug"] == "ghost"
+
+
+def test_delete_note_tool_passes_folder_through():
+    from tools.integrations.notes import tools as notes_tools
+
+    fake_adapter = MagicMock()
+    fake_adapter.delete.return_value = {
+        "status": "deleted", "slug": "comp", "path": "notes/marketing/comp.md",
+    }
+    with patch("tools.integrations.notes.tools.get_adapter", return_value=fake_adapter):
+        result = notes_tools.delete_note("comp", folder="marketing")
+
+    fake_adapter.delete.assert_called_once_with("comp", folder="marketing")
+    assert result["status"] == "deleted"
+    assert result["slug"] == "comp"
