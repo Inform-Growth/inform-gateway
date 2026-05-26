@@ -225,6 +225,18 @@ def test_list_returns_empty_when_notes_dir_missing():
 
 # ---- write ----
 
+def _tree_resp(paths: list[str]) -> dict:
+    """Build a fake git-trees API response with the given blob paths."""
+    return {
+        "sha": "tree-sha",
+        "tree": [
+            {"path": p, "type": "blob", "sha": f"blob-{p}", "size": 100}
+            for p in paths
+        ],
+        "truncated": False,
+    }
+
+
 def test_write_creates_when_file_does_not_exist():
     from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
 
@@ -236,7 +248,7 @@ def test_write_creates_when_file_does_not_exist():
         client = _mock_client_ctx(mock_cls)
         client.get.side_effect = [
             _mock_resp(_repo_meta("main")),
-            _mock_resp(None, status_code=404, text="not found"),  # GET file → miss
+            _mock_resp(_tree_resp([])),  # empty tree
         ]
         client.put.return_value = _mock_resp(created_payload, status_code=201)
 
@@ -246,18 +258,17 @@ def test_write_creates_when_file_does_not_exist():
     assert result["slug"] == "new-note"
     assert result["id"] == "new-sha"
     assert result["path"] == "notes/new-note.md"
-    # PUT payload
+    assert result["folder"] is None
     put_body = client.put.call_args[1]["json"]
     assert put_body["message"] == "notes: create new-note via gateway"
     assert base64.b64decode(put_body["content"]).decode() == "hello"
     assert put_body["branch"] == "main"
-    assert "sha" not in put_body  # no sha on create
+    assert "sha" not in put_body
 
 
 def test_write_updates_when_file_exists():
     from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
 
-    existing = _file_payload("old", sha="old-sha", path="notes/existing.md")
     updated_payload = {
         "content": _file_payload("new", sha="updated-sha", path="notes/existing.md"),
         "commit": {"sha": "commit2"},
@@ -266,7 +277,7 @@ def test_write_updates_when_file_exists():
         client = _mock_client_ctx(mock_cls)
         client.get.side_effect = [
             _mock_resp(_repo_meta("main")),
-            _mock_resp(existing),
+            _mock_resp(_tree_resp(["notes/existing.md"])),
         ]
         client.put.return_value = _mock_resp(updated_payload)
 
@@ -275,7 +286,7 @@ def test_write_updates_when_file_exists():
     assert result["status"] == "updated"
     assert result["id"] == "updated-sha"
     put_body = client.put.call_args[1]["json"]
-    assert put_body["sha"] == "old-sha"
+    assert put_body["sha"] == "blob-notes/existing.md"  # sha from tree
     assert put_body["message"] == "notes: update existing via gateway"
 
 
@@ -283,12 +294,11 @@ def test_write_raises_on_sha_conflict():
     from tools.integrations.notes.adapter import NotesAdapterError
     from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
 
-    existing = _file_payload("old", sha="old-sha", path="notes/conflict.md")
     with patch("httpx.Client") as mock_cls:
         client = _mock_client_ctx(mock_cls)
         client.get.side_effect = [
             _mock_resp(_repo_meta("main")),
-            _mock_resp(existing),
+            _mock_resp(_tree_resp(["notes/conflict.md"])),
         ]
         client.put.return_value = _mock_resp(
             None, status_code=409, text="sha mismatch"

@@ -256,26 +256,44 @@ class GitHubFilesAdapter:
         except httpx.RequestError as e:
             raise self._wrap(e) from e
 
-    def write(self, slug: str, content: str) -> dict:
-        """Create or update notes/{slug}.md on the default branch."""
-        path = self._path_for(slug)
+    def write(self, slug: str, content: str, folder: str | None = None) -> dict:
+        """Create or update notes/{folder}/{slug}.md (or notes/{slug}.md if folder is None).
+
+        Looks up the slug across the full tree first. Cross-folder collisions
+        raise NotesAdapterError(409). Same-folder writes update via sha.
+        """
+        _validate_folder(folder)
+        existing = _find_in_tree(self._tree(), slug)
+        target_folder = folder
+        action = "create"
         existing_sha: str | None = None
+
+        if existing is not None:
+            existing_path, existing_folder, existing_sha = existing
+            if existing_folder != folder:
+                raise NotesAdapterError(
+                    status=409,
+                    body=(
+                        f"slug {slug!r} exists in folder "
+                        f"{existing_folder!r}; folder param mismatch"
+                    ),
+                    repo=self._repo,
+                    token_fingerprint=self._token_fingerprint(),
+                )
+            action = "update"
+            target_folder = existing_folder
+
+        path = self._path_for(slug, folder=target_folder)
+        payload: dict[str, Any] = {
+            "message": f"notes: {action} {slug} via gateway",
+            "content": base64.b64encode(content.encode()).decode(),
+            "branch": self._branch,
+        }
+        if existing_sha is not None:
+            payload["sha"] = existing_sha
+
         try:
             with httpx.Client(timeout=_HTTP_TIMEOUT_SECONDS) as client:
-                get_resp = client.get(self._contents_url(path), headers=self._headers())
-                if get_resp.status_code != 404:
-                    get_resp.raise_for_status()
-                    existing_sha = get_resp.json()["sha"]
-
-                action = "update" if existing_sha else "create"
-                payload: dict[str, Any] = {
-                    "message": f"notes: {action} {slug} via gateway",
-                    "content": base64.b64encode(content.encode()).decode(),
-                    "branch": self._branch,
-                }
-                if existing_sha:
-                    payload["sha"] = existing_sha
-
                 put_resp = client.put(
                     self._contents_url(path),
                     headers=self._headers(),
@@ -293,6 +311,7 @@ class GitHubFilesAdapter:
             "id": body["content"]["sha"],
             "url": body["content"]["html_url"],
             "path": body["content"]["path"],
+            "folder": target_folder,
             "status": "updated" if existing_sha else "created",
         }
 

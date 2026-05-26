@@ -237,3 +237,136 @@ def test_path_for_slug_with_folder():
 def test_path_for_none_folder_same_as_omitting():
     adapter = _make_adapter()
     assert adapter._path_for("foo", folder=None) == "notes/foo.md"
+
+
+# ---- write with folder ----
+
+def _file_create_response(path: str, sha: str) -> dict:
+    return {
+        "content": {
+            "name": path.split("/")[-1],
+            "path": path,
+            "sha": sha,
+            "html_url": f"https://github.com/org/test-notes/blob/main/{path}",
+        },
+        "commit": {"sha": "commit-x"},
+    }
+
+
+def test_write_with_folder_creates_at_nested_path():
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),          # __init__
+            _mock_resp(_tree_resp([])),               # write: tree lookup, no collision
+        ]
+        client.put.return_value = _mock_resp(
+            _file_create_response("notes/marketing/comp.md", "new-sha"),
+            status_code=201,
+        )
+
+        result = GitHubFilesAdapter().write("comp", "x", folder="marketing")
+
+    assert result["status"] == "created"
+    assert result["slug"] == "comp"
+    assert result["folder"] == "marketing"
+    assert result["path"] == "notes/marketing/comp.md"
+    assert result["id"] == "new-sha"
+    # PUT went to the nested path
+    put_url = client.put.call_args[0][0]
+    assert put_url.endswith("/contents/notes/marketing/comp.md")
+    # No sha on create
+    assert "sha" not in client.put.call_args[1]["json"]
+
+
+def test_write_to_same_folder_takes_update_path():
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(_tree_resp(["notes/marketing/comp.md"])),
+        ]
+        client.put.return_value = _mock_resp(
+            _file_create_response("notes/marketing/comp.md", "updated-sha"),
+        )
+
+        result = GitHubFilesAdapter().write("comp", "new content", folder="marketing")
+
+    assert result["status"] == "updated"
+    # sha came from tree, included on PUT
+    put_body = client.put.call_args[1]["json"]
+    assert put_body["sha"] == "blob-notes/marketing/comp.md"
+
+
+def test_write_collision_in_different_folder_raises_409():
+    from tools.integrations.notes.adapter import NotesAdapterError
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(_tree_resp(["notes/sales/comp.md"])),  # slug already in sales/
+        ]
+
+        with pytest.raises(NotesAdapterError) as excinfo:
+            GitHubFilesAdapter().write("comp", "x", folder="marketing")
+
+    assert excinfo.value.status == 409
+    assert "sales" in excinfo.value.body  # mentions the folder it's in
+    assert "comp" in excinfo.value.body
+    client.put.assert_not_called()
+
+
+def test_write_without_folder_collides_with_folder_slug():
+    from tools.integrations.notes.adapter import NotesAdapterError
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(_tree_resp(["notes/marketing/comp.md"])),
+        ]
+
+        with pytest.raises(NotesAdapterError) as excinfo:
+            GitHubFilesAdapter().write("comp", "x")  # no folder
+
+    assert excinfo.value.status == 409
+    client.put.assert_not_called()
+
+
+def test_write_without_folder_to_existing_root_slug_updates():
+    """No folder + slug exists at root → update path (no collision)."""
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(_tree_resp(["notes/manifesto.md"])),
+        ]
+        client.put.return_value = _mock_resp(
+            _file_create_response("notes/manifesto.md", "new"),
+        )
+
+        result = GitHubFilesAdapter().write("manifesto", "v2")
+
+    assert result["status"] == "updated"
+    assert result["folder"] is None
+
+
+def test_write_validates_folder_name():
+    from tools.integrations.notes.adapter import NotesAdapterError
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.return_value = _mock_resp(_repo_meta("main"))
+
+        with pytest.raises(NotesAdapterError) as excinfo:
+            GitHubFilesAdapter().write("foo", "x", folder="../etc")
+
+    assert excinfo.value.status == 400
+    # No tree call, no put call
+    # client.get was called once (in __init__); subsequent should not happen
+    assert client.get.call_count == 1
+    client.put.assert_not_called()
