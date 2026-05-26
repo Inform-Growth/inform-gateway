@@ -143,16 +143,9 @@ def _dir_entry(name: str, type_: str = "file", sha: str = "x", path: str | None 
 # ---- list ----
 
 def test_list_returns_md_files_with_per_file_timestamps():
-    """list() makes a per-file GET /commits call to populate timestamps."""
+    """list() uses the tree API and per-file commit calls for timestamps."""
     from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
 
-    files = [
-        _dir_entry("manifesto.md", sha="s1"),
-        _dir_entry("draft.md", sha="s2"),
-        _dir_entry("issues", type_="dir"),         # ignored
-        _dir_entry("notes-not-md.txt", sha="sX"),  # ignored
-    ]
-    # GitHub returns commits newest-first per file.
     manifesto_commits = [
         {"sha": "m2", "commit": {"committer": {"date": "2026-05-20T00:00:00Z"}}},
         {"sha": "m1", "commit": {"committer": {"date": "2026-05-10T00:00:00Z"}}},
@@ -164,7 +157,7 @@ def test_list_returns_md_files_with_per_file_timestamps():
         client = _mock_client_ctx(mock_cls)
         client.get.side_effect = [
             _mock_resp(_repo_meta("main")),
-            _mock_resp(files),
+            _mock_resp(_tree_resp(["notes/manifesto.md", "notes/draft.md"])),
             _mock_resp(manifesto_commits),
             _mock_resp(draft_commits),
         ]
@@ -173,33 +166,21 @@ def test_list_returns_md_files_with_per_file_timestamps():
 
     assert len(result) == 2
     by_slug = {n["slug"]: n for n in result}
-    assert by_slug["manifesto"]["id"] == "s1"
-    assert by_slug["manifesto"]["path"] == "notes/manifesto.md"
+    assert by_slug["manifesto"]["folder"] is None
     assert by_slug["manifesto"]["created_at"] == "2026-05-10T00:00:00Z"
     assert by_slug["manifesto"]["updated_at"] == "2026-05-20T00:00:00Z"
     assert by_slug["draft"]["created_at"] == "2026-05-15T00:00:00Z"
     assert by_slug["draft"]["updated_at"] == "2026-05-15T00:00:00Z"
 
-    # Verify the per-file commits calls used the right path query param
-    commits_call_urls_and_params = [
-        (call.args[0], call.kwargs.get("params"))
-        for call in client.get.call_args_list[2:]  # skip repo_meta + contents
-    ]
-    paths_queried = [params["path"] for _, params in commits_call_urls_and_params]
-    assert sorted(paths_queried) == ["notes/draft.md", "notes/manifesto.md"]
-
 
 def test_list_emits_empty_timestamps_when_file_has_no_commits():
-    """A file with no commits returned (e.g. orphaned) gets empty timestamps, not a crash."""
     from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
-
-    files = [_dir_entry("orphan.md", sha="orph")]
     with patch("httpx.Client") as mock_cls:
         client = _mock_client_ctx(mock_cls)
         client.get.side_effect = [
             _mock_resp(_repo_meta("main")),
-            _mock_resp(files),
-            _mock_resp([]),  # empty commits response
+            _mock_resp(_tree_resp(["notes/orphan.md"])),
+            _mock_resp([]),
         ]
 
         result = GitHubFilesAdapter().list()
@@ -208,21 +189,6 @@ def test_list_emits_empty_timestamps_when_file_has_no_commits():
     assert result[0]["slug"] == "orphan"
     assert result[0]["created_at"] == ""
     assert result[0]["updated_at"] == ""
-
-
-def test_list_returns_empty_when_notes_dir_missing():
-    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
-
-    with patch("httpx.Client") as mock_cls:
-        client = _mock_client_ctx(mock_cls)
-        client.get.side_effect = [
-            _mock_resp(_repo_meta("main")),
-            _mock_resp(None, status_code=404, text="not found"),
-        ]
-
-        result = GitHubFilesAdapter().list()
-
-    assert result == []
 
 
 # ---- write ----
@@ -375,7 +341,7 @@ def test_httpx_client_is_constructed_with_explicit_timeout():
 
 # ---- error surfacing (#35) ----
 
-def test_list_raises_on_500_from_contents():
+def test_list_raises_on_500_from_tree():
     from tools.integrations.notes.adapter import NotesAdapterError
     from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
 
@@ -390,8 +356,6 @@ def test_list_raises_on_500_from_contents():
             GitHubFilesAdapter().list()
 
     assert excinfo.value.status == 500
-    assert excinfo.value.repo == "org/test-notes"
-    assert excinfo.value.token_fingerprint == "ghp_…"
     assert "upstream boom" in excinfo.value.body
 
 

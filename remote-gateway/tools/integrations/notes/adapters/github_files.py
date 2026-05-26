@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import os
 import re
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -25,6 +26,33 @@ from tools.integrations.notes.adapter import NotesAdapterError
 _HTTP_TIMEOUT_SECONDS = 30
 
 _FOLDER_RE = re.compile(r"^[a-z0-9_-]+$")
+
+
+def _parse_iso_or_400(value: str | None, param_name: str) -> str | None:
+    """Validate an ISO-8601 string. Returns the value unchanged, or None.
+
+    Raises NotesAdapterError(400) on invalid input.
+    """
+    if value is None:
+        return None
+    try:
+        # Accept both "Z" suffix and explicit offset
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as e:
+        raise NotesAdapterError(
+            status=400,
+            body=f"invalid date for {param_name}: {value!r} ({e})",
+            repo=os.environ.get("NOTES_REPO", ""),
+            token_fingerprint="",
+        ) from e
+    return value
+
+
+def _iso_to_sortkey(value: str) -> float:
+    """Convert ISO-8601 to a sortable float. Empty → 0.0 (sorts last via the tuple trick)."""
+    if not value:
+        return 0.0
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
 
 
 def _validate_folder(folder: str | None) -> None:
@@ -211,31 +239,49 @@ class GitHubFilesAdapter:
             "folder": resolved_folder,
         }
 
-    def list(self) -> list[dict]:  # noqa: A003 — Protocol shape
-        """Return all top-level `notes/*.md` files with commit-derived timestamps.
+    def list(  # noqa: A003 — Protocol shape
+        self,
+        folder: str | None = None,
+        prefix: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict]:
+        """Return notes under notes/, with optional server-side filters.
 
-        For each file, issues a per-file `GET /commits?path=notes/{slug}.md`
-        to derive `created_at` (oldest commit) and `updated_at` (newest).
-        Files with no commit history (e.g. orphaned via UI) get empty
-        timestamps rather than failing. Listing 30 notes = ~31 API calls.
+        - folder=X: only entries under notes/X/
+        - prefix=Y: only slugs starting with Y (case-sensitive)
+        - since/until: ISO-8601 timestamps; filter by updated_at (commit-derived)
+        - limit: cap results (clamped to [1, 100])
+
+        Results sorted by updated_at descending. Orphans (no commit history)
+        sort last with empty timestamps.
         """
+        _validate_folder(folder)
+        since_str = _parse_iso_or_400(since, "since")
+        until_str = _parse_iso_or_400(until, "until")
+
+        tree = self._tree()
+        # Filter to .md files under notes/ at the supported levels.
+        entries: list[tuple[dict, str, str | None]] = []
+        for entry in tree:
+            if entry.get("type") != "blob":
+                continue
+            parsed = _parse_path(entry["path"])
+            if parsed is None:
+                continue
+            slug, slug_folder = parsed
+            if folder is not None and slug_folder != folder:
+                continue
+            if prefix is not None and not slug.startswith(prefix):
+                continue
+            entries.append((entry, slug, slug_folder))
+
+        # Fetch commits for the post-filter set only.
         try:
             with httpx.Client(timeout=_HTTP_TIMEOUT_SECONDS) as client:
-                contents = client.get(
-                    self._contents_url("notes"), headers=self._headers()
-                )
-                if contents.status_code == 404:
-                    return []
-                contents.raise_for_status()
-
-                files = [
-                    entry
-                    for entry in contents.json()
-                    if entry["type"] == "file" and entry["name"].endswith(".md")
-                ]
-
-                result: list[dict] = []
-                for entry in files:
+                results: list[dict] = []
+                for entry, slug, slug_folder in entries:
                     path = entry["path"]
                     commits_resp = client.get(
                         f"{self._repo_url()}/commits",
@@ -245,30 +291,41 @@ class GitHubFilesAdapter:
                     commits_resp.raise_for_status()
                     commits = commits_resp.json()
                     if commits:
-                        # GitHub returns newest-first.
                         updated_at = commits[0]["commit"]["committer"]["date"]
                         created_at = commits[-1]["commit"]["committer"]["date"]
                     else:
                         updated_at = ""
                         created_at = ""
-                    slug = entry["name"][: -len(".md")]
-                    result.append(
-                        {
-                            "slug": slug,
-                            "id": entry["sha"],
-                            "url": entry["html_url"],
-                            "path": path,
-                            "created_at": created_at,
-                            "updated_at": updated_at,
-                        }
-                    )
-                return result
+
+                    # since/until window filter (string compare works for ISO-8601 Z form)
+                    if since_str and (not updated_at or updated_at < since_str):
+                        continue
+                    if until_str and (updated_at and updated_at > until_str):
+                        continue
+
+                    results.append({
+                        "slug": slug,
+                        "id": entry["sha"],
+                        "url": f"https://github.com/{self._repo}/blob/{self._branch}/{path}",
+                        "path": path,
+                        "folder": slug_folder,
+                        "created_at": created_at,
+                        "updated_at": updated_at,
+                    })
         except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                return []
             raise self._wrap(e) from e
         except httpx.RequestError as e:
             raise self._wrap(e) from e
+
+        # Sort by updated_at desc; orphans (empty) sort last.
+        results.sort(key=lambda n: (n["updated_at"] == "", -_iso_to_sortkey(n["updated_at"])))
+
+        # Limit (clamp to [1, 100])
+        if limit is not None:
+            effective_limit = max(1, min(100, limit))
+            results = results[:effective_limit]
+
+        return results
 
     def write(self, slug: str, content: str, folder: str | None = None) -> dict:
         """Create or update notes/{folder}/{slug}.md (or notes/{slug}.md if folder is None).

@@ -538,3 +538,217 @@ def test_delete_without_folder_returns_not_found_when_tree_misses():
 
     assert result["status"] == "not_found"
     client.request.assert_not_called()
+
+
+# ---- list with filters ----
+
+def _commit_resp(date: str, sha: str = "c1") -> dict:
+    return {"sha": sha, "commit": {"committer": {"date": date}}}
+
+
+def test_list_recursive_default_returns_all_md_under_notes():
+    """No filters: returns every .md file recursively, including root and folders."""
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(_tree_resp([
+                "notes/manifesto.md",
+                "notes/marketing/comp.md",
+                "notes/sales/lead.md",
+                "notes/issues",  # directory entry — ignored even though no .md
+                "other/file.md",  # not under notes/ — ignored
+                "notes/issues/foo/bar.md",  # too deep — ignored
+            ])),
+            # One per-file commits call (3 .md files)
+            _mock_resp([_commit_resp("2026-05-20T00:00:00Z", sha="cm")]),
+            _mock_resp([_commit_resp("2026-05-22T00:00:00Z", sha="cmkt")]),
+            _mock_resp([_commit_resp("2026-05-18T00:00:00Z", sha="cs")]),
+        ]
+
+        result = GitHubFilesAdapter().list()
+
+    assert len(result) == 3
+    slugs = [n["slug"] for n in result]
+    # Sorted by updated_at descending
+    assert slugs == ["comp", "manifesto", "lead"]
+    by_slug = {n["slug"]: n for n in result}
+    assert by_slug["manifesto"]["folder"] is None
+    assert by_slug["comp"]["folder"] == "marketing"
+    assert by_slug["lead"]["folder"] == "sales"
+
+
+def test_list_folder_filter_returns_only_that_folder():
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(_tree_resp([
+                "notes/manifesto.md",
+                "notes/marketing/comp-1.md",
+                "notes/marketing/comp-2.md",
+                "notes/sales/lead.md",
+            ])),
+            _mock_resp([_commit_resp("2026-05-22T00:00:00Z")]),
+            _mock_resp([_commit_resp("2026-05-21T00:00:00Z")]),
+        ]
+
+        result = GitHubFilesAdapter().list(folder="marketing")
+
+    assert len(result) == 2
+    assert all(n["folder"] == "marketing" for n in result)
+
+
+def test_list_prefix_filter_returns_starts_with_slug():
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(_tree_resp([
+                "notes/marketing/competitor-watch-2026-05-25.md",
+                "notes/marketing/competitor-watch-2026-05-24.md",
+                "notes/marketing/content-drafts-2026-05-25.md",
+            ])),
+            _mock_resp([_commit_resp("2026-05-25T00:00:00Z")]),
+            _mock_resp([_commit_resp("2026-05-24T00:00:00Z")]),
+        ]
+
+        result = GitHubFilesAdapter().list(prefix="competitor-watch-")
+
+    assert len(result) == 2
+    assert all(n["slug"].startswith("competitor-watch-") for n in result)
+
+
+def test_list_since_until_filters_by_updated_at():
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(_tree_resp([
+                "notes/a.md",  # old
+                "notes/b.md",  # in window
+                "notes/c.md",  # future
+            ])),
+            _mock_resp([_commit_resp("2026-05-01T00:00:00Z")]),
+            _mock_resp([_commit_resp("2026-05-15T00:00:00Z")]),
+            _mock_resp([_commit_resp("2026-06-01T00:00:00Z")]),
+        ]
+
+        result = GitHubFilesAdapter().list(
+            since="2026-05-10T00:00:00Z",
+            until="2026-05-20T00:00:00Z",
+        )
+
+    assert len(result) == 1
+    assert result[0]["slug"] == "b"
+
+
+def test_list_limit_caps_results():
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(_tree_resp(["notes/a.md", "notes/b.md", "notes/c.md"])),
+            _mock_resp([_commit_resp("2026-05-01T00:00:00Z")]),
+            _mock_resp([_commit_resp("2026-05-02T00:00:00Z")]),
+            _mock_resp([_commit_resp("2026-05-03T00:00:00Z")]),
+        ]
+
+        result = GitHubFilesAdapter().list(limit=2)
+
+    assert len(result) == 2
+
+
+def test_list_limit_clamped_to_range():
+    """limit=0 and limit>100 are clamped to [1, 100]."""
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    paths = [f"notes/n{i}.md" for i in range(5)]
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(_tree_resp(paths)),
+            *[_mock_resp([_commit_resp(f"2026-05-0{i+1}T00:00:00Z")]) for i in range(5)],
+        ]
+
+        result = GitHubFilesAdapter().list(limit=0)  # clamped up to 1
+
+    assert len(result) == 1
+
+
+def test_list_combines_filters():
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(_tree_resp([
+                "notes/marketing/competitor-watch-2026-05-25.md",
+                "notes/marketing/competitor-watch-2026-05-20.md",  # too old (filtered by since)
+                "notes/marketing/content-drafts-2026-05-25.md",    # wrong prefix (pre-filtered)
+                "notes/sales/competitor-watch-2026-05-25.md",      # wrong folder (pre-filtered)
+            ])),
+            # Two entries pass folder+prefix pre-filters; both need commit calls.
+            _mock_resp([_commit_resp("2026-05-25T00:00:00Z")]),
+            _mock_resp([_commit_resp("2026-05-20T00:00:00Z")]),  # excluded by since
+        ]
+
+        result = GitHubFilesAdapter().list(
+            folder="marketing",
+            prefix="competitor-watch-",
+            since="2026-05-24T00:00:00Z",
+        )
+
+    assert len(result) == 1
+    assert result[0]["slug"] == "competitor-watch-2026-05-25"
+
+
+def test_list_empty_when_no_matches():
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(_tree_resp([])),
+        ]
+
+        result = GitHubFilesAdapter().list(folder="marketing")
+
+    assert result == []
+
+
+def test_list_invalid_since_raises_400():
+    from tools.integrations.notes.adapter import NotesAdapterError
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.return_value = _mock_resp(_repo_meta("main"))
+
+        with pytest.raises(NotesAdapterError) as excinfo:
+            GitHubFilesAdapter().list(since="not-a-date")
+
+    assert excinfo.value.status == 400
+    assert "invalid date" in excinfo.value.body
+
+
+def test_list_orphans_sort_last():
+    """Files with no commit history get empty timestamps and sort after dated ones."""
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(_tree_resp(["notes/dated.md", "notes/orphan.md"])),
+            _mock_resp([_commit_resp("2026-05-25T00:00:00Z")]),
+            _mock_resp([]),  # no commits for orphan
+        ]
+
+        result = GitHubFilesAdapter().list()
+
+    assert [n["slug"] for n in result] == ["dated", "orphan"]
+    assert result[1]["updated_at"] == ""
