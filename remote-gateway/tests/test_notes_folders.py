@@ -219,3 +219,21 @@ def test_find_in_tree_ignores_non_blob_entries():
     ]
     assert _find_in_tree(tree, "marketing") is None  # 'marketing' is a tree, not a slug
     assert _find_in_tree(tree, "manifesto") == ("notes/manifesto.md", None, "s1")
+
+
+# ---- _path_for ----
+
+def test_path_for_root_slug():
+    adapter = _make_adapter()
+    assert adapter._path_for("manifesto") == "notes/manifesto.md"
+
+
+def test_path_for_slug_with_folder():
+    adapter = _make_adapter()
+    assert adapter._path_for("competitor-watch-2026-05-25", folder="marketing") == \
+        "notes/marketing/competitor-watch-2026-05-25.md"
+
+
+def test_path_for_none_folder_same_as_omitting():
+    adapter = _make_adapter()
+    assert adapter._path_for("foo", folder=None) == "notes/foo.md"

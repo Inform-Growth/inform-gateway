@@ -138,8 +138,10 @@ class GitHubFilesAdapter:
     def _contents_url(self, path: str) -> str:
         return f"{self._repo_url()}/contents/{path}"
 
-    def _path_for(self, slug: str) -> str:
-        return f"notes/{slug}.md"
+    def _path_for(self, slug: str, folder: str | None = None) -> str:
+        if folder is None:
+            return f"notes/{slug}.md"
+        return f"notes/{folder}/{slug}.md"
 
     def _tree(self) -> list[dict]:
         """Fetch the recursive git tree for the default branch.
