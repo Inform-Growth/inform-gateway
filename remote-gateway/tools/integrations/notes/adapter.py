@@ -41,33 +41,62 @@ class NotesAdapterError(RuntimeError):
 
 
 class NotesAdapter(Protocol):
-    """Storage backend contract for notes."""
+    """Storage backend contract for notes.
 
-    def write(self, slug: str, content: str) -> dict:
+    Slugs are globally unique across folders. `folder` is an optional partition
+    accepted on every CRUD operation; backends without a folder concept may
+    ignore it but must accept the kwarg without raising. `write` raises
+    NotesAdapterError(409) on cross-folder slug collision.
+    """
+
+    def write(self, slug: str, content: str, folder: str | None = None) -> dict:
         """Create or update a note.
 
-        Returns {"slug": str, "id": str, "url": str, "status": "created" | "updated"}.
+        Returns {"slug": str, "id": str, "url": str, "path": str,
+                 "folder": str | None, "status": "created" | "updated"}.
+        Raises NotesAdapterError(409) if slug exists in a different folder.
         Adapters MAY include additional adapter-specific fields.
         """
         ...
 
-    def read(self, slug: str) -> dict | None:
+    def read(self, slug: str, folder: str | None = None) -> dict | None:
         """Read a note by slug.
 
-        Returns {"slug": str, "content": str, "id": str, "url": str, ...} or None.
+        With folder=X: hint is authoritative — returns None on miss without
+        searching other folders. Without folder: searches all folders.
+
+        Returns {"slug": str, "content": str, "id": str, "url": str,
+                 "path": str, "folder": str | None, ...} or None.
         """
         ...
 
-    def list(self) -> list[dict]:
-        """List all notes.
+    def list(  # noqa: A003 — Protocol shape
+        self,
+        folder: str | None = None,
+        prefix: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict]:
+        """List notes with optional server-side filters.
 
-        Returns [{"slug": str, "id": str, "url": str, "created_at": str, "updated_at": str}, ...].
-        Returns an empty list if no notes exist. Ordering is adapter-defined.
+        - folder=X: only entries under that folder.
+        - prefix=Y: only slugs starting with Y (case-sensitive).
+        - since/until: ISO-8601 timestamps; filter by updated_at.
+        - limit: cap results (adapter-specific clamping permitted).
+
+        Returns [{"slug": str, "id": str, "url": str, "path": str,
+                  "folder": str | None, "created_at": str, "updated_at": str}, ...].
+        Returns an empty list if no notes match. Ordering is adapter-defined
+        (the reference adapter sorts by updated_at descending).
         """
         ...
 
-    def delete(self, slug: str) -> dict:
-        """Delete (or close) a note.
+    def delete(self, slug: str, folder: str | None = None) -> dict:
+        """Delete a note.
+
+        With folder=X: hint is authoritative — returns not_found on miss without
+        searching other folders. Without folder: searches all folders.
 
         Returns {"slug": str, "status": "deleted" | "not_found"}.
         """
