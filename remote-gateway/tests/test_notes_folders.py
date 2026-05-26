@@ -469,3 +469,72 @@ def test_read_validates_folder_name():
             GitHubFilesAdapter().read("foo", folder="../etc")
 
     assert excinfo.value.status == 400
+
+
+# ---- delete with folder hint ----
+
+def test_delete_with_folder_hint_deletes_at_nested_path():
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    existing = _file_payload("bye", sha="del-sha", path="notes/marketing/comp.md")
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(existing),
+        ]
+        client.request.return_value = _mock_resp({"commit": {"sha": "c1"}})
+
+        result = GitHubFilesAdapter().delete("comp", folder="marketing")
+
+    assert result["status"] == "deleted"
+    assert result["path"] == "notes/marketing/comp.md"
+    assert client.request.call_args[0][0] == "DELETE"
+    assert client.request.call_args[1]["json"]["sha"] == "del-sha"
+
+
+def test_delete_with_folder_hint_returns_not_found_on_404_no_fallthrough():
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(None, status_code=404, text="not found"),
+        ]
+
+        result = GitHubFilesAdapter().delete("ghost", folder="marketing")
+
+    assert result["status"] == "not_found"
+    client.request.assert_not_called()
+
+
+def test_delete_without_folder_uses_tree_to_locate():
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(_tree_resp(["notes/marketing/comp.md"])),
+        ]
+        client.request.return_value = _mock_resp({"commit": {"sha": "c1"}})
+
+        result = GitHubFilesAdapter().delete("comp")
+
+    assert result["status"] == "deleted"
+    assert result["path"] == "notes/marketing/comp.md"
+    # No content-API GET — tree gave us the sha
+    assert client.get.call_count == 2  # init + tree only
+
+
+def test_delete_without_folder_returns_not_found_when_tree_misses():
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(_tree_resp([])),
+        ]
+
+        result = GitHubFilesAdapter().delete("ghost")
+
+    assert result["status"] == "not_found"
+    client.request.assert_not_called()

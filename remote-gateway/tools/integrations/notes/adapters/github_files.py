@@ -329,17 +329,40 @@ class GitHubFilesAdapter:
             "status": "updated" if existing_sha else "created",
         }
 
-    def delete(self, slug: str) -> dict:
-        """Delete notes/{slug}.md on the default branch."""
-        path = self._path_for(slug)
-        try:
-            with httpx.Client(timeout=_HTTP_TIMEOUT_SECONDS) as client:
-                get_resp = client.get(self._contents_url(path), headers=self._headers())
+    def delete(self, slug: str, folder: str | None = None) -> dict:
+        """Delete a note. With folder hint: direct path. Without: tree lookup.
+
+        404 (either path) returns {status: not_found, slug}.
+        """
+        _validate_folder(folder)
+
+        path: str
+        sha: str
+
+        if folder is not None:
+            # Direct contents GET to fetch sha + verify existence.
+            path = self._path_for(slug, folder=folder)
+            try:
+                with httpx.Client(timeout=_HTTP_TIMEOUT_SECONDS) as client:
+                    get_resp = client.get(
+                        self._contents_url(path), headers=self._headers()
+                    )
                 if get_resp.status_code == 404:
                     return {"status": "not_found", "slug": slug}
                 get_resp.raise_for_status()
                 sha = get_resp.json()["sha"]
+            except httpx.HTTPStatusError as e:
+                raise self._wrap(e) from e
+            except httpx.RequestError as e:
+                raise self._wrap(e) from e
+        else:
+            found = _find_in_tree(self._tree(), slug)
+            if found is None:
+                return {"status": "not_found", "slug": slug}
+            path, _resolved_folder, sha = found
 
+        try:
+            with httpx.Client(timeout=_HTTP_TIMEOUT_SECONDS) as client:
                 del_resp = client.request(
                     "DELETE",
                     self._contents_url(path),

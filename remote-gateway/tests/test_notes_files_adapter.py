@@ -318,15 +318,12 @@ def test_write_raises_on_sha_conflict():
 def test_delete_removes_existing_file():
     from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
 
-    existing = _file_payload("bye", sha="del-sha", path="notes/to-delete.md")
     with patch("httpx.Client") as mock_cls:
         client = _mock_client_ctx(mock_cls)
         client.get.side_effect = [
             _mock_resp(_repo_meta("main")),
-            _mock_resp(existing),
+            _mock_resp(_tree_resp(["notes/to-delete.md"])),
         ]
-        # Impl uses client.request("DELETE", ...) because the GH contents API
-        # requires a body on DELETE and httpx.Client.delete() doesn't accept json=.
         client.request.return_value = _mock_resp({"commit": {"sha": "c3"}})
 
         result = GitHubFilesAdapter().delete("to-delete")
@@ -336,7 +333,7 @@ def test_delete_removes_existing_file():
     assert result["path"] == "notes/to-delete.md"
     assert client.request.call_args[0][0] == "DELETE"
     del_body = client.request.call_args[1]["json"]
-    assert del_body["sha"] == "del-sha"
+    assert del_body["sha"] == "blob-notes/to-delete.md"
     assert del_body["message"] == "notes: delete to-delete via gateway"
     assert del_body["branch"] == "main"
 
@@ -348,7 +345,7 @@ def test_delete_missing_returns_not_found():
         client = _mock_client_ctx(mock_cls)
         client.get.side_effect = [
             _mock_resp(_repo_meta("main")),
-            _mock_resp(None, status_code=404, text="not found"),
+            _mock_resp(_tree_resp([])),
         ]
 
         result = GitHubFilesAdapter().delete("ghost")
