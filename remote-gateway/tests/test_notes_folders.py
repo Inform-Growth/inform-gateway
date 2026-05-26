@@ -752,3 +752,42 @@ def test_list_orphans_sort_last():
 
     assert [n["slug"] for n in result] == ["dated", "orphan"]
     assert result[1]["updated_at"] == ""
+
+
+# ---- tool-layer: write_note ----
+
+def test_write_note_tool_passes_folder_through():
+    from tools.integrations.notes import tools as notes_tools
+
+    fake_adapter = MagicMock()
+    fake_adapter.write.return_value = {
+        "slug": "comp",
+        "id": "sha",
+        "url": "https://example/blob/main/notes/marketing/comp.md",
+        "path": "notes/marketing/comp.md",
+        "folder": "marketing",
+        "status": "created",
+    }
+    with patch("tools.integrations.notes.tools.get_adapter", return_value=fake_adapter):
+        result = notes_tools.write_note("comp", "content", folder="marketing")
+
+    fake_adapter.write.assert_called_once_with("comp", "content", folder="marketing")
+    assert result["status"] == "created"
+    assert result["slug"] == "comp"
+    assert result["folder"] == "marketing"
+    assert result["html_url"].endswith("notes/marketing/comp.md")
+
+
+def test_write_note_tool_omits_folder_when_none():
+    from tools.integrations.notes import tools as notes_tools
+
+    fake_adapter = MagicMock()
+    fake_adapter.write.return_value = {
+        "slug": "x", "id": "s", "url": "u", "path": "notes/x.md",
+        "folder": None, "status": "created",
+    }
+    with patch("tools.integrations.notes.tools.get_adapter", return_value=fake_adapter):
+        result = notes_tools.write_note("x", "c")
+
+    fake_adapter.write.assert_called_once_with("x", "c", folder=None)
+    assert result["folder"] is None

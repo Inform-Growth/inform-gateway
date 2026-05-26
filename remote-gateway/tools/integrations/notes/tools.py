@@ -54,23 +54,30 @@ def read_note(slug: str) -> dict:
     }
 
 
-def write_note(slug: str, content: str) -> dict:
+def write_note(slug: str, content: str, folder: str | None = None) -> dict:
     """Create or update a note in the configured notes backend.
 
-    If a note with this slug already exists, its content is updated in place.
-    Otherwise a new note is created.
+    If a note with this slug already exists in the same folder, its content is
+    updated in place. If the slug already exists in a DIFFERENT folder, this
+    raises an error — slugs are globally unique across all folders.
 
     Args:
-        slug: Short identifier for the note (becomes the filename: notes/<slug>.md).
+        slug: Short identifier for the note (becomes the filename: notes/<folder>/<slug>.md).
         content: Full markdown content of the note.
+        folder: Optional folder under notes/ (e.g. "marketing", "sales", "executive",
+            "architecture", "shadow", "jaron"). Folders are dynamic — pass any
+            lowercase a-z/0-9/-/_ string; new folders materialize on first write.
+            If omitted, writes to notes/<slug>.md (root, backwards-compatible).
 
     Returns:
-        Dict with 'status' (created/updated), 'slug', 'issue_number', 'html_url'.
+        Dict with 'status' (created/updated), 'slug', 'folder', 'issue_number'
+        (always None on the file-based adapter), 'html_url'.
     """
-    result = get_adapter().write(slug, content)
+    result = get_adapter().write(slug, content, folder=folder)
     return {
         "status": result["status"],
         "slug": result["slug"],
+        "folder": result.get("folder"),
         "issue_number": result.get("issue_number"),
         "html_url": result["url"],
     }
