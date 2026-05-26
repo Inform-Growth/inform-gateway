@@ -43,6 +43,51 @@ def _validate_folder(folder: str | None) -> None:
         )
 
 
+def _parse_path(path: str) -> tuple[str, str | None] | None:
+    """Parse a tree entry path into (slug, folder).
+
+    Accepts:
+      - 'notes/foo.md'         -> ('foo', None)
+      - 'notes/marketing/foo.md' -> ('foo', 'marketing')
+
+    Rejects anything else (3+ levels deep, non-.md files, paths not under notes/).
+    Returns None for rejects.
+    """
+    if not path.endswith(".md"):
+        return None
+    parts = path.split("/")
+    if len(parts) < 2 or parts[0] != "notes":
+        return None
+    if len(parts) == 2:
+        # notes/<name>.md
+        slug = parts[1][: -len(".md")]
+        return (slug, None) if slug else None
+    if len(parts) == 3:
+        # notes/<folder>/<name>.md
+        folder, name = parts[1], parts[2]
+        slug = name[: -len(".md")]
+        return (slug, folder) if slug and folder else None
+    # Deeper nesting not supported.
+    return None
+
+
+def _find_in_tree(tree: list[dict], slug: str) -> tuple[str, str | None, str] | None:
+    """Find a blob entry matching the slug. Returns (path, folder, sha) or None.
+
+    Only inspects type='blob' entries. Folder is None for root-level slugs.
+    """
+    for entry in tree:
+        if entry.get("type") != "blob":
+            continue
+        parsed = _parse_path(entry["path"])
+        if parsed is None:
+            continue
+        s, folder = parsed
+        if s == slug:
+            return entry["path"], folder, entry["sha"]
+    return None
+
+
 class GitHubFilesAdapter:
     """NotesAdapter backed by markdown files under `notes/` in a GitHub repo."""
 

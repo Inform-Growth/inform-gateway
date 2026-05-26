@@ -159,3 +159,63 @@ def test_tree_wraps_http_error():
 
     assert excinfo.value.status == 500
     assert "boom" in excinfo.value.body
+
+
+# ---- _parse_path ----
+
+@pytest.mark.parametrize("path,expected", [
+    ("notes/manifesto.md", ("manifesto", None)),
+    (
+        "notes/marketing/competitor-watch-2026-05-25.md",
+        ("competitor-watch-2026-05-25", "marketing"),
+    ),
+    (
+        "notes/shadow/shadow-2026-05-24-content-drafts.md",
+        ("shadow-2026-05-24-content-drafts", "shadow"),
+    ),
+    ("notes/a/b/c.md", None),       # 3+ levels: ignored
+    ("notes/issues", None),         # not a .md file: ignored
+    ("other/file.md", None),        # not under notes/: ignored
+    ("notes/", None),               # empty/trailing: ignored
+])
+def test_parse_path(path, expected):
+    from tools.integrations.notes.adapters.github_files import _parse_path
+    assert _parse_path(path) == expected
+
+
+# ---- _find_in_tree ----
+
+def test_find_in_tree_returns_path_when_slug_at_root():
+    from tools.integrations.notes.adapters.github_files import _find_in_tree
+    tree = [
+        {"path": "notes/manifesto.md", "type": "blob", "sha": "s1"},
+        {"path": "notes/marketing/competitor-watch-2026-05-25.md", "type": "blob", "sha": "s2"},
+    ]
+    assert _find_in_tree(tree, "manifesto") == ("notes/manifesto.md", None, "s1")
+
+
+def test_find_in_tree_returns_path_when_slug_in_folder():
+    from tools.integrations.notes.adapters.github_files import _find_in_tree
+    tree = [
+        {"path": "notes/manifesto.md", "type": "blob", "sha": "s1"},
+        {"path": "notes/marketing/competitor-watch-2026-05-25.md", "type": "blob", "sha": "s2"},
+    ]
+    assert _find_in_tree(tree, "competitor-watch-2026-05-25") == (
+        "notes/marketing/competitor-watch-2026-05-25.md", "marketing", "s2"
+    )
+
+
+def test_find_in_tree_returns_none_when_not_found():
+    from tools.integrations.notes.adapters.github_files import _find_in_tree
+    tree = [{"path": "notes/manifesto.md", "type": "blob", "sha": "s1"}]
+    assert _find_in_tree(tree, "ghost") is None
+
+
+def test_find_in_tree_ignores_non_blob_entries():
+    from tools.integrations.notes.adapters.github_files import _find_in_tree
+    tree = [
+        {"path": "notes/marketing", "type": "tree", "sha": "t1"},
+        {"path": "notes/manifesto.md", "type": "blob", "sha": "s1"},
+    ]
+    assert _find_in_tree(tree, "marketing") is None  # 'marketing' is a tree, not a slug
+    assert _find_in_tree(tree, "manifesto") == ("notes/manifesto.md", None, "s1")
