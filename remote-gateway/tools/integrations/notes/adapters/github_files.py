@@ -173,9 +173,23 @@ class GitHubFilesAdapter:
 
     # ---- NotesAdapter contract ----
 
-    def read(self, slug: str) -> dict | None:
-        """Return note dict with slug, content, id (sha), url, path; None if not found."""
-        path = self._path_for(slug)
+    def read(self, slug: str, folder: str | None = None) -> dict | None:
+        """Return note dict with slug, content, id, url, path, folder; None if not found.
+
+        With folder=X: hits notes/X/{slug}.md directly. 404 → None (authoritative).
+        Without folder: tree lookup finds the unique path, then contents fetch.
+        """
+        _validate_folder(folder)
+
+        if folder is not None:
+            path = self._path_for(slug, folder=folder)
+            resolved_folder: str | None = folder
+        else:
+            found = _find_in_tree(self._tree(), slug)
+            if found is None:
+                return None
+            path, resolved_folder, _ = found
+
         try:
             with httpx.Client(timeout=_HTTP_TIMEOUT_SECONDS) as client:
                 resp = client.get(self._contents_url(path), headers=self._headers())
@@ -188,13 +202,13 @@ class GitHubFilesAdapter:
             raise self._wrap(e) from e
 
         payload = resp.json()
-        content = base64.b64decode(payload["content"]).decode()
         return {
             "slug": slug,
-            "content": content,
+            "content": base64.b64decode(payload["content"]).decode(),
             "id": payload["sha"],
             "url": payload["html_url"],
             "path": payload["path"],
+            "folder": resolved_folder,
         }
 
     def list(self) -> list[dict]:  # noqa: A003 — Protocol shape

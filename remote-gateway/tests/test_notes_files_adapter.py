@@ -99,6 +99,7 @@ def test_read_returns_content_when_file_exists():
         client = _mock_client_ctx(mock_cls)
         client.get.side_effect = [
             _mock_resp(_repo_meta("main")),
+            _mock_resp(_tree_resp(["notes/my-note.md"])),
             _mock_resp(_file_payload("hello world", sha="sha-5", path="notes/my-note.md")),
         ]
 
@@ -109,6 +110,7 @@ def test_read_returns_content_when_file_exists():
     assert result["content"] == "hello world"
     assert result["id"] == "sha-5"
     assert result["path"] == "notes/my-note.md"
+    assert result["folder"] is None
     assert "github.com/org/test-notes/blob/main/notes/my-note.md" in result["url"]
 
 
@@ -119,7 +121,7 @@ def test_read_returns_none_when_missing():
         client = _mock_client_ctx(mock_cls)
         client.get.side_effect = [
             _mock_resp(_repo_meta("main")),
-            _mock_resp(None, status_code=404, text="not found"),
+            _mock_resp(_tree_resp([])),  # empty tree → not found
         ]
 
         result = GitHubFilesAdapter().read("ghost")
@@ -402,13 +404,14 @@ def test_read_raises_on_403_from_contents():
 
     with patch("httpx.Client") as mock_cls:
         client = _mock_client_ctx(mock_cls)
+        # With folder hint: init → direct contents fetch (403 raised from there)
         client.get.side_effect = [
             _mock_resp(_repo_meta("main")),
             _mock_resp(None, status_code=403, text="forbidden"),
         ]
 
         with pytest.raises(NotesAdapterError) as excinfo:
-            GitHubFilesAdapter().read("any-note")
+            GitHubFilesAdapter().read("any-note", folder="marketing")
 
     assert excinfo.value.status == 403
 

@@ -1,6 +1,7 @@
 """Tests for folder-aware behavior on GitHubFilesAdapter."""
 from __future__ import annotations
 
+import base64
 import os
 import sys
 from unittest.mock import MagicMock, patch
@@ -370,3 +371,101 @@ def test_write_validates_folder_name():
     # client.get was called once (in __init__); subsequent should not happen
     assert client.get.call_count == 1
     client.put.assert_not_called()
+
+
+# ---- read with folder hint ----
+
+def _file_payload(content: str, sha: str = "abc123", path: str = "notes/my-note.md") -> dict:
+    return {
+        "name": path.split("/")[-1],
+        "path": path,
+        "sha": sha,
+        "content": base64.b64encode(content.encode()).decode(),
+        "encoding": "base64",
+        "html_url": f"https://github.com/org/test-notes/blob/main/{path}",
+    }
+
+
+def test_read_with_folder_hint_hits_path_directly():
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(_file_payload("hi", sha="s1", path="notes/marketing/foo.md")),
+        ]
+
+        result = GitHubFilesAdapter().read("foo", folder="marketing")
+
+    assert result is not None
+    assert result["content"] == "hi"
+    assert result["folder"] == "marketing"
+    assert result["path"] == "notes/marketing/foo.md"
+    # Second GET (after init) went directly to nested path, no tree call
+    second_url = client.get.call_args_list[1][0][0]
+    assert second_url.endswith("/contents/notes/marketing/foo.md")
+
+
+def test_read_with_folder_hint_returns_none_on_404_no_fallthrough():
+    """Hint is authoritative — 404 returns None, does NOT search the tree."""
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(None, status_code=404, text="not found"),
+        ]
+
+        result = GitHubFilesAdapter().read("foo", folder="marketing")
+
+    assert result is None
+    # Only init + one read call, no tree call
+    assert client.get.call_count == 2
+
+
+def test_read_without_folder_uses_tree_to_locate():
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(_tree_resp(["notes/marketing/foo.md"])),
+            _mock_resp(_file_payload("hi", sha="s1", path="notes/marketing/foo.md")),
+        ]
+
+        result = GitHubFilesAdapter().read("foo")
+
+    assert result is not None
+    assert result["folder"] == "marketing"
+    assert result["content"] == "hi"
+    # Third GET hit the resolved path
+    third_url = client.get.call_args_list[2][0][0]
+    assert third_url.endswith("/contents/notes/marketing/foo.md")
+
+
+def test_read_without_folder_returns_none_when_tree_misses():
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.side_effect = [
+            _mock_resp(_repo_meta("main")),
+            _mock_resp(_tree_resp([])),
+        ]
+
+        result = GitHubFilesAdapter().read("ghost")
+
+    assert result is None
+    assert client.get.call_count == 2  # init + tree, no contents fetch
+
+
+def test_read_validates_folder_name():
+    from tools.integrations.notes.adapter import NotesAdapterError
+    from tools.integrations.notes.adapters.github_files import GitHubFilesAdapter
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.return_value = _mock_resp(_repo_meta("main"))
+
+        with pytest.raises(NotesAdapterError) as excinfo:
+            GitHubFilesAdapter().read("foo", folder="../etc")
+
+    assert excinfo.value.status == 400
