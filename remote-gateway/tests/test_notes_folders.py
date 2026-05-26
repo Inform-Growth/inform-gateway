@@ -101,3 +101,61 @@ def test_validate_folder_accepts_none():
 
     # None means "root" — always allowed.
     _validate_folder(None)
+
+
+def _tree_resp(paths: list[str], truncated: bool = False) -> dict:
+    """Build a fake git-trees API response.
+
+    Each path becomes a blob entry. Non-leaf path segments are implicit
+    (the real API includes tree entries too, but our code filters by type='blob'
+    so we only need the blobs here).
+    """
+    return {
+        "sha": "tree-sha",
+        "tree": [
+            {
+                "path": p,
+                "type": "blob",
+                "sha": f"blob-{p}",
+                "size": 100,
+                "url": "https://api.github.com/repos/org/test-notes/git/blobs/x",
+            }
+            for p in paths
+        ],
+        "truncated": truncated,
+    }
+
+
+# ---- _tree ----
+
+def test_tree_calls_recursive_git_trees_endpoint():
+    adapter = _make_adapter()
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.return_value = _mock_resp(_tree_resp([
+            "notes/manifesto.md",
+            "notes/marketing/competitor-watch-2026-05-25.md",
+        ]))
+
+        tree = adapter._tree()
+
+    assert len(tree) == 2
+    assert tree[0]["path"] == "notes/manifesto.md"
+    # Verify the URL hit the git/trees endpoint with the branch
+    call_url = client.get.call_args[0][0]
+    assert "/git/trees/main" in call_url
+    assert client.get.call_args[1]["params"] == {"recursive": "1"}
+
+
+def test_tree_wraps_http_error():
+    from tools.integrations.notes.adapter import NotesAdapterError
+    adapter = _make_adapter()
+    with patch("httpx.Client") as mock_cls:
+        client = _mock_client_ctx(mock_cls)
+        client.get.return_value = _mock_resp(None, status_code=500, text="boom")
+
+        with pytest.raises(NotesAdapterError) as excinfo:
+            adapter._tree()
+
+    assert excinfo.value.status == 500
+    assert "boom" in excinfo.value.body

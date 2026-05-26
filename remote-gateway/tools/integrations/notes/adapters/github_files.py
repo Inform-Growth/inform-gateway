@@ -96,6 +96,25 @@ class GitHubFilesAdapter:
     def _path_for(self, slug: str) -> str:
         return f"notes/{slug}.md"
 
+    def _tree(self) -> list[dict]:
+        """Fetch the recursive git tree for the default branch.
+
+        Returns the list of tree entries (each with path, type, sha, size).
+        Wraps HTTP errors as NotesAdapterError. No caching in v1.
+        """
+        url = f"{self._repo_url()}/git/trees/{self._branch}"
+        try:
+            with httpx.Client(timeout=_HTTP_TIMEOUT_SECONDS) as client:
+                resp = client.get(
+                    url, headers=self._headers(), params={"recursive": "1"}
+                )
+                resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise self._wrap(e) from e
+        except httpx.RequestError as e:
+            raise self._wrap(e) from e
+        return resp.json().get("tree", [])
+
     def _fetch_default_branch(self) -> str:
         try:
             with httpx.Client(timeout=_HTTP_TIMEOUT_SECONDS) as client:
