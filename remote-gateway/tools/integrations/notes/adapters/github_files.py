@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import os
+import re
 from typing import Any
 
 import httpx
@@ -21,6 +22,24 @@ from tools.integrations.notes.adapter import NotesAdapterError
 # Smoke-tested 2026-05-25: the GET-before-DELETE pair hit a transient
 # 5s timeout. 30s matches what the migration script already uses.
 _HTTP_TIMEOUT_SECONDS = 30
+
+_FOLDER_RE = re.compile(r"^[a-z0-9_-]+$")
+
+
+def _validate_folder(folder: str | None) -> None:
+    """Raise NotesAdapterError(400) if folder is set and doesn't match ^[a-z0-9_-]+$.
+
+    None is always valid (means "root").
+    """
+    if folder is None:
+        return
+    if not _FOLDER_RE.match(folder):
+        raise NotesAdapterError(
+            status=400,
+            body=f"invalid folder name: {folder!r}",
+            repo=os.environ.get("NOTES_REPO", ""),
+            token_fingerprint="",
+        )
 
 
 class GitHubFilesAdapter:
