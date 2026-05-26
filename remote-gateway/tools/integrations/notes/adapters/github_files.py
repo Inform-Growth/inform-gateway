@@ -16,6 +16,7 @@ import re
 from typing import Any
 
 import httpx
+
 from tools.integrations.notes.adapter import NotesAdapterError
 
 # Default httpx timeout is 5s, which is aggressive for GitHub under load.
