@@ -10,19 +10,42 @@ from __future__ import annotations
 from tools.integrations.notes.adapter import get_adapter
 
 
-def list_notes() -> dict:
-    """List all notes stored in the configured notes backend.
+def list_notes(
+    folder: str | None = None,
+    prefix: str | None = None,
+    since: str | None = None,
+    until: str | None = None,
+    limit: int | None = None,
+) -> dict:
+    """List notes stored in the configured notes backend, with optional filters.
 
-    Notes are persistent and shared across all agents on this gateway.
+    All filters are server-side — combine them to drop your token cost. Results
+    are sorted by updated_at descending.
+
+    Args:
+        folder: Filter to a specific folder (e.g. "marketing", "sales",
+            "executive", "architecture", "shadow", "jaron"). Folders are dynamic
+            and case-sensitive lowercase a-z/0-9/-/_; new folders materialize
+            on first write_note(folder=X) call.
+        prefix: Case-sensitive slug starts-with filter (e.g. "competitor-watch-").
+        since: ISO-8601 timestamp. Return only notes updated at or after this
+            time (e.g. "2026-05-24T00:00:00Z").
+        until: ISO-8601 timestamp. Return only notes updated at or before this
+            time.
+        limit: Cap the number of results returned (clamped to [1, 100]).
 
     Returns:
-        Dict with 'notes' list and 'count'.
+        Dict with 'notes' list and 'count'. Each note has slug, folder
+        (None for root-level notes), created_at, updated_at, issue_number
+        (always None on the file-based adapter), html_url.
     """
-    notes = get_adapter().list()
-    # Preserve the existing field name html_url so agents/UI keep working
+    notes = get_adapter().list(
+        folder=folder, prefix=prefix, since=since, until=until, limit=limit,
+    )
     rendered = [
         {
             "slug": n["slug"],
+            "folder": n.get("folder"),
             "issue_number": n.get("issue_number"),
             "created_at": n["created_at"],
             "updated_at": n["updated_at"],

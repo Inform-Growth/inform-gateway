@@ -838,3 +838,49 @@ def test_delete_note_tool_passes_folder_through():
     fake_adapter.delete.assert_called_once_with("comp", folder="marketing")
     assert result["status"] == "deleted"
     assert result["slug"] == "comp"
+
+
+# ---- tool-layer: list_notes ----
+
+def test_list_notes_tool_passes_filters_through():
+    from tools.integrations.notes import tools as notes_tools
+
+    fake_adapter = MagicMock()
+    fake_adapter.list.return_value = [
+        {
+            "slug": "comp", "id": "s", "url": "u",
+            "path": "notes/marketing/comp.md", "folder": "marketing",
+            "created_at": "2026-05-20T00:00:00Z",
+            "updated_at": "2026-05-25T00:00:00Z",
+        }
+    ]
+    with patch("tools.integrations.notes.tools.get_adapter", return_value=fake_adapter):
+        result = notes_tools.list_notes(
+            folder="marketing",
+            prefix="comp",
+            since="2026-05-20T00:00:00Z",
+            until="2026-05-26T00:00:00Z",
+            limit=10,
+        )
+
+    fake_adapter.list.assert_called_once_with(
+        folder="marketing", prefix="comp",
+        since="2026-05-20T00:00:00Z", until="2026-05-26T00:00:00Z",
+        limit=10,
+    )
+    assert result["count"] == 1
+    assert result["notes"][0]["folder"] == "marketing"
+    assert result["notes"][0]["html_url"] == "u"
+
+
+def test_list_notes_tool_no_args_passes_all_none():
+    from tools.integrations.notes import tools as notes_tools
+
+    fake_adapter = MagicMock()
+    fake_adapter.list.return_value = []
+    with patch("tools.integrations.notes.tools.get_adapter", return_value=fake_adapter):
+        notes_tools.list_notes()
+
+    fake_adapter.list.assert_called_once_with(
+        folder=None, prefix=None, since=None, until=None, limit=None,
+    )
