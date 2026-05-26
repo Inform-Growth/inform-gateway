@@ -105,6 +105,23 @@ Edit `mcp_connections.json`:
 - **No hardcoded secrets**: Use `os.environ` exclusively.
 - **Notes & Issue Backlog**: Monitor two repos — `NOTES_REPO/notes/*.md` for durable session notes (via the configured notes adapter), and `ISSUE_DEPLOYMENT_REPO` for `source:report_issue` friction signals. Review both regularly to understand user goals and stay ahead of integration failures.
 
+### Notes folder convention
+
+The notes plane (`NOTES_REPO/notes/`) supports a flat-or-folder layout. The adapter accepts any folder name matching `^[a-z0-9_-]+$`; folders are dynamic and materialize on first write.
+
+Conventional folders (start with these; add more as agents and departments grow):
+
+- `marketing/` — competitor-watch, content-drafts, marketing-research, marketing-weekly
+- `sales/` — signal-scout, lead-research, sales-weekly, sales-strategy
+- `executive/` — chief-of-staff briefs
+- `architecture/` — strategy and architecture docs (manifesto, execution-path, gateway-template-plan)
+- `shadow/` — gateway shadow notes
+- `jaron/` — Jaron's working notes
+
+`list_notes` takes optional server-side filters: `folder=`, `prefix=`, `since=`, `until=`, `limit=`. Use these to drop token cost on routine reads (e.g. chief_of_staff's "what changed in the last 24h" query becomes `list_notes(folder="executive", since="<yesterday>")`).
+
+Slugs are globally unique across folders. `write_note(slug, content, folder=X)` raises `NotesAdapterError(409)` if the slug already exists in a different folder.
+
 ### Admin role
 
 A new `api_keys.role` column distinguishes `'admin'` from `'user'`. Five tools are admin-gated (require `role='admin'` on the caller): `create_user`, `list_users`, `set_user_role`, `set_tool_permission`, `set_skill_permission`. Seed admins on startup via the `BOOTSTRAP_ADMIN_USER_IDS` env var. The UI exposes a role-select cell on the Operators page, backed by `PUT /api/users/{user_id}/role`.

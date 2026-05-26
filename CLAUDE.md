@@ -167,7 +167,7 @@ The `_AuthMiddleware` ASGI layer resolves the key to a `user_id` on every reques
 | `get_operator_instructions` | Load Gateway Operator persona and shadow note rules |
 | `list_prompts` | Discover available prompt templates |
 | `get_prompt` | Render a specific prompt template |
-| `write_note` / `read_note` / `list_notes` / `delete_note` | Notes stored via the adapter configured by `NOTES_ADAPTER` (default: `github-files`, backed by `notes/*.md` in `NOTES_REPO`). |
+| `write_note` / `read_note` / `list_notes` / `delete_note` | Notes stored via the adapter configured by `NOTES_ADAPTER` (default: `github-files`, backed by `notes/<folder>/<slug>.md` in `NOTES_REPO`). `write_note(slug, content, folder=)` supports dynamic folders. `list_notes(folder=, prefix=, since=, until=, limit=)` supports server-side filters. |
 | `report_issue` | File a friction signal as a GitHub Issue after user consent. `source:report_issue` label. Issues land on `ISSUE_DEPLOYMENT_REPO`. |
 | `list_my_issues` | List GitHub Issues on `ISSUE_DEPLOYMENT_REPO` (filtered by state/label). |
 | `check_field_drift` / `discover_fields` / `get_field_definitions` / `lookup_field` / `list_field_integrations` | Field registry |
