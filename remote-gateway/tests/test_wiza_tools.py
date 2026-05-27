@@ -86,7 +86,7 @@ def test_enrich_person_returns_all_fields(monkeypatch):
 
     with patch("httpx.Client", return_value=mock_client), \
          patch("time.sleep"):
-        from tools.wiza import wiza__enrich_person
+        from tools.integrations.wiza import wiza__enrich_person
         result = wiza__enrich_person("https://www.linkedin.com/in/janesmith")
 
     assert result["name"] == "Jane Smith"
@@ -112,7 +112,7 @@ def test_enrich_person_posts_correct_payload(monkeypatch):
 
     with patch("httpx.Client", return_value=mock_client), \
          patch("time.sleep"):
-        from tools.wiza import wiza__enrich_person
+        from tools.integrations.wiza import wiza__enrich_person
         wiza__enrich_person("https://www.linkedin.com/in/janesmith")
 
     posted_url = mock_client.post.call_args.args[0]
@@ -134,7 +134,7 @@ def test_enrich_person_sends_bearer_token(monkeypatch):
 
     with patch("httpx.Client", return_value=mock_client), \
          patch("time.sleep"):
-        from tools.wiza import wiza__enrich_person
+        from tools.integrations.wiza import wiza__enrich_person
         wiza__enrich_person("https://www.linkedin.com/in/janesmith")
 
     post_headers = mock_client.post.call_args.kwargs["headers"]
@@ -155,7 +155,7 @@ def test_enrich_person_polls_correct_url(monkeypatch):
 
     with patch("httpx.Client", return_value=mock_client), \
          patch("time.sleep"):
-        from tools.wiza import wiza__enrich_person
+        from tools.integrations.wiza import wiza__enrich_person
         wiza__enrich_person("https://www.linkedin.com/in/janesmith")
 
     polled_url = mock_client.get.call_args.args[0]
@@ -179,7 +179,7 @@ def test_enrich_person_retries_while_resolving(monkeypatch):
 
     with patch("httpx.Client", return_value=mock_client), \
          patch("time.sleep"):
-        from tools.wiza import wiza__enrich_person
+        from tools.integrations.wiza import wiza__enrich_person
         result = wiza__enrich_person("https://www.linkedin.com/in/janesmith")
 
     assert result["name"] == "Jane Smith"
@@ -210,7 +210,7 @@ def test_enrich_person_omits_absent_fields(monkeypatch):
 
     with patch("httpx.Client", return_value=mock_client), \
          patch("time.sleep"):
-        from tools.wiza import wiza__enrich_person
+        from tools.integrations.wiza import wiza__enrich_person
         result = wiza__enrich_person("https://www.linkedin.com/in/janesmith")
 
     assert "title" not in result
@@ -228,7 +228,7 @@ def test_enrich_person_raises_value_error_when_no_api_key(monkeypatch):
     """wiza__enrich_person raises ValueError if WIZA_API_KEY is not set."""
     monkeypatch.delenv("WIZA_API_KEY", raising=False)
 
-    from tools.wiza import wiza__enrich_person
+    from tools.integrations.wiza import wiza__enrich_person
     with pytest.raises(ValueError, match="WIZA_API_KEY"):
         wiza__enrich_person("https://www.linkedin.com/in/janesmith")
 
@@ -242,7 +242,7 @@ def test_enrich_person_raises_permission_error_on_401(monkeypatch):
     )
 
     with patch("httpx.Client", return_value=mock_client):
-        from tools.wiza import wiza__enrich_person
+        from tools.integrations.wiza import wiza__enrich_person
         with pytest.raises(PermissionError, match="WIZA_API_KEY"):
             wiza__enrich_person("https://www.linkedin.com/in/janesmith")
 
@@ -256,7 +256,7 @@ def test_enrich_person_raises_runtime_error_on_400(monkeypatch):
     )
 
     with patch("httpx.Client", return_value=mock_client):
-        from tools.wiza import wiza__enrich_person
+        from tools.integrations.wiza import wiza__enrich_person
         with pytest.raises(RuntimeError, match="bad request"):
             wiza__enrich_person("https://www.linkedin.com/in/janesmith")
 
@@ -270,7 +270,7 @@ def test_enrich_person_raises_runtime_error_on_429(monkeypatch):
     )
 
     with patch("httpx.Client", return_value=mock_client):
-        from tools.wiza import wiza__enrich_person
+        from tools.integrations.wiza import wiza__enrich_person
         with pytest.raises(RuntimeError, match="queue full"):
             wiza__enrich_person("https://www.linkedin.com/in/janesmith")
 
@@ -288,7 +288,7 @@ def test_enrich_person_raises_runtime_error_on_failed_reveal(monkeypatch):
 
     with patch("httpx.Client", return_value=mock_client), \
          patch("time.sleep"):
-        from tools.wiza import wiza__enrich_person
+        from tools.integrations.wiza import wiza__enrich_person
         with pytest.raises(RuntimeError, match="failed"):
             wiza__enrich_person("https://www.linkedin.com/in/janesmith")
 
@@ -306,7 +306,7 @@ def test_enrich_person_raises_timeout_error_after_max_polls(monkeypatch):
 
     with patch("httpx.Client", return_value=mock_client), \
          patch("time.sleep"):
-        from tools.wiza import wiza__enrich_person
+        from tools.integrations.wiza import wiza__enrich_person
         with pytest.raises(TimeoutError, match="rev-abc-123"):
             wiza__enrich_person("https://www.linkedin.com/in/janesmith")
 

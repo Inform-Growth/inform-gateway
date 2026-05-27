@@ -15,7 +15,12 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from core.field_registry import FieldRegistry
-from tools.attio import attio__create_record, attio__search_records, attio__upsert_record
+from tools.integrations.attio import (
+    attio__create_record,
+    attio__search_records,
+    attio__update_record,
+    attio__upsert_record,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers for pre-flight validation tests
@@ -111,7 +116,12 @@ def test_search_records_returns_records(monkeypatch):
 
 
 def test_search_records_posts_correct_endpoint_and_filter(monkeypatch):
-    """search_records POSTs to /records/query with a name $str_contains filter."""
+    """search_records POSTs to /records/query with a name $contains filter.
+
+    Regression for #55: previously sent $str_contains which Attio v2 rejects with
+    "Invalid operator: $str_contains, path: ['name']". The documented operator
+    on text fields (companies.name) is $contains.
+    """
     monkeypatch.setenv("ATTIO_API_KEY", "test-key-abc")
 
     mock_client = _mock_client(post_responses=[_mock_response({"data": []})])
@@ -123,8 +133,24 @@ def test_search_records_posts_correct_endpoint_and_filter(monkeypatch):
     posted_body = mock_client.post.call_args.kwargs["json"]
 
     assert "people/records/query" in posted_url
-    assert posted_body["filter"]["name"]["$str_contains"] == "Jane"
+    assert "$str_contains" not in str(posted_body), (
+        "$str_contains is not a valid Attio v2 operator (see issue #55)"
+    )
+    assert posted_body["filter"]["name"]["$contains"] == "Jane"
     assert posted_body["limit"] == 5
+
+
+def test_search_records_companies_uses_contains_operator(monkeypatch):
+    """search_records for companies uses $contains on text name field (regression #55)."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+
+    mock_client = _mock_client(post_responses=[_mock_response({"data": []})])
+
+    with patch("httpx.Client", return_value=mock_client):
+        attio__search_records("companies", "Stord")
+
+    posted_body = mock_client.post.call_args.kwargs["json"]
+    assert posted_body["filter"] == {"name": {"$contains": "Stord"}}
 
 
 def test_search_records_uses_api_key_header(monkeypatch):
@@ -161,7 +187,7 @@ def test_search_records_empty_result(monkeypatch):
 def test_create_record_returns_record_id(monkeypatch, tmp_path):
     """create_record returns record_id from Attio create response."""
     monkeypatch.setenv("ATTIO_API_KEY", "test-key-abc")
-    import tools.attio as attio_module
+    import tools.integrations.attio as attio_module
     monkeypatch.setattr(attio_module, "registry", FieldRegistry(fields_dir=tmp_path), raising=False)
 
     mock_client = _mock_client(
@@ -182,7 +208,7 @@ def test_create_record_returns_record_id(monkeypatch, tmp_path):
 def test_create_record_posts_correct_payload(monkeypatch, tmp_path):
     """create_record wraps values in {"data": {"values": ...}} as Attio API requires."""
     monkeypatch.setenv("ATTIO_API_KEY", "test-key-abc")
-    import tools.attio as attio_module
+    import tools.integrations.attio as attio_module
     monkeypatch.setattr(attio_module, "registry", FieldRegistry(fields_dir=tmp_path), raising=False)
 
     mock_client = _mock_client(
@@ -204,7 +230,7 @@ def test_create_record_posts_correct_payload(monkeypatch, tmp_path):
 def test_create_record_uses_api_key_header(monkeypatch, tmp_path):
     """create_record sends ATTIO_API_KEY as Bearer token."""
     monkeypatch.setenv("ATTIO_API_KEY", "create-key-999")
-    import tools.attio as attio_module
+    import tools.integrations.attio as attio_module
     monkeypatch.setattr(attio_module, "registry", FieldRegistry(fields_dir=tmp_path), raising=False)
 
     mock_client = _mock_client(
@@ -227,7 +253,7 @@ def test_create_record_rejects_unknown_field(monkeypatch, tmp_path):
     """create_record returns a structured error when an unknown field is passed."""
     monkeypatch.setenv("ATTIO_API_KEY", "test-key")
 
-    import tools.attio as attio_module
+    import tools.integrations.attio as attio_module
     monkeypatch.setattr(attio_module, "registry", _make_test_registry(tmp_path), raising=False)
 
     mock_client = _mock_client(
@@ -253,7 +279,7 @@ def test_create_record_rejects_readonly_field(monkeypatch, tmp_path):
     """create_record returns a structured error when a read-only field is passed."""
     monkeypatch.setenv("ATTIO_API_KEY", "test-key")
 
-    import tools.attio as attio_module
+    import tools.integrations.attio as attio_module
     monkeypatch.setattr(attio_module, "registry", _make_test_registry(tmp_path), raising=False)
 
     mock_client = _mock_client(
@@ -278,7 +304,7 @@ def test_create_record_valid_people_payload(monkeypatch, tmp_path):
     """create_record passes pre-flight and makes the HTTP call for a valid payload."""
     monkeypatch.setenv("ATTIO_API_KEY", "test-key")
 
-    import tools.attio as attio_module
+    import tools.integrations.attio as attio_module
     monkeypatch.setattr(attio_module, "registry", _make_test_registry(tmp_path), raising=False)
 
     mock_client = _mock_client(
@@ -306,7 +332,7 @@ def test_create_record_skips_validation_when_no_yaml(monkeypatch, tmp_path):
     """create_record skips validation gracefully when no YAML exists for the object type."""
     monkeypatch.setenv("ATTIO_API_KEY", "test-key")
 
-    import tools.attio as attio_module
+    import tools.integrations.attio as attio_module
     # tmp_path has no YAML files — registry will return empty defs
     monkeypatch.setattr(attio_module, "registry", FieldRegistry(fields_dir=tmp_path), raising=False)
 
@@ -325,6 +351,125 @@ def test_create_record_skips_validation_when_no_yaml(monkeypatch, tmp_path):
     # No error — validation was skipped, HTTP call was made
     assert "error" not in result
     assert result["record_id"] == "rec-skip-456"
+
+
+# ---------------------------------------------------------------------------
+# attio__update_record (issue #54)
+# ---------------------------------------------------------------------------
+
+
+def _mock_patch_client(responses):
+    """Return a context-manager mock for httpx.Client with .patch responses."""
+    mock = MagicMock()
+    mock.__enter__ = MagicMock(return_value=mock)
+    mock.__exit__ = MagicMock(return_value=False)
+    mock.patch.side_effect = responses
+    return mock
+
+
+def _stub_empty_registry(monkeypatch, tmp_path):
+    """Point the module-level registry at an empty dir so pre-flight validation is skipped."""
+    import tools.integrations.attio as attio_module
+    monkeypatch.setattr(
+        attio_module, "registry", FieldRegistry(fields_dir=tmp_path), raising=False,
+    )
+
+
+def test_update_record_patches_correct_url_with_plural_resource(monkeypatch, tmp_path):
+    """update_record PATCHes /objects/people/records/{id} — always plural (regression #54)."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    _stub_empty_registry(monkeypatch, tmp_path)
+
+    record_id = "2b2b1e2d-07c0-44ff-bffa-83562292351c"
+    mock_client = _mock_patch_client([
+        _mock_response({"data": {"id": {"record_id": record_id}, "values": {}}})
+    ])
+
+    with patch("httpx.Client", return_value=mock_client):
+        attio__update_record(
+            "people",
+            record_id,
+            {"job_title": [{"value": "VP of Ops"}]},
+        )
+
+    url = mock_client.patch.call_args.args[0]
+    assert f"/objects/people/records/{record_id}" in url, (
+        "must use plural 'people' not singular 'person' (issue #54)"
+    )
+    assert "/person/" not in url
+
+
+def test_update_record_wraps_values_correctly(monkeypatch, tmp_path):
+    """update_record sends {data: {values: ...}} payload shape."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    _stub_empty_registry(monkeypatch, tmp_path)
+
+    mock_client = _mock_patch_client([
+        _mock_response({"data": {"id": {"record_id": "rec-1"}, "values": {}}})
+    ])
+    values = {"icp_rationale": [{"value": "Strategic fit on procurement"}]}
+
+    with patch("httpx.Client", return_value=mock_client):
+        attio__update_record("people", "rec-1", values)
+
+    body = mock_client.patch.call_args.kwargs["json"]
+    assert body == {"data": {"values": values}}
+
+
+def test_update_record_surfaces_full_attio_error_body(monkeypatch, tmp_path):
+    """update_record surfaces the underlying Attio error body, not a generic 400 (regression #54).
+
+    The previous npm-proxied tool returned only "An error occurred while
+    processing your request" — agents couldn't tell which field was invalid.
+    """
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    _stub_empty_registry(monkeypatch, tmp_path)
+
+    attio_error_body = (
+        '{"status_code":400,"type":"invalid_request_error",'
+        '"code":"value_not_writable","message":"Field icp_rationale is read-only"}'
+    )
+    failed = _mock_response({}, status_code=400)
+    failed.is_success = False
+    failed.text = attio_error_body
+    mock_client = _mock_patch_client([failed])
+
+    with patch("httpx.Client", return_value=mock_client):
+        result = attio__update_record(
+            "people",
+            "rec-1",
+            {"icp_rationale": [{"value": "..."}]},
+        )
+
+    assert "error" in result
+    assert "400" in result["error"]
+    assert "icp_rationale" in result["error"], (
+        "must include the underlying Attio body so agents can see which field failed"
+    )
+    assert result["object_type"] == "people"
+    assert result["record_id"] == "rec-1"
+
+
+def test_update_record_returns_updated_record_id(monkeypatch, tmp_path):
+    """update_record returns the updated record id and data on success."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    _stub_empty_registry(monkeypatch, tmp_path)
+
+    mock_client = _mock_patch_client([_mock_response({
+        "data": {
+            "id": {"record_id": "rec-42"},
+            "values": {"job_title": [{"value": "VP of Ops"}]},
+        }
+    })])
+
+    with patch("httpx.Client", return_value=mock_client):
+        result = attio__update_record(
+            "people", "rec-42", {"job_title": [{"value": "VP of Ops"}]},
+        )
+
+    assert result["record_id"] == "rec-42"
+    assert result["object_type"] == "people"
+    assert result["data"]["values"]["job_title"] == [{"value": "VP of Ops"}]
 
 
 # ---------------------------------------------------------------------------

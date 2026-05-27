@@ -39,7 +39,7 @@ def _mock_client(post_responses=None, get_responses=None) -> MagicMock:
 
 def test_headers_raises_without_key(monkeypatch):
     monkeypatch.delenv("APOLLO_API_KEY", raising=False)
-    from tools.apollo import _headers
+    from tools.integrations.apollo import _headers
 
     with pytest.raises(ValueError, match="APOLLO_API_KEY"):
         _headers()
@@ -47,7 +47,7 @@ def test_headers_raises_without_key(monkeypatch):
 
 def test_headers_returns_api_key_header(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-apollo-key")
-    from tools.apollo import _headers
+    from tools.integrations.apollo import _headers
     h = _headers()
     assert h["X-Api-Key"] == "test-apollo-key"
     assert h["Content-Type"] == "application/json"
@@ -58,7 +58,7 @@ def test_headers_returns_api_key_header(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_strip_nulls_removes_none_empty_string_and_empty_list():
-    from tools.apollo import _strip_nulls
+    from tools.integrations.apollo import _strip_nulls
     result = _strip_nulls({
         "a": "hello", "b": None, "c": "", "d": [], "e": 0, "f": False, "g": ["x"]
     })
@@ -70,7 +70,7 @@ def test_strip_nulls_removes_none_empty_string_and_empty_list():
 # ---------------------------------------------------------------------------
 
 def test_map_person_maps_name_email_title_linkedin(monkeypatch):
-    from tools.apollo import _map_to_attio_values
+    from tools.integrations.apollo import _map_to_attio_values
     person = {
         "first_name": "Jane", "last_name": "Doe", "name": "Jane Doe",
         "email": "jane@acme.com", "title": "VP of Sales",
@@ -84,7 +84,7 @@ def test_map_person_maps_name_email_title_linkedin(monkeypatch):
 
 
 def test_map_person_maps_phone_from_raw_number(monkeypatch):
-    from tools.apollo import _map_to_attio_values
+    from tools.integrations.apollo import _map_to_attio_values
     person = {
         "first_name": "Jane", "last_name": "Doe", "name": "Jane Doe",
         "phone_numbers": [{"raw_number": "+1-555-0100", "type": "work"}],
@@ -94,7 +94,7 @@ def test_map_person_maps_phone_from_raw_number(monkeypatch):
 
 
 def test_map_person_maps_location_from_city_and_state(monkeypatch):
-    from tools.apollo import _map_to_attio_values
+    from tools.integrations.apollo import _map_to_attio_values
     person = {
         "first_name": "Jane", "last_name": "Doe", "name": "Jane Doe",
         "city": "San Francisco", "state": "California",
@@ -104,7 +104,7 @@ def test_map_person_maps_location_from_city_and_state(monkeypatch):
 
 
 def test_map_person_omits_fields_with_no_data(monkeypatch):
-    from tools.apollo import _map_to_attio_values
+    from tools.integrations.apollo import _map_to_attio_values
     person = {"first_name": "Jane", "last_name": "Doe", "name": "Jane Doe"}
     result = _map_to_attio_values(person, "person")
     assert "email_addresses" not in result
@@ -115,7 +115,7 @@ def test_map_person_omits_fields_with_no_data(monkeypatch):
 
 
 def test_map_person_does_not_include_organization_name(monkeypatch):
-    from tools.apollo import _map_to_attio_values
+    from tools.integrations.apollo import _map_to_attio_values
     person = {
         "first_name": "Jane", "last_name": "Doe", "name": "Jane Doe",
         "organization_name": "Acme Inc",
@@ -129,7 +129,7 @@ def test_map_person_does_not_include_organization_name(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_map_org_maps_name_domain_location(monkeypatch):
-    from tools.apollo import _map_to_attio_values
+    from tools.integrations.apollo import _map_to_attio_values
     org = {
         "name": "Acme Inc", "domain": "acme.com",
         "city": "San Francisco", "state": "California",
@@ -141,7 +141,7 @@ def test_map_org_maps_name_domain_location(monkeypatch):
 
 
 def test_map_org_falls_back_to_primary_domain(monkeypatch):
-    from tools.apollo import _map_to_attio_values
+    from tools.integrations.apollo import _map_to_attio_values
     org = {"name": "Acme Inc", "primary_domain": "acme.com"}
     result = _map_to_attio_values(org, "organization")
     assert result["domains"] == [{"domain": "acme.com"}]
@@ -153,7 +153,7 @@ def test_map_org_falls_back_to_primary_domain(monkeypatch):
 
 def test_search_people_posts_to_correct_url(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__search_people
+    from tools.integrations.apollo import apollo__search_people
     mock_client = _mock_client(post_responses=[_mock_response({
         "people": [], "pagination": {"total_entries": 0}
     })])
@@ -165,7 +165,7 @@ def test_search_people_posts_to_correct_url(monkeypatch):
 
 def test_search_people_accepts_contacts_key_in_response(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__search_people
+    from tools.integrations.apollo import apollo__search_people
     mock_client = _mock_client(post_responses=[_mock_response({
         "contacts": [{"id": "p1", "name": "Jane Doe", "email": "jane@acme.com"}],
         "pagination": {"total_entries": 1}
@@ -178,7 +178,7 @@ def test_search_people_accepts_contacts_key_in_response(monkeypatch):
 
 def test_search_people_sends_api_key_header(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "my-secret-key")
-    from tools.apollo import apollo__search_people
+    from tools.integrations.apollo import apollo__search_people
     mock_client = _mock_client(post_responses=[_mock_response({
         "people": [], "pagination": {"total_entries": 0}
     })])
@@ -190,7 +190,7 @@ def test_search_people_sends_api_key_header(monkeypatch):
 
 def test_search_people_includes_filters_in_body(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__search_people
+    from tools.integrations.apollo import apollo__search_people
     mock_client = _mock_client(post_responses=[_mock_response({
         "people": [], "pagination": {"total_entries": 0}
     })])
@@ -210,7 +210,7 @@ def test_search_people_includes_filters_in_body(monkeypatch):
 
 def test_search_people_omits_none_filters_from_body(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__search_people
+    from tools.integrations.apollo import apollo__search_people
     mock_client = _mock_client(post_responses=[_mock_response({
         "people": [], "pagination": {"total_entries": 0}
     })])
@@ -223,7 +223,7 @@ def test_search_people_omits_none_filters_from_body(monkeypatch):
 
 def test_search_people_strips_nulls_from_results(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__search_people
+    from tools.integrations.apollo import apollo__search_people
     raw_person = {
         "id": "p1", "name": "Jane Doe", "first_name": "Jane", "last_name": "Doe",
         "title": None, "email": "jane@acme.com", "linkedin_url": None,
@@ -245,7 +245,7 @@ def test_search_people_strips_nulls_from_results(monkeypatch):
 
 def test_search_people_returns_pagination_and_agent_hint(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__search_people
+    from tools.integrations.apollo import apollo__search_people
     mock_client = _mock_client(post_responses=[_mock_response({
         "people": [{"id": "p1", "name": "Jane"}],
         "pagination": {"total_entries": 500}
@@ -258,9 +258,85 @@ def test_search_people_returns_pagination_and_agent_hint(monkeypatch):
     assert "agent_hint" in result
 
 
+def test_search_people_warns_when_org_domains_used_alone(monkeypatch):
+    """When organization_domains is used without q_keywords / q_organization_name,
+    Apollo silently fails to scope results (issue #51). Surface a warning to the agent."""
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.integrations.apollo import apollo__search_people
+    mock_client = _mock_client(post_responses=[_mock_response({
+        "people": [{"id": "p1", "name": "Jane"}],
+        "pagination": {"total_entries": 1},
+    })])
+    with patch("httpx.Client", return_value=mock_client):
+        result = apollo__search_people(organization_domains=["stord.com"])
+
+    assert "scope_warning" in result
+    assert (
+        "q_keywords" in result["scope_warning"]
+        or "q_organization_name" in result["scope_warning"]
+    )
+
+
+def test_search_people_no_warning_when_keywords_companion_present(monkeypatch):
+    """No warning when organization_domains is paired with q_keywords (issue #51)."""
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.integrations.apollo import apollo__search_people
+    mock_client = _mock_client(post_responses=[_mock_response({
+        "people": [], "pagination": {"total_entries": 0},
+    })])
+    with patch("httpx.Client", return_value=mock_client):
+        result = apollo__search_people(
+            organization_domains=["stord.com"], q_keywords="Stord",
+        )
+    assert "scope_warning" not in result
+
+
+def test_search_people_no_warning_when_org_name_companion_present(monkeypatch):
+    """No warning when organization_domains is paired with q_organization_name (issue #51)."""
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.integrations.apollo import apollo__search_people
+    mock_client = _mock_client(post_responses=[_mock_response({
+        "people": [], "pagination": {"total_entries": 0},
+    })])
+    with patch("httpx.Client", return_value=mock_client):
+        result = apollo__search_people(
+            organization_domains=["stord.com"], q_organization_name="Stord",
+        )
+    assert "scope_warning" not in result
+
+
+def test_search_people_no_warning_when_no_org_domains(monkeypatch):
+    """No warning when organization_domains is absent — only applies to that filter."""
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.integrations.apollo import apollo__search_people
+    mock_client = _mock_client(post_responses=[_mock_response({
+        "people": [], "pagination": {"total_entries": 0},
+    })])
+    with patch("httpx.Client", return_value=mock_client):
+        result = apollo__search_people(person_titles=["CFO"])
+    assert "scope_warning" not in result
+
+
+def test_search_people_pagination_total_falls_back_to_result_count(monkeypatch):
+    """When Apollo returns pagination.total_entries=0 despite populated people
+    (issue #51), pagination.total should fall back to len(people) so the agent
+    sees a non-zero count."""
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.integrations.apollo import apollo__search_people
+    mock_client = _mock_client(post_responses=[_mock_response({
+        "people": [{"id": "p1", "name": "Jane"}, {"id": "p2", "name": "John"}],
+        "pagination": {"total_entries": 0},
+    })])
+    with patch("httpx.Client", return_value=mock_client):
+        result = apollo__search_people()
+    assert result["pagination"]["total"] >= 2, (
+        "total must reflect actual people returned when Apollo's count is bogus"
+    )
+
+
 def test_search_people_raises_permission_error_on_401(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "bad-key")
-    from tools.apollo import apollo__search_people
+    from tools.integrations.apollo import apollo__search_people
     mock_client = _mock_client(post_responses=[_mock_response({}, status_code=401)])
     with (
         patch("httpx.Client", return_value=mock_client),
@@ -271,7 +347,7 @@ def test_search_people_raises_permission_error_on_401(monkeypatch):
 
 def test_search_people_returns_error_dict_on_422(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__search_people
+    from tools.integrations.apollo import apollo__search_people
     mock_client = _mock_client(post_responses=[
         _mock_response({"error": "invalid seniority"}, status_code=422)
     ])
@@ -283,7 +359,7 @@ def test_search_people_returns_error_dict_on_422(monkeypatch):
 
 def test_search_people_raises_runtime_error_on_429(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__search_people
+    from tools.integrations.apollo import apollo__search_people
     resp = _mock_response({}, status_code=429, headers={"Retry-After": "30"})
     mock_client = _mock_client(post_responses=[resp])
     with patch("httpx.Client", return_value=mock_client), pytest.raises(RuntimeError, match="30"):
@@ -296,7 +372,7 @@ def test_search_people_raises_runtime_error_on_429(monkeypatch):
 
 def test_search_companies_posts_to_correct_url(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__search_companies
+    from tools.integrations.apollo import apollo__search_companies
     mock_client = _mock_client(post_responses=[_mock_response({
         "organizations": [], "pagination": {"total_entries": 0}
     })])
@@ -308,7 +384,7 @@ def test_search_companies_posts_to_correct_url(monkeypatch):
 
 def test_search_companies_includes_filters_in_body(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__search_companies
+    from tools.integrations.apollo import apollo__search_companies
     mock_client = _mock_client(post_responses=[_mock_response({
         "organizations": [], "pagination": {"total_entries": 0}
     })])
@@ -328,7 +404,7 @@ def test_search_companies_includes_filters_in_body(monkeypatch):
 
 def test_search_companies_strips_nulls_from_results(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__search_companies
+    from tools.integrations.apollo import apollo__search_companies
     raw_org = {
         "id": "o1", "name": "Acme Inc", "domain": "acme.com",
         "industry": None, "city": "SF", "state": "CA",
@@ -350,7 +426,7 @@ def test_search_companies_strips_nulls_from_results(monkeypatch):
 
 def test_search_companies_returns_pagination_and_agent_hint(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__search_companies
+    from tools.integrations.apollo import apollo__search_companies
     mock_client = _mock_client(post_responses=[_mock_response({
         "organizations": [], "pagination": {"total_entries": 250}
     })])
@@ -367,14 +443,14 @@ def test_search_companies_returns_pagination_and_agent_hint(monkeypatch):
 
 def test_enrich_person_raises_without_identifier(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__enrich_person
+    from tools.integrations.apollo import apollo__enrich_person
     with pytest.raises(ValueError, match="id, email, linkedin_url"):
         apollo__enrich_person()
 
 
 def test_enrich_person_posts_to_correct_url(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__enrich_person
+    from tools.integrations.apollo import apollo__enrich_person
     mock_client = _mock_client(post_responses=[_mock_response({"person": {
         "id": "p1", "first_name": "Jane", "last_name": "Doe", "name": "Jane Doe",
         "email": "jane@acme.com", "title": "VP of Sales",
@@ -387,7 +463,7 @@ def test_enrich_person_posts_to_correct_url(monkeypatch):
 
 def test_enrich_person_posts_identifier_in_body(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__enrich_person
+    from tools.integrations.apollo import apollo__enrich_person
     mock_client = _mock_client(post_responses=[_mock_response({"person": {
         "id": "p1", "first_name": "Jane", "last_name": "Doe", "name": "Jane Doe",
     }})])
@@ -400,7 +476,7 @@ def test_enrich_person_posts_identifier_in_body(monkeypatch):
 
 def test_enrich_person_returns_person_attio_values_and_hint(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__enrich_person
+    from tools.integrations.apollo import apollo__enrich_person
     apollo_person = {
         "id": "p1", "first_name": "Jane", "last_name": "Doe", "name": "Jane Doe",
         "email": "jane@acme.com", "title": "VP of Sales",
@@ -424,7 +500,7 @@ def test_enrich_person_returns_person_attio_values_and_hint(monkeypatch):
 
 def test_enrich_person_strips_nulls_from_person(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__enrich_person
+    from tools.integrations.apollo import apollo__enrich_person
     apollo_person = {
         "id": "p1", "first_name": "Jane", "last_name": "Doe", "name": "Jane Doe",
         "email": "jane@acme.com", "title": None, "linkedin_url": None,
@@ -444,7 +520,7 @@ def test_enrich_person_strips_nulls_from_person(monkeypatch):
 
 def test_enrich_organization_gets_correct_url(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__enrich_organization
+    from tools.integrations.apollo import apollo__enrich_organization
     mock_client = _mock_client(get_responses=[_mock_response({"organization": {
         "id": "o1", "name": "Acme Inc", "domain": "acme.com",
     }})])
@@ -456,7 +532,7 @@ def test_enrich_organization_gets_correct_url(monkeypatch):
 
 def test_enrich_organization_passes_domain_as_param(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__enrich_organization
+    from tools.integrations.apollo import apollo__enrich_organization
     mock_client = _mock_client(get_responses=[_mock_response({"organization": {
         "id": "o1", "name": "Acme Inc", "domain": "acme.com",
     }})])
@@ -468,7 +544,7 @@ def test_enrich_organization_passes_domain_as_param(monkeypatch):
 
 def test_enrich_organization_returns_org_attio_values_and_hint(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__enrich_organization
+    from tools.integrations.apollo import apollo__enrich_organization
     apollo_org = {
         "id": "o1", "name": "Acme Inc", "domain": "acme.com",
         "industry": "Software", "city": "San Francisco", "state": "California",
@@ -489,7 +565,7 @@ def test_enrich_organization_returns_org_attio_values_and_hint(monkeypatch):
 
 def test_enrich_organization_strips_nulls(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
-    from tools.apollo import apollo__enrich_organization
+    from tools.integrations.apollo import apollo__enrich_organization
     apollo_org = {
         "id": "o1", "name": "Acme Inc", "domain": "acme.com",
         "annual_revenue": None, "latest_funding_date": None,

@@ -66,7 +66,9 @@ def attio__search_records(
     url = f"{_ATTIO_BASE}/objects/{object_type}/records/query"
     body: dict[str, Any] = {"limit": limit}
     if query:
-        body["filter"] = {"name": {"$str_contains": query}}
+        # Attio v2 uses $contains for text fields; $str_contains is rejected
+        # with "Invalid operator" (issue #55).
+        body["filter"] = {"name": {"$contains": query}}
 
     with httpx.Client() as client:
         resp = client.post(url, headers=_headers(), json=body)
@@ -153,6 +155,71 @@ def attio__create_record(
 _VALID_MATCHING_ATTRIBUTES = frozenset({"email_addresses", "domains"})
 
 
+def attio__update_record(
+    object_type: str,
+    record_id: str,
+    values: dict[str, Any],
+    ctx: Any | None = None,
+) -> dict[str, Any]:
+    """Patch attribute values on an existing Attio record.
+
+    Replaces the attio-mcp npm package's update_record, which wrapped Attio
+    errors in opaque 400s and used inconsistent resource_type pluralization
+    (see issue #54). This version PATCHes /v2/objects/{object_type}/records/
+    {record_id} directly and surfaces the underlying Attio error body verbatim.
+
+    Args:
+        object_type: Record type — "people" or "companies" (always plural).
+        record_id: Attio record UUID to update.
+        values: Attribute values in Attio REST write format (same shape as
+            attio__upsert_record). Only the fields you pass are updated;
+            omitted fields are left untouched.
+        ctx: MCP Context for session state (optional).
+
+    Returns:
+        Dict with 'record_id', 'object_type', and 'data' (the updated record).
+        On Attio rejection, returns {'error': '<status> <full response body>',
+        'object_type': ...} — the full body is surfaced so the agent can see
+        which field was invalid.
+    """
+    import httpx
+
+    integration = f"attio-{object_type}"
+    field_defs = registry.get_all(integration)
+    if field_defs:
+        writable_fields = {k for k, v in field_defs.items() if v.get("writable", True)}
+        invalid = [k for k in values if k not in writable_fields]
+        if invalid:
+            return {
+                "error": f"Invalid or read-only field(s) for {object_type}: {invalid}",
+                "valid_writable_fields": sorted(writable_fields),
+                "hint": (
+                    f"Call get_field_definitions('{integration}') to see correct field "
+                    "names and write_format examples."
+                ),
+            }
+
+    url = f"{_ATTIO_BASE}/objects/{object_type}/records/{record_id}"
+    body: dict[str, Any] = {"data": {"values": values}}
+
+    with httpx.Client() as client:
+        resp = client.patch(url, headers=_headers(), json=body)
+
+    if not resp.is_success:
+        return {
+            "error": f"Attio API error {resp.status_code}: {resp.text}",
+            "object_type": object_type,
+            "record_id": record_id,
+        }
+
+    record = resp.json().get("data", {})
+    return {
+        "record_id": record.get("id", {}).get("record_id", record_id),
+        "object_type": object_type,
+        "data": record,
+    }
+
+
 def attio__upsert_record(
     object_type: str,
     values: dict[str, Any],
@@ -229,4 +296,5 @@ def register(mcp: Any) -> None:
     """
     mcp.tool()(attio__search_records)
     mcp.tool()(attio__create_record)
+    mcp.tool()(attio__update_record)
     mcp.tool()(attio__upsert_record)
