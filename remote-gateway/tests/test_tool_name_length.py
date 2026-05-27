@@ -36,13 +36,13 @@ class _NameCollector:
 
 
 def _collect_builtin_tool_names() -> list[str]:
-    from tools import apollo as _apollo_tools
-    from tools import attio as _attio_tools
-    from tools import email_tools as _email_tools
     from tools import meta as _meta_tools
-    from tools import notes as _notes_tools
     from tools import registry as _registry_tools
-    from tools import wiza as _wiza_tools
+    from tools.integrations import apollo as _apollo_tools
+    from tools.integrations import attio as _attio_tools
+    from tools.integrations import email_tools as _email_tools
+    from tools.integrations import notes as _notes_tools
+    from tools.integrations import wiza as _wiza_tools
     from tools._core import onboarding as _onboarding_tools
     from tools._core import profile_manager as _profile_manager_tools
     from tools._core import skill_manager as _skill_manager_tools

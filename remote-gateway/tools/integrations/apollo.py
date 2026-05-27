@@ -149,6 +149,12 @@ def apollo__search_people(
     Returns trimmed results with only populated fields. Nulls are stripped
     from each person record so agents only see meaningful data.
 
+    IMPORTANT: organization_domains alone does NOT scope results to that
+    company (Apollo API quirk — see issue #51). Always pair it with
+    q_organization_name="<company name>" or q_keywords="<company name>" to
+    actually scope to the target company. The response will include a
+    scope_warning if you omit the companion filter.
+
     person_seniorities valid values: "owner", "founder", "c_suite", "partner",
         "vp", "head", "director", "manager", "senior", "entry", "intern"
     organization_num_employees_ranges format: ["1,10", "11,50", "51,200",
@@ -223,7 +229,10 @@ def apollo__search_people(
     people = [_pick(p, _PERSON_SEARCH_FIELDS) for p in (data.get("people") or data.get("contacts") or [])]
 
     pagination_data = data.get("pagination", {})
-    total = pagination_data.get("total_entries", 0)
+    # Apollo sometimes returns total_entries=0 even when people[] is populated
+    # (issue #51). Fall back to at least the result count so the agent sees a
+    # meaningful number and pagination logic doesn't silently halt.
+    total = max(pagination_data.get("total_entries", 0) or 0, len(people))
     has_more = total > page * per_page
     pagination = {
         "total": total,
@@ -236,7 +245,7 @@ def apollo__search_people(
         ),
     }
 
-    return {
+    result: dict[str, Any] = {
         "people": people,
         "pagination": pagination,
         "agent_hint": (
@@ -245,6 +254,20 @@ def apollo__search_people(
             "filters, call apollo__search_people with updated parameters."
         ),
     }
+
+    # Apollo's organization_domains filter silently fails to scope unless paired
+    # with q_keywords or q_organization_name (issue #51). Warn the agent so it
+    # doesn't trust the results.
+    if organization_domains and not (q_keywords or q_organization_name):
+        result["scope_warning"] = (
+            "organization_domains was used without q_keywords or q_organization_name. "
+            "Apollo does not reliably scope to the given domain on its own — results "
+            "may include people from unrelated companies. Re-run with "
+            "q_organization_name=\"<company name>\" or q_keywords=\"<company name>\" "
+            "to actually scope to the target company."
+        )
+
+    return result
 
 
 def apollo__search_companies(
