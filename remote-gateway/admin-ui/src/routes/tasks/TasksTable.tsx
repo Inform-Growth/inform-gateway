@@ -37,12 +37,20 @@ export function TasksTable({
     {
       accessorKey: 'goal',
       header: 'Goal',
-      cell: (c) => <span className="text-sm">{c.getValue<string>()}</span>,
+      cell: (c) => (
+        <div className="max-w-[320px] truncate text-sm" title={c.getValue<string>()}>
+          {c.getValue<string>()}
+        </div>
+      ),
     },
     {
       accessorKey: 'user_id',
       header: 'User',
-      cell: (c) => <span className="font-mono text-xs">{c.getValue<string>()}</span>,
+      cell: (c) => (
+        <div className="max-w-[120px] truncate font-mono text-xs" title={c.getValue<string>()}>
+          {c.getValue<string>()}
+        </div>
+      ),
     },
     {
       accessorKey: 'status',

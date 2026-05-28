@@ -8,6 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { useToolCalls } from '@/hooks/useToolCalls';
 import type { Task } from '@/hooks/useTasks';
+import { cn } from '@/lib/utils';
 
 type Props = {
   task: Task | null;
@@ -57,6 +58,7 @@ export function TaskDetailSheet({ task, onOpenChange }: Props) {
 
         {t && (
           <div className="space-y-6 mt-6 text-sm">
+            {/* Timeline */}
             <section>
               <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
                 Timeline
@@ -71,6 +73,60 @@ export function TaskDetailSheet({ task, onOpenChange }: Props) {
               </dl>
             </section>
 
+            {/* Decision context */}
+            {(t.decision_context || t.decision_type || t.stakes_hint) && (
+              <section>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                  Decision context
+                </h3>
+                <div className="space-y-2">
+                  {(t.decision_type || t.stakes_hint) && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {t.decision_type && (
+                        <Badge variant={t.decision_type === 'decision' ? 'default' : 'secondary'}>
+                          {t.decision_type}
+                        </Badge>
+                      )}
+                      {t.stakes_hint && (
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            t.stakes_hint === 'high' && 'border-destructive text-destructive',
+                            t.stakes_hint === 'medium' && 'border-yellow-500 text-yellow-600 dark:text-yellow-400',
+                            t.stakes_hint === 'low' && 'border-muted-foreground text-muted-foreground',
+                          )}
+                        >
+                          {t.stakes_hint} stakes
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+                  {t.decision_context && (
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      {t.decision_context}
+                    </p>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* Planned steps */}
+            {t.steps && t.steps.length > 0 && (
+              <section>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                  Planned steps ({t.steps.length})
+                </h3>
+                <ol className="space-y-1 list-decimal list-inside">
+                  {t.steps.map((step, i) => (
+                    <li key={i} className="text-sm text-muted-foreground leading-snug">
+                      {step}
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            )}
+
+            {/* Outcome */}
             {t.outcome && (
               <section>
                 <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
@@ -82,6 +138,7 @@ export function TaskDetailSheet({ task, onOpenChange }: Props) {
               </section>
             )}
 
+            {/* Tool calls */}
             <section>
               <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
                 Tool calls ({calls.data?.length ?? 0})
@@ -100,8 +157,8 @@ export function TaskDetailSheet({ task, onOpenChange }: Props) {
                         ? <CheckCircle2 className="w-3 h-3 text-moss-light shrink-0" />
                         : <XCircle className="w-3 h-3 text-destructive shrink-0" />}
                       <span className="font-mono truncate flex-1">{c.tool_name}</span>
-                      <span className="text-muted-foreground">{c.duration_ms}ms</span>
-                      <span className="text-muted-foreground font-mono">{c.called_at}</span>
+                      <span className="text-muted-foreground shrink-0">{c.duration_ms}ms</span>
+                      <span className="text-muted-foreground font-mono shrink-0 text-[10px]">{c.called_at}</span>
                     </div>
                   ))}
                 </div>

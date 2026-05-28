@@ -65,6 +65,7 @@ export function DataTable<T>({
   return (
     <div className="space-y-2">
       <div className="rounded-md border border-border overflow-hidden">
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((hg) => (
@@ -123,6 +124,7 @@ export function DataTable<T>({
             )}
           </TableBody>
         </Table>
+        </div>
       </div>
 
       {pageSize > 0 && table.getPageCount() > 1 && (

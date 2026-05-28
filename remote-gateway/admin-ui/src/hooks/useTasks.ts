@@ -6,11 +6,14 @@ export type Task = {
   user_id: string;
   org_id: string;
   goal: string;
-  steps: unknown[] | null;
+  steps: string[] | null;
   status: 'active' | 'complete';
   outcome: string | null;
   created_at: number | string;
   completed_at: number | string | null;
+  decision_context: string | null;
+  decision_type: 'decision' | 'process' | 'exploration' | null;
+  stakes_hint: 'high' | 'medium' | 'low' | null;
 };
 
 type TasksResponse = { org_id: string; tasks: Task[]; count: number };

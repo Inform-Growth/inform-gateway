@@ -25,12 +25,23 @@ export function ToolCallsTable({ data, isLoading, pageSize, page, onPage, onRowC
     {
       accessorKey: 'tool_name',
       header: 'Tool',
-      cell: (c) => <span className="font-mono text-xs">{c.getValue<string>()}</span>,
+      cell: (c) => (
+        <div className="max-w-[220px] truncate font-mono text-xs" title={c.getValue<string>()}>
+          {c.getValue<string>()}
+        </div>
+      ),
     },
     {
       accessorKey: 'user_id',
       header: 'User',
-      cell: (c) => <span className="font-mono text-xs">{c.getValue<string | null>() ?? '—'}</span>,
+      cell: (c) => {
+        const v = c.getValue<string | null>() ?? '—';
+        return (
+          <div className="max-w-[100px] truncate font-mono text-xs" title={v}>
+            {v}
+          </div>
+        );
+      },
     },
     {
       accessorKey: 'duration_ms',
