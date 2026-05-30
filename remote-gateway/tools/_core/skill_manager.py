@@ -8,10 +8,25 @@ whatever tools are available. Skills don't need to know about tool availability.
 from __future__ import annotations
 
 import contextvars
+import hashlib
+from collections.abc import Callable
 from typing import Any
 
 
-def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar) -> None:
+def _skill_embed_source(name: str, description: str) -> str:
+    return f"{name}\n{description}"
+
+
+def _skill_embed_hash(source: str) -> str:
+    return hashlib.sha256(source.encode()).hexdigest()
+
+
+def register(
+    mcp: Any,
+    telemetry: Any,
+    current_user_var: contextvars.ContextVar,
+    embed_fn: Callable[[str], list[float] | None] | None = None,
+) -> None:
     """Register skill CRUD tools and run_skill on mcp.
 
     Args:
@@ -24,19 +39,52 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
         user_id = current_user_var.get()
         return telemetry.get_org_id(user_id) if user_id else "default"
 
+    def _try_embed(org_id: str, name: str, description: str) -> None:
+        """Compute and store a skill embedding; silently no-ops on any failure."""
+        if embed_fn is None:
+            return
+        try:
+            source = _skill_embed_source(name, description)
+            new_hash = _skill_embed_hash(source)
+            if new_hash == telemetry.get_skill_embed_hash(org_id, name):
+                return  # hash-gate: skip if description unchanged
+            vec = embed_fn(source)
+            if vec is not None:
+                telemetry.store_skill_embedding(org_id, name, vec, new_hash)
+        except Exception:
+            pass  # fail open — never let embedding block skill writes
+
     @mcp.tool()
-    def skill_list() -> list[dict]:
-        """Return all active, permitted skills for the calling user.
+    def skill_list(
+        prefix: str | None = None,
+        name_only: bool = False,
+    ) -> list[dict]:
+        """Return active, permitted skills for the calling user.
+
+        Use filters to avoid token-limit issues on large skill catalogs — the
+        full catalog can exceed 77K characters. Combine ``prefix`` and
+        ``name_only`` to get a minimal index under 2K characters.
 
         Bypasses the init gate — available even before setup. Skills disabled for
         the user (or globally via '*') are filtered out.
+
+        Args:
+            prefix: Return only skills whose name starts with this string
+                (e.g. ``"role_"`` for role skills, ``"brief_"`` for briefs).
+            name_only: If True, return only the ``name`` field and omit
+                ``description``, ``prompt_template``, and other metadata.
+                Reduces payload by ~95% on a typical catalog.
         """
         user_id = current_user_var.get()
         skills = telemetry.list_skills(_org_id())
-        if user_id is None:
-            return skills
-        visible = telemetry.filter_visible_skills(user_id, [s["name"] for s in skills])
-        return [s for s in skills if s["name"] in visible]
+        if user_id is not None:
+            visible = telemetry.filter_visible_skills(user_id, [s["name"] for s in skills])
+            skills = [s for s in skills if s["name"] in visible]
+        if prefix is not None:
+            skills = [s for s in skills if s["name"].startswith(prefix)]
+        if name_only:
+            skills = [{"name": s["name"]} for s in skills]
+        return skills
 
     @mcp.tool()
     def skill_create(name: str, description: str, prompt_template: str) -> dict:
@@ -52,7 +100,11 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
         """
         user_id = current_user_var.get()
         org_id = _org_id()
-        return telemetry.create_skill(org_id, name, description, prompt_template, created_by=user_id)
+        result = telemetry.create_skill(
+            org_id, name, description, prompt_template, created_by=user_id
+        )
+        _try_embed(org_id, name, description)
+        return result
 
     @mcp.tool()
     def skill_update(
@@ -74,9 +126,12 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
             fields["description"] = description
         if prompt_template is not None:
             fields["prompt_template"] = prompt_template
-        result = telemetry.update_skill(_org_id(), name, **fields)
+        org_id = _org_id()
+        result = telemetry.update_skill(org_id, name, **fields)
         if result is None:
             raise ValueError(f"Skill '{name}' not found or is a system skill.")
+        if description is not None:
+            _try_embed(org_id, name, description)
         return result
 
     @mcp.tool()

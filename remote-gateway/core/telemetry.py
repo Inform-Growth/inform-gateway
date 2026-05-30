@@ -33,7 +33,7 @@ import datetime
 import os
 import secrets
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from typing import Any, Generator
 
 import psycopg2
@@ -187,6 +187,8 @@ _MIGRATIONS = [
     ("tasks", "decision_context",      "TEXT"),
     ("tasks", "decision_type",         "TEXT"),
     ("tasks", "stakes_hint",           "TEXT"),
+    # Skill semantic search — hash always stored; vector column added only when pgvector available
+    ("skills", "embed_source_hash",    "TEXT"),
 ]
 
 
@@ -196,6 +198,7 @@ class TelemetryStore:
     def __init__(self, dsn: str = _DSN) -> None:
         self._dsn = dsn
         self._enabled = False
+        self._has_pgvector = False
         self._disabled_cache: dict[str, set[str]] = {}
         self._disabled_skills_cache: dict[str, set[str]] = {}
         self._hint_cache: dict[str, dict[str, dict]] = {}
@@ -227,6 +230,9 @@ class TelemetryStore:
         except Exception as exc:
             conn.close()
             print(f"[telemetry] disabled — schema setup failed: {exc}", flush=True)
+            return
+        # pgvector is optional — fail-open if extension not installed
+        self._has_pgvector = self._setup_pgvector()
 
     def _migrate_pg(self, cur: Any) -> None:
         """Add any columns introduced after the initial schema."""
@@ -1139,6 +1145,197 @@ class TelemetryStore:
             return True
         except Exception:
             return False
+
+    # ------------------------------------------------------------------
+    # Skill semantic search (pgvector, optional)
+    # ------------------------------------------------------------------
+
+    def _setup_pgvector(self) -> bool:
+        """Try to enable pgvector and add the embedding column to skills.
+
+        Returns True if the extension is available and the column exists.
+        Failure is silent — callers check ``_has_pgvector`` before using vector ops.
+        """
+        if not self._enabled:
+            return False
+        try:
+            conn = self._conn
+            with conn.cursor() as cur:
+                cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                cur.execute(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema = 'public' AND table_name = 'skills'"
+                )
+                existing = {row[0] for row in cur.fetchall()}
+                if "embedding" not in existing:
+                    dims = int(os.environ.get("EMBED_DIMS", "1536"))
+                    cur.execute(f"ALTER TABLE skills ADD COLUMN embedding vector({dims})")
+            conn.commit()
+            return True
+        except Exception as exc:
+            with suppress(Exception):
+                self._conn.rollback()
+            msg = f"[telemetry] pgvector unavailable — skill suggestions disabled: {exc}"
+            print(msg, flush=True)
+            return False
+
+    def get_skill_embed_hash(self, org_id: str, name: str) -> str | None:
+        """Return the stored embed_source_hash for a skill, or None if not set.
+
+        Args:
+            org_id: Organization identifier.
+            name: Skill name.
+        """
+        if not self._enabled:
+            return None
+        try:
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT embed_source_hash FROM skills "
+                    "WHERE org_id = %s AND name = %s AND is_active = 1",
+                    (org_id, name),
+                )
+                row = cur.fetchone()
+            return row["embed_source_hash"] if row else None
+        except Exception:
+            return None
+
+    def store_skill_embedding(
+        self,
+        org_id: str,
+        name: str,
+        embedding: list[float],
+        source_hash: str,
+    ) -> None:
+        """Persist a skill embedding and its source hash.
+
+        Always stores the hash (TEXT column, no pgvector required). Stores the
+        vector only when pgvector is available. The hash is used to skip
+        re-embedding unchanged skills even without pgvector.
+
+        Args:
+            org_id: Organization identifier.
+            name: Skill name.
+            embedding: 1536-dimensional float vector.
+            source_hash: SHA-256 of the source text used to produce the vector.
+        """
+        if not self._enabled:
+            return
+        try:
+            if self._has_pgvector:
+                vec_str = "[" + ",".join(str(x) for x in embedding) + "]"
+                with self._cursor() as cur:
+                    cur.execute(
+                        "UPDATE skills SET embedding = %s::vector, embed_source_hash = %s "
+                        "WHERE org_id = %s AND name = %s AND is_active = 1",
+                        (vec_str, source_hash, org_id, name),
+                    )
+            else:
+                with self._cursor() as cur:
+                    cur.execute(
+                        "UPDATE skills SET embed_source_hash = %s "
+                        "WHERE org_id = %s AND name = %s AND is_active = 1",
+                        (source_hash, org_id, name),
+                    )
+        except Exception:
+            pass
+
+    def search_skills_by_embedding(
+        self,
+        org_id: str,
+        query_embedding: list[float],
+        limit: int = 5,
+    ) -> list[dict]:
+        """Return active skills ordered by cosine similarity to query_embedding.
+
+        Returns an empty list when pgvector is unavailable or on any error.
+
+        Args:
+            org_id: Organization identifier.
+            query_embedding: 1536-dimensional query vector.
+            limit: Maximum number of results to return.
+
+        Returns:
+            List of dicts with ``name``, ``description``, and ``cosine`` (0–1).
+        """
+        if not self._enabled or not self._has_pgvector:
+            return []
+        try:
+            vec_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT name, description, "
+                    "1 - (embedding <=> %s::vector) AS cosine "
+                    "FROM skills "
+                    "WHERE org_id = %s AND is_active = 1 AND embedding IS NOT NULL "
+                    "ORDER BY embedding <=> %s::vector "
+                    "LIMIT %s",
+                    (vec_str, org_id, vec_str, limit),
+                )
+                rows = cur.fetchall()
+            return [dict(row) for row in rows]
+        except Exception:
+            return []
+
+    def get_skills_without_embedding(self) -> list[dict]:
+        """Return all active skills that have no stored embedding vector.
+
+        Only meaningful when pgvector is available; returns an empty list otherwise.
+
+        Returns:
+            List of dicts with ``org_id``, ``name``, and ``description``.
+        """
+        if not self._enabled or not self._has_pgvector:
+            return []
+        try:
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT org_id, name, description FROM skills "
+                    "WHERE is_active = 1 AND embedding IS NULL"
+                )
+                rows = cur.fetchall()
+            return [dict(row) for row in rows]
+        except Exception:
+            return []
+
+    def backfill_skill_embeddings(
+        self,
+        embed_fn: Any,
+    ) -> dict:
+        """Embed all active skills that are missing a vector.
+
+        Intended to run once at server startup (in a background thread) so
+        skills created before this feature shipped are immediately searchable.
+
+        Args:
+            embed_fn: Callable that takes a source string and returns a
+                1536-dimensional float list, or ``None`` on failure.
+
+        Returns:
+            Dict with ``embedded``, ``skipped``, and ``failed`` counts.
+        """
+        counts = {"embedded": 0, "skipped": 0, "failed": 0}
+        skills = self.get_skills_without_embedding()
+        if not skills:
+            return counts
+        try:
+            import embeddings as _emb  # noqa: PLC0415
+        except ImportError:
+            return counts
+        for skill in skills:
+            source = _emb.skill_embed_source(skill["name"], skill["description"])
+            source_hash = _emb.skill_embed_hash(source)
+            try:
+                vec = embed_fn(source)
+            except Exception:
+                counts["failed"] += 1
+                continue
+            if vec is None:
+                counts["skipped"] += 1
+                continue
+            self.store_skill_embedding(skill["org_id"], skill["name"], vec, source_hash)
+            counts["embedded"] += 1
+        return counts
 
     # ------------------------------------------------------------------
     # Tool hints

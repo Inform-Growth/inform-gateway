@@ -107,3 +107,33 @@ def test_run_skill_user_override_beats_global(tools, store):
     store.set_skill_permission("alice@example.com", "briefing", True)
     result = tools["run_skill"]("briefing", {"topic": "x"})
     assert result == "Summarize x"
+
+
+def test_skill_list_prefix_filter(tools):
+    tools["skill_create"]("role_editor", "Editor role", "You are an editor")
+    tools["skill_create"]("role_researcher", "Researcher role", "You are a researcher")
+    tools["skill_create"]("brief_daily", "Daily brief", "Daily brief template")
+    result = tools["skill_list"](prefix="role_")
+    names = [s["name"] for s in result]
+    assert names == ["role_editor", "role_researcher"]
+    assert "brief_daily" not in names
+
+
+def test_skill_list_name_only(tools):
+    tools["skill_create"]("briefing", "Morning summary", "Summarize {topic}")
+    result = tools["skill_list"](name_only=True)
+    assert result == [{"name": "briefing"}]
+    assert "description" not in result[0]
+    assert "prompt_template" not in result[0]
+
+
+def test_skill_list_prefix_and_name_only_combined(tools):
+    tools["skill_create"]("role_editor", "Editor role", "You are an editor")
+    tools["skill_create"]("brief_daily", "Daily brief", "Daily brief template")
+    result = tools["skill_list"](prefix="role_", name_only=True)
+    assert result == [{"name": "role_editor"}]
+
+
+def test_skill_list_prefix_no_match_returns_empty(tools):
+    tools["skill_create"]("briefing", "Morning summary", "Summarize {topic}")
+    assert tools["skill_list"](prefix="nonexistent_") == []

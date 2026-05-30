@@ -22,6 +22,7 @@ import functools
 import inspect
 import json
 import os
+import threading as _threading
 import time as _time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -603,6 +604,10 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                         if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
                             task_id = None
                     if task_id is None:
+                        _active = _telemetry.list_active_tasks(sid)
+                        if _active:
+                            task_id = _active[0]["task_id"]
+                    if task_id is None:
                         return _make_gate_task_redirect(fn.__name__)
                 if sid and not _telemetry.has_permission(sid, fn.__name__):
                     _perm_msg = f"Tool '{fn.__name__}' is disabled for your account."
@@ -659,6 +664,10 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                     task_row = _telemetry.get_task(task_id)
                     if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
                         task_id = None
+                if task_id is None:
+                    _active = _telemetry.list_active_tasks(sid)
+                    if _active:
+                        task_id = _active[0]["task_id"]
                 if task_id is None:
                     return _make_gate_task_redirect(fn.__name__)
             if sid and not _telemetry.has_permission(sid, fn.__name__):
@@ -753,6 +762,10 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
                     if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
                         task_id = None
                 if task_id is None:
+                    _active = _telemetry.list_active_tasks(sid)
+                    if _active:
+                        task_id = _active[0]["task_id"]
+                if task_id is None:
                     return _make_gate_task_redirect(tool_name)
             if sid and not _telemetry.has_permission(sid, tool_name):
                 _perm_msg = f"Tool '{tool_name}' is disabled for your account."
@@ -806,6 +819,10 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
                 task_row = _telemetry.get_task(task_id)
                 if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
                     task_id = None
+            if task_id is None:
+                _active = _telemetry.list_active_tasks(sid)
+                if _active:
+                    task_id = _active[0]["task_id"]
             if task_id is None:
                 return _make_gate_task_redirect(tool_name)
         if sid and not _telemetry.has_permission(sid, tool_name):
@@ -883,9 +900,10 @@ import sys as _sys  # noqa: E402
 
 _sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tools import meta as _meta_tools  # noqa: E402
+import embeddings as _embeddings  # noqa: E402
+from tools import admin as _admin_tools  # noqa: E402
 from tools import friction as _friction_tools  # noqa: E402
-from tools.integrations import notes as _notes_tools  # noqa: E402
+from tools import meta as _meta_tools  # noqa: E402
 from tools import registry as _registry_tools  # noqa: E402
 from tools._core import onboarding as _onboarding_tools  # noqa: E402
 from tools._core import profile_manager as _profile_manager_tools  # noqa: E402
@@ -894,8 +912,8 @@ from tools._core import task_manager as _task_manager_tools  # noqa: E402
 from tools.integrations import apollo as _apollo_tools  # noqa: E402
 from tools.integrations import attio as _attio_tools  # noqa: E402
 from tools.integrations import email_tools as _email_tools  # noqa: E402
+from tools.integrations import notes as _notes_tools  # noqa: E402
 from tools.integrations import wiza as _wiza_tools  # noqa: E402
-from tools import admin as _admin_tools  # noqa: E402
 
 
 class _RequestAwareUser:
@@ -934,10 +952,23 @@ _email_tools.register(mcp)
 _wiza_tools.register(mcp)
 _apollo_tools.register(mcp)
 _onboarding_tools.register(mcp, _telemetry, _user_view)
-_skill_manager_tools.register(mcp, _telemetry, _user_view)
+_skill_manager_tools.register(mcp, _telemetry, _user_view, embed_fn=_embeddings.embed_text)
 _profile_manager_tools.register(mcp, _telemetry, _user_view)
-_task_manager_tools.register(mcp, _telemetry, _user_view)
+_task_manager_tools.register(mcp, _telemetry, _user_view, embed_fn=_embeddings.embed_text)
 _admin_tools.register(mcp, _telemetry)
+
+# Backfill embeddings for skills created before this feature shipped.
+# Runs in the background so startup latency is unaffected.
+def _backfill_embeddings() -> None:
+    result = _telemetry.backfill_skill_embeddings(_embeddings.embed_text)
+    if result["embedded"] or result["failed"]:
+        print(
+            f"[embeddings] backfill — "
+            f"embedded={result['embedded']} skipped={result['skipped']} failed={result['failed']}",
+            flush=True,
+        )
+
+_threading.Thread(target=_backfill_embeddings, daemon=True, name="skill-embed-backfill").start()
 
 
 # ---------------------------------------------------------------------------

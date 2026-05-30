@@ -10,6 +10,7 @@ Bypasses the init gate — safe to call after initialization.
 from __future__ import annotations
 
 import contextvars
+from collections.abc import Callable
 from typing import Any
 
 _VAGUE_PHRASES: tuple[str, ...] = (
@@ -91,7 +92,12 @@ def _check_goal_clarity(goal: str) -> dict | None:
     return None
 
 
-def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar) -> None:
+def register(
+    mcp: Any,
+    telemetry: Any,
+    current_user_var: contextvars.ContextVar,
+    embed_fn: Callable[[str], list[float] | None] | None = None,
+) -> None:
     """Register declare_intent, complete_task, get_tasks, and update_task on mcp.
 
     Args:
@@ -104,6 +110,26 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
         user_id = current_user_var.get() or "anonymous"
         org_id = telemetry.get_org_id(user_id) if user_id != "anonymous" else "default"
         return user_id, org_id
+
+    def _suggest_skills(org_id: str, goal: str) -> list[dict]:
+        """Return top-k skill suggestions for goal. Always returns a list; never raises."""
+        if embed_fn is None:
+            return []
+        try:
+            import embeddings as _emb  # noqa: PLC0415
+            vec = embed_fn(goal)
+            if vec is None:
+                return []
+            matches = telemetry.search_skills_by_embedding(org_id, vec)
+            results = []
+            for m in matches:
+                skill_text = _emb.skill_embed_source(m["name"], m["description"])
+                score = _emb.hybrid_score(float(m["cosine"]), goal, skill_text)
+                if score >= _emb.SCORE_FLOOR:
+                    results.append({"name": m["name"], "score": round(score, 3)})
+            return results
+        except Exception:
+            return []  # fail open — never let suggestions block task creation
 
     @mcp.tool()
     def declare_intent(
@@ -162,6 +188,7 @@ def register(mcp: Any, telemetry: Any, current_user_var: contextvars.ContextVar)
             "instruction": _TASK_CRITERIA_INSTRUCTION,
         }
         task["shadow_operating_instructions"] = _SHADOW_OPERATING_INSTRUCTIONS
+        task["suggested_skills"] = _suggest_skills(org_id, goal)
 
         warning = _check_goal_clarity(goal)
         if warning:

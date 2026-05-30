@@ -71,3 +71,25 @@ def test_task_id_linked_to_tool_call(store):
         row = cur.fetchone()
     assert row is not None
     assert row["task_id"] == task["task_id"]
+
+
+def test_auto_recover_task_when_none_passed(store):
+    """Gate auto-recovers when agent omits task_id but has an active task."""
+    task = store.create_task("alice", "acme", "Write exec brief", [])
+    active = store.list_active_tasks("alice")
+    assert len(active) == 1
+    assert active[0]["task_id"] == task["task_id"]
+
+
+def test_no_auto_recover_when_no_active_task(store):
+    """Gate still blocks when agent omits task_id AND has no active task."""
+    active = store.list_active_tasks("alice")
+    assert active == []
+
+
+def test_auto_recover_picks_newest_task(store):
+    """When multiple active tasks exist, auto-recovery picks the most recent."""
+    store.create_task("alice", "acme", "Older task", [])
+    newer = store.create_task("alice", "acme", "Newer task", [])
+    active = store.list_active_tasks("alice")
+    assert active[0]["task_id"] == newer["task_id"]
