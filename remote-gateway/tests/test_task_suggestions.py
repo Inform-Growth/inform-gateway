@@ -123,3 +123,38 @@ def test_declare_intent_suggested_skills_scores_are_rounded(store, user_var):
     if result["suggested_skills"]:
         score = result["suggested_skills"][0]["score"]
         assert score == round(score, 3)
+
+
+def test_suggested_skills_includes_description(store, user_var):
+    """Each suggested skill entry includes the skill description."""
+    embed_fn = lambda _: [0.1] * 1536  # noqa: E731
+    fake_match = {"name": "crm_search", "description": "Search CRM records by name or domain", "cosine": 0.9}
+
+    tools = _make_task_tools(store, user_var, embed_fn=embed_fn)
+    with patch.object(store, "search_skills_by_embedding", return_value=[fake_match]):
+        result = _declare(tools, goal="Search CRM for accounts in Vancouver")
+
+    assert len(result["suggested_skills"]) == 1
+    assert result["suggested_skills"][0]["description"] == "Search CRM records by name or domain"
+
+
+def test_declare_intent_includes_skill_suggestion_instruction_when_skills_present(store, user_var):
+    """Response includes skill_suggestion_instruction when suggested_skills is non-empty."""
+    embed_fn = lambda _: [0.1] * 1536  # noqa: E731
+    fake_match = {"name": "crm_search", "description": "Search CRM records", "cosine": 0.9}
+
+    tools = _make_task_tools(store, user_var, embed_fn=embed_fn)
+    with patch.object(store, "search_skills_by_embedding", return_value=[fake_match]):
+        result = _declare(tools, goal="Search CRM for accounts in Vancouver")
+
+    assert "skill_suggestion_instruction" in result
+    assert isinstance(result["skill_suggestion_instruction"], str)
+    assert len(result["skill_suggestion_instruction"]) > 0
+
+
+def test_declare_intent_no_skill_suggestion_instruction_when_no_skills(store, user_var):
+    """skill_suggestion_instruction is absent when suggested_skills is empty."""
+    tools = _make_task_tools(store, user_var)  # no embed_fn → empty suggestions
+    result = _declare(tools)
+
+    assert "skill_suggestion_instruction" not in result

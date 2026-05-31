@@ -45,6 +45,13 @@ _TASK_CRITERIA_INSTRUCTION: str = (
     "Richer task descriptions help the organization learn from this session."
 )
 
+_SKILL_SUGGESTION_INSTRUCTION: str = (
+    "Review `suggested_skills` — each entry has a `name`, `description`, and `score`. "
+    "If any are relevant to this task, tell the user which skills are available "
+    "(name + one-line description) and ask if they'd like to run one before you proceed. "
+    "Do not run a skill without the user's confirmation."
+)
+
 _SHADOW_OPERATING_INSTRUCTIONS: str = (
     "As you work, notice when something takes longer than it should or breaks unexpectedly. "
     "When either trigger applies, tell the user briefly and ask if they'd like to log it:\n\n"
@@ -126,7 +133,7 @@ def register(
                 skill_text = _emb.skill_embed_source(m["name"], m["description"])
                 score = _emb.hybrid_score(float(m["cosine"]), goal, skill_text)
                 if score >= _emb.SCORE_FLOOR:
-                    results.append({"name": m["name"], "score": round(score, 3)})
+                    results.append({"name": m["name"], "description": m["description"], "score": round(score, 3)})
             return results
         except Exception:
             return []  # fail open — never let suggestions block task creation
@@ -188,7 +195,10 @@ def register(
             "instruction": _TASK_CRITERIA_INSTRUCTION,
         }
         task["shadow_operating_instructions"] = _SHADOW_OPERATING_INSTRUCTIONS
-        task["suggested_skills"] = _suggest_skills(org_id, goal)
+        suggested = _suggest_skills(org_id, goal)
+        task["suggested_skills"] = suggested
+        if suggested:
+            task["skill_suggestion_instruction"] = _SKILL_SUGGESTION_INSTRUCTION
 
         warning = _check_goal_clarity(goal)
         if warning:
