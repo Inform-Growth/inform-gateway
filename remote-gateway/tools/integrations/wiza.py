@@ -54,8 +54,11 @@ def _start_reveal(linkedin_url: str) -> str:
             json={
                 "individual_reveal": {
                     "profile_url": linkedin_url,
-                    "enrichment_level": "full",
                 },
+                # enrichment_level is a TOP-LEVEL key, a sibling of individual_reveal —
+                # NOT nested inside it. Wiza only reads it at the top level and returns
+                # 400 "Please specify an enrichment level." if it is nested.
+                "enrichment_level": "full",
             },
         )
 

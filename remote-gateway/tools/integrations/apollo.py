@@ -14,6 +14,12 @@ from typing import Any
 
 _APOLLO_BASE = "https://api.apollo.io/v1"
 
+# httpx defaults to a 5s timeout on every operation. Apollo's people/match
+# enrichment endpoint regularly exceeds that, causing intermittent
+# "operation timed out" failures (search and org-enrich are faster and rarely
+# trip it). Use a generous explicit timeout on every Apollo client instead.
+_APOLLO_TIMEOUT_S = 30.0
+
 _PERSON_SEARCH_FIELDS: frozenset[str] = frozenset({
     "id", "name", "first_name", "last_name", "title",
     "email", "email_status", "linkedin_url",
@@ -214,7 +220,7 @@ def apollo__search_people(
     if contact_email_status:
         body["contact_email_status"] = contact_email_status
 
-    with httpx.Client() as client:
+    with httpx.Client(timeout=_APOLLO_TIMEOUT_S) as client:
         resp = client.post(
             f"{_APOLLO_BASE}/mixed_people/api_search",
             headers=_headers(),
@@ -332,7 +338,7 @@ def apollo__search_companies(
     if organization_latest_funding_amount_max is not None:
         body["organization_latest_funding_amount_max"] = organization_latest_funding_amount_max
 
-    with httpx.Client() as client:
+    with httpx.Client(timeout=_APOLLO_TIMEOUT_S) as client:
         resp = client.post(
             f"{_APOLLO_BASE}/mixed_companies/search",
             headers=_headers(),
@@ -428,7 +434,7 @@ def apollo__enrich_person(
     if domain:
         body["domain"] = domain
 
-    with httpx.Client() as client:
+    with httpx.Client(timeout=_APOLLO_TIMEOUT_S) as client:
         resp = client.post(
             f"{_APOLLO_BASE}/people/match",
             headers=_headers(),
@@ -469,7 +475,7 @@ def apollo__enrich_organization(domain: str) -> dict:
     """
     import httpx
 
-    with httpx.Client() as client:
+    with httpx.Client(timeout=_APOLLO_TIMEOUT_S) as client:
         resp = client.get(
             f"{_APOLLO_BASE}/organizations/enrich",
             headers=_headers(),

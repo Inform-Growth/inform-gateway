@@ -461,6 +461,21 @@ def test_enrich_person_posts_to_correct_url(monkeypatch):
     assert "people/match" in url
 
 
+def test_enrich_person_sets_explicit_timeout(monkeypatch):
+    """enrich_person builds the httpx client with an explicit, generous timeout.
+
+    httpx defaults to 5s, which Apollo's people/match endpoint regularly exceeds,
+    causing intermittent "operation timed out" failures. Regression guard.
+    """
+    monkeypatch.setenv("APOLLO_API_KEY", "test-key")
+    from tools.integrations.apollo import _APOLLO_TIMEOUT_S, apollo__enrich_person
+    mock_client = _mock_client(post_responses=[_mock_response({"person": {"id": "p1"}})])
+    with patch("httpx.Client", return_value=mock_client) as mock_cls:
+        apollo__enrich_person(id="p1")
+    assert mock_cls.call_args.kwargs.get("timeout") == _APOLLO_TIMEOUT_S
+    assert _APOLLO_TIMEOUT_S >= 15.0
+
+
 def test_enrich_person_posts_identifier_in_body(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "test-key")
     from tools.integrations.apollo import apollo__enrich_person

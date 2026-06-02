@@ -120,7 +120,11 @@ def test_enrich_person_posts_correct_payload(monkeypatch):
 
     assert "individual_reveals" in posted_url
     assert posted_body["individual_reveal"]["profile_url"] == "https://www.linkedin.com/in/janesmith"
-    assert posted_body["individual_reveal"]["enrichment_level"] == "full"
+    # enrichment_level must be a TOP-LEVEL sibling of individual_reveal, not nested
+    # inside it. Wiza returns 400 "Please specify an enrichment level." when nested,
+    # because it only reads enrichment_level at the top level (issue: prod Wiza 400).
+    assert posted_body["enrichment_level"] == "full"
+    assert "enrichment_level" not in posted_body["individual_reveal"]
 
 
 def test_enrich_person_sends_bearer_token(monkeypatch):
