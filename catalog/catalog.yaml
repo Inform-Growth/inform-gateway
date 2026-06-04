@@ -51,6 +51,14 @@ integrations:
     default_select: false
     env_vars: [BUFFER_ACCESS_TOKEN]
 
+  decisions:
+    name: Decision Ledger
+    description: Company-strategy decisions/tasks backed by Supabase (list/mint/resolve).
+    kind: python
+    default_select: false
+    env_vars: [SUPABASE_URL, SUPABASE_KEY]
+    register_call: "_decisions_tools.register(mcp)"
+
   exa:
     name: Exa
     description: Neural web search via Exa's hosted MCP server.
