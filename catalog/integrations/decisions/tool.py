@@ -131,7 +131,9 @@ def upsert_decision(
         )
         resp.raise_for_status()
         data = resp.json()
-        return {"decision": data[0] if data else None}
+        if not data:
+            raise RuntimeError(f"Supabase returned empty response for POST to decisions (status {resp.status_code})")
+        return {"decision": data[0]}
 
 
 def resolve_decision(
@@ -171,7 +173,9 @@ def resolve_decision(
         )
         resp.raise_for_status()
         data = resp.json()
-        return {"decision": data[0] if data else None}
+        if not data:
+            raise RuntimeError(f"Supabase returned empty response for PATCH to decisions/{decision_id} (status {resp.status_code})")
+        return {"decision": data[0]}
 
 
 def register(mcp: Any) -> None:
