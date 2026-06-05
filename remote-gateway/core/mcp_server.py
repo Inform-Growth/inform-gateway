@@ -914,6 +914,7 @@ from tools.integrations import attio as _attio_tools  # noqa: E402
 from tools.integrations import email_tools as _email_tools  # noqa: E402
 from tools.integrations import notes as _notes_tools  # noqa: E402
 from tools.integrations import wiza as _wiza_tools  # noqa: E402
+from catalog_registrations import register_catalog_integrations  # noqa: E402
 
 
 class _RequestAwareUser:
@@ -951,6 +952,7 @@ _attio_tools.register(mcp)  # must register after telemetry patch is applied
 _email_tools.register(mcp)
 _wiza_tools.register(mcp)
 _apollo_tools.register(mcp)
+register_catalog_integrations(mcp)  # catalog-managed integrations (e.g. decisions); after telemetry patch
 _onboarding_tools.register(mcp, _telemetry, _user_view)
 _skill_manager_tools.register(mcp, _telemetry, _user_view, embed_fn=_embeddings.embed_text)
 _profile_manager_tools.register(mcp, _telemetry, _user_view)

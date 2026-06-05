@@ -94,15 +94,15 @@ def upsert_decision(
 
     with httpx.Client() as client:
         # Dedup against active rows. ilike with no wildcards is a case-insensitive
-        # exact match; the value is double-quoted so titles containing PostgREST
-        # reserved chars (parens, commas, colons — e.g. "Foo (#27)") are treated
-        # as a literal and not re-parsed as operator syntax.
+        # exact match; httpx URL-encodes the value, so titles with special chars
+        # (parens, '#', '/' — e.g. "Apollo/Wiza enrichment (#27)") match fine.
+        # Mirrors agent-inform's supabase-py `.ilike("title", title)`.
         existing = client.get(
             _base(),
             headers=_headers(),
             params={
                 "select": "*",
-                "title": f'ilike."{title}"',
+                "title": f"ilike.{title}",
                 "status": "not.eq.dropped",
                 "order": "opened_at.desc",
                 "limit": "1",
