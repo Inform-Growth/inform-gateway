@@ -31,7 +31,7 @@ jobs:
         run: ruff check .
 
   catalog-sync:
-    name: Catalog ↔ copier.yml sync check
+    name: Catalog <-> copier.yml sync check
     runs-on: ubuntu-latest
     if: ${{ hashFiles('catalog/catalog.yaml', 'copier.yml', 'scripts/check_catalog_copier_sync.py') != '' }}
     steps:
