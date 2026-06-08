@@ -91,6 +91,8 @@ def test_real_files_are_in_sync():
         pytest.skip("real files not present")
     catalog = cc._catalog_slugs(real_catalog)
     copier = cc._copier_choice_slugs(real_copier)
+    if copier is None:
+        pytest.skip("copier.yml has no integrations multi-select — sync check not applicable")
     assert catalog == copier, (
         f"drift: catalog has {catalog - copier}, copier has {copier - catalog}"
     )

@@ -46,4 +46,4 @@ def test_unauthorized_returns_403(client):
     """SPA catch-all without token must return 403."""
     resp = client.get("/dashboard")
     assert resp.status_code == 403
-    assert "403" in resp.text or "Forbidden" in resp.text
+    assert "forbidden" in resp.text.lower()
