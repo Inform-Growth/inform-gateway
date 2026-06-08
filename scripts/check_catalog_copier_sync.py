@@ -32,7 +32,8 @@ def _catalog_slugs(manifest_path: Path = CATALOG_MANIFEST) -> set[str]:
     return set(data["integrations"].keys())
 
 
-def _copier_choice_slugs(copier_path: Path = COPIER_FILE) -> set[str]:
+def _copier_choice_slugs(copier_path: Path = COPIER_FILE) -> set[str] | None:
+    """Return the set of integration slugs from copier.yml, or None if the pattern is absent."""
     if not copier_path.exists():
         print(f"error: {copier_path} not found", file=sys.stderr)
         sys.exit(2)
@@ -40,8 +41,7 @@ def _copier_choice_slugs(copier_path: Path = COPIER_FILE) -> set[str]:
     integrations = (data or {}).get("integrations") or {}
     choices = integrations.get("choices")
     if choices is None:
-        # copier.yml doesn't use the integrations multi-select pattern — skip gracefully.
-        return set()
+        return None  # copier.yml doesn't use the integrations multi-select — skip
     if not isinstance(choices, dict):
         print(
             "error: copier.yml's `integrations.choices` must be a dict "
@@ -55,6 +55,9 @@ def _copier_choice_slugs(copier_path: Path = COPIER_FILE) -> set[str]:
 def main() -> int:
     catalog = _catalog_slugs(CATALOG_MANIFEST)
     copier = _copier_choice_slugs(COPIER_FILE)
+    if copier is None:
+        print("✓ copier.yml has no integrations multi-select — skipping sync check")
+        return 0
     missing_in_copier = catalog - copier
     extra_in_copier = copier - catalog
     if not missing_in_copier and not extra_in_copier:
