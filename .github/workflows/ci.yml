@@ -31,9 +31,8 @@ jobs:
         run: ruff check .
 
   catalog-sync:
-    name: Catalog <-> copier.yml sync check
+    name: Catalog sync check
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('catalog/catalog.yaml', 'copier.yml', 'scripts/check_catalog_copier_sync.py') != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -41,6 +40,7 @@ jobs:
           python-version: "3.11"
       - run: pip install --quiet PyYAML
       - name: Verify catalog choices match copier.yml multi-select
+        if: hashFiles('catalog/catalog.yaml', 'copier.yml', 'scripts/check_catalog_copier_sync.py') != ''
         run: python scripts/check_catalog_copier_sync.py
 
   test:
