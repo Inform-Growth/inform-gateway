@@ -443,6 +443,8 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         return JSONResponse({"org_id": org_id, "tasks": tasks, "count": len(tasks)})
 
     async def _serve_spa(request: Request) -> Response:
+        if not _is_authorized(request):
+            return _forbidden()
         index = DIST / "index.html"
         if not index.exists():
             return HTMLResponse(

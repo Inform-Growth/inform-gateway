@@ -39,6 +39,9 @@ def _copier_choice_slugs(copier_path: Path = COPIER_FILE) -> set[str]:
     data = yaml.safe_load(copier_path.read_text())
     integrations = (data or {}).get("integrations") or {}
     choices = integrations.get("choices")
+    if choices is None:
+        # copier.yml doesn't use the integrations multi-select pattern — skip gracefully.
+        return set()
     if not isinstance(choices, dict):
         print(
             "error: copier.yml's `integrations.choices` must be a dict "

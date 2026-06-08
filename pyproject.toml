@@ -42,4 +42,4 @@ exclude = [
 select = ["E", "F", "I", "N", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["remote-gateway/tests", "scripts"]
