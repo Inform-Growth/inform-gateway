@@ -884,3 +884,58 @@ def test_list_notes_tool_no_args_passes_all_none():
     fake_adapter.list.assert_called_once_with(
         folder=None, prefix=None, since=None, until=None, limit=None,
     )
+
+
+# ---- tool-layer: list_notes has_conventions flag (issue #60) ----
+
+def _fake_note(slug: str, folder: str | None = None) -> dict:
+    return {
+        "slug": slug, "id": "s", "url": "u",
+        "path": f"notes/{folder}/{slug}.md" if folder else f"notes/{slug}.md",
+        "folder": folder,
+        "created_at": "2026-06-08T00:00:00Z",
+        "updated_at": "2026-06-08T00:00:00Z",
+    }
+
+
+def test_list_notes_has_conventions_true_when_conventions_note_exists(monkeypatch):
+    """list_notes(folder=X) returns has_conventions=True when _conventions exists."""
+    from tools.integrations.notes import tools as notes_tools
+
+    fake_adapter = MagicMock()
+    fake_adapter.list.return_value = [_fake_note("content-draft-2026-06-08-roi", "marketing")]
+    fake_adapter.read.return_value = _fake_note("_conventions", "marketing")
+
+    with patch("tools.integrations.notes.tools.get_adapter", return_value=fake_adapter):
+        result = notes_tools.list_notes(folder="marketing")
+
+    assert result["has_conventions"] is True
+    fake_adapter.read.assert_called_once_with("_conventions", folder="marketing")
+
+
+def test_list_notes_has_conventions_false_when_no_conventions_note(monkeypatch):
+    """list_notes(folder=X) returns has_conventions=False when _conventions is absent."""
+    from tools.integrations.notes import tools as notes_tools
+
+    fake_adapter = MagicMock()
+    fake_adapter.list.return_value = [_fake_note("some-note", "sales")]
+    fake_adapter.read.return_value = None
+
+    with patch("tools.integrations.notes.tools.get_adapter", return_value=fake_adapter):
+        result = notes_tools.list_notes(folder="sales")
+
+    assert result["has_conventions"] is False
+
+
+def test_list_notes_no_folder_omits_has_conventions():
+    """list_notes() with no folder does not include has_conventions in the response."""
+    from tools.integrations.notes import tools as notes_tools
+
+    fake_adapter = MagicMock()
+    fake_adapter.list.return_value = []
+
+    with patch("tools.integrations.notes.tools.get_adapter", return_value=fake_adapter):
+        result = notes_tools.list_notes()
+
+    assert "has_conventions" not in result
+    fake_adapter.read.assert_not_called()

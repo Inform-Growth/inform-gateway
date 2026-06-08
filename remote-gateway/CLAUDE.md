@@ -122,6 +122,8 @@ Conventional folders (start with these; add more as agents and departments grow)
 
 Slugs are globally unique across folders. `write_note(slug, content, folder=X)` raises `NotesAdapterError(409)` if the slug already exists in a different folder.
 
+**`_conventions` reserved slug**: When a folder has structured note requirements (specific slug patterns, required YAML frontmatter, handshake formats), create a `_conventions` note: `write_note("_conventions", folder=X, content=<schema doc>)`. Agents call `read_note("_conventions", folder=X)` before writing to discover the contract. `list_notes(folder=X)` returns `has_conventions: true` when one exists — agents that list a folder before writing see the signal automatically.
+
 ### Admin role
 
 A new `api_keys.role` column distinguishes `'admin'` from `'user'`. Five tools are admin-gated (require `role='admin'` on the caller): `create_user`, `list_users`, `set_user_role`, `set_tool_permission`, `set_skill_permission`. Seed admins on startup via the `BOOTSTRAP_ADMIN_USER_IDS` env var. The UI exposes a role-select cell on the Operators page, backed by `PUT /api/users/{user_id}/role`.

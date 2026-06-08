@@ -22,6 +22,11 @@ def list_notes(
     All filters are server-side — combine them to drop your token cost. Results
     are sorted by updated_at descending.
 
+    When folder is provided, the response includes has_conventions (bool) —
+    True means a _conventions note exists in that folder defining its slug
+    patterns, required frontmatter, and format contract. Call
+    read_note("_conventions", folder=X) to read it before writing.
+
     Args:
         folder: Filter to a specific folder (e.g. "marketing", "sales",
             "executive", "architecture", "shadow", "jaron"). Folders are dynamic
@@ -38,8 +43,10 @@ def list_notes(
         Dict with 'notes' list and 'count'. Each note has slug, folder
         (None for root-level notes), created_at, updated_at, issue_number
         (always None on the file-based adapter), html_url.
+        When folder is provided, also includes has_conventions (bool).
     """
-    notes = get_adapter().list(
+    adapter = get_adapter()
+    notes = adapter.list(
         folder=folder, prefix=prefix, since=since, until=until, limit=limit,
     )
     rendered = [
@@ -53,7 +60,10 @@ def list_notes(
         }
         for n in notes
     ]
-    return {"notes": rendered, "count": len(rendered)}
+    result: dict = {"notes": rendered, "count": len(rendered)}
+    if folder is not None:
+        result["has_conventions"] = adapter.read("_conventions", folder=folder) is not None
+    return result
 
 
 def read_note(slug: str, folder: str | None = None) -> dict:
@@ -92,6 +102,11 @@ def write_note(slug: str, content: str, folder: str | None = None) -> dict:
     If a note with this slug already exists in the same folder, its content is
     updated in place. If the slug already exists in a DIFFERENT folder, this
     raises an error — slugs are globally unique across all folders.
+
+    Before writing to a folder, call read_note("_conventions", folder=X) to
+    discover any slug patterns, required frontmatter, or format contracts for
+    that folder. list_notes(folder=X) surfaces has_conventions=True when a
+    contract exists so you know to check before writing.
 
     Args:
         slug: Short identifier for the note (becomes the filename: notes/<folder>/<slug>.md).
