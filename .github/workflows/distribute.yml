@@ -10,6 +10,8 @@ name: Distribute Core Files to Downstream Repos
 #   Add its repo-relative path to CORE_FILES in the distribute job below.
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       repos:
@@ -165,12 +167,9 @@ jobs:
           git diff --cached --quiet && { echo "Nothing to commit."; exit 0; }
 
           SHORT_SHA="$(echo $TEMPLATE_SHA | cut -c1-8)"
-          git commit -m "chore: sync core files from inform-gateway@${SHORT_SHA}
-
-Files updated:
-$(echo "$CHANGED" | tr ' ' '\n' | sed 's/^/  - /')
-
-Source: https://github.com/Inform-Growth/inform-gateway/commit/${TEMPLATE_SHA}"
+          COMMIT_FILES=$(echo "$CHANGED" | tr ' ' '\n' | sed 's/^/  - /')
+          git commit -m "$(printf 'chore: sync core files from inform-gateway@%s\n\nFiles updated:\n%s\n\nSource: https://github.com/Inform-Growth/inform-gateway/commit/%s' \
+            "$SHORT_SHA" "$COMMIT_FILES" "$TEMPLATE_SHA")"
 
           git push origin "$BRANCH" --force
 
