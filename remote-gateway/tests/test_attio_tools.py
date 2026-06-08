@@ -17,6 +17,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from core.field_registry import FieldRegistry
 from tools.integrations.attio import (
     attio__create_record,
+    attio__create_task,
+    attio__list_tasks,
     attio__search_records,
     attio__update_record,
     attio__upsert_record,
@@ -554,3 +556,157 @@ def test_upsert_record_returns_error_on_attio_failure(monkeypatch):
             matching_attribute="email_addresses",
         )
     assert "error" in result
+
+
+# ---------------------------------------------------------------------------
+# attio__create_task (issue #71)
+# ---------------------------------------------------------------------------
+
+
+def test_create_task_posts_to_tasks_endpoint(monkeypatch):
+    """create_task POSTs to /v2/tasks, not /v2/objects/tasks/records."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    mock_client = _mock_client(
+        post_responses=[_mock_response({"data": {"id": {"task_id": "task-abc"}, "content": "x"}})]
+    )
+    with patch("httpx.Client", return_value=mock_client):
+        attio__create_task("Follow up")
+    url = mock_client.post.call_args.args[0]
+    assert url.endswith("/tasks"), f"expected /tasks endpoint, got {url}"
+    assert "objects" not in url
+
+
+def test_create_task_wraps_body_in_data(monkeypatch):
+    """create_task wraps payload in {'data': {...}} per Attio v2 convention."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    mock_client = _mock_client(
+        post_responses=[_mock_response({"data": {"id": {"task_id": "t1"}, "content": "x"}})]
+    )
+    with patch("httpx.Client", return_value=mock_client):
+        attio__create_task("Do something")
+    body = mock_client.post.call_args.kwargs["json"]
+    assert "data" in body
+    assert body["data"]["content"] == "Do something"
+
+
+def test_create_task_wraps_assignee_id_into_assignees_array(monkeypatch):
+    """create_task converts assignee_id string into assignees: [{workspace_member_id: ...}]."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    mock_client = _mock_client(
+        post_responses=[_mock_response({"data": {"id": {"task_id": "t2"}, "content": "x"}})]
+    )
+    with patch("httpx.Client", return_value=mock_client):
+        attio__create_task("Task", assignee_id="24154ea2-aaaa-bbbb-cccc-dddddddddddd")
+    body = mock_client.post.call_args.kwargs["json"]
+    member_id = "24154ea2-aaaa-bbbb-cccc-dddddddddddd"
+    assert body["data"]["assignees"] == [{"workspace_member_id": member_id}]
+
+
+def test_create_task_omits_optional_fields_when_not_provided(monkeypatch):
+    """create_task does not send null keys for omitted optional fields."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    mock_client = _mock_client(
+        post_responses=[_mock_response({"data": {"id": {"task_id": "t3"}, "content": "x"}})]
+    )
+    with patch("httpx.Client", return_value=mock_client):
+        attio__create_task("Minimal task")
+    body = mock_client.post.call_args.kwargs["json"]["data"]
+    assert "assignees" not in body
+    assert "deadline_at" not in body
+    assert "linked_records" not in body
+
+
+def test_create_task_returns_task_id(monkeypatch):
+    """create_task returns task_id from the Attio response."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    mock_client = _mock_client(
+        post_responses=[
+            _mock_response({"data": {"id": {"task_id": "task-xyz-789"}, "content": "Follow up"}})
+        ]
+    )
+    with patch("httpx.Client", return_value=mock_client):
+        result = attio__create_task("Follow up")
+    assert result["task_id"] == "task-xyz-789"
+    assert result["content"] == "Follow up"
+
+
+def test_create_task_returns_error_on_attio_failure(monkeypatch):
+    """create_task returns error dict on non-2xx without raising."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    resp = _mock_response({}, status_code=422)
+    resp.is_success = False
+    resp.text = '{"message": "content required"}'
+    mock_client = _mock_client(post_responses=[resp])
+    with patch("httpx.Client", return_value=mock_client):
+        result = attio__create_task("")
+    assert "error" in result
+    assert "422" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# attio__list_tasks (issue #71)
+# ---------------------------------------------------------------------------
+
+
+def _mock_get_client(responses):
+    """Return a context-manager mock for httpx.Client with .get responses."""
+    mock = MagicMock()
+    mock.__enter__ = MagicMock(return_value=mock)
+    mock.__exit__ = MagicMock(return_value=False)
+    mock.get.side_effect = responses
+    return mock
+
+
+def test_list_tasks_gets_tasks_endpoint(monkeypatch):
+    """list_tasks GETs /v2/tasks."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    mock_client = _mock_get_client([_mock_response({"data": []})])
+    with patch("httpx.Client", return_value=mock_client):
+        attio__list_tasks()
+    url = mock_client.get.call_args.args[0]
+    assert url.endswith("/tasks"), f"expected /tasks endpoint, got {url}"
+
+
+def test_list_tasks_passes_assignee_filter_when_provided(monkeypatch):
+    """list_tasks sends filter[assignees] query param when assignee_id given."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    mock_client = _mock_get_client([_mock_response({"data": []})])
+    with patch("httpx.Client", return_value=mock_client):
+        attio__list_tasks(assignee_id="24154ea2-aaaa-bbbb-cccc-dddddddddddd")
+    params = mock_client.get.call_args.kwargs.get("params", {})
+    assert params.get("filter[assignees]") == "24154ea2-aaaa-bbbb-cccc-dddddddddddd"
+
+
+def test_list_tasks_passes_is_completed_filter_when_provided(monkeypatch):
+    """list_tasks sends filter[is_completed] query param when is_completed given."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    mock_client = _mock_get_client([_mock_response({"data": []})])
+    with patch("httpx.Client", return_value=mock_client):
+        attio__list_tasks(is_completed=False)
+    params = mock_client.get.call_args.kwargs.get("params", {})
+    assert "filter[is_completed]" in params
+    assert params["filter[is_completed]"] is False
+
+
+def test_list_tasks_returns_tasks_and_count(monkeypatch):
+    """list_tasks returns {'tasks': [...], 'count': N} from Attio response."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    tasks = [
+        {"id": {"task_id": "t1"}, "content": "Call Canals"},
+        {"id": {"task_id": "t2"}, "content": "Email Zeelo"},
+    ]
+    mock_client = _mock_get_client([_mock_response({"data": tasks})])
+    with patch("httpx.Client", return_value=mock_client):
+        result = attio__list_tasks()
+    assert result["count"] == 2
+    assert result["tasks"] == tasks
+
+
+def test_list_tasks_handles_empty_response(monkeypatch):
+    """list_tasks returns count=0 and empty list when Attio returns no tasks."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    mock_client = _mock_get_client([_mock_response({"data": []})])
+    with patch("httpx.Client", return_value=mock_client):
+        result = attio__list_tasks()
+    assert result["count"] == 0
+    assert result["tasks"] == []

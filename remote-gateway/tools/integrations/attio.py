@@ -283,6 +283,93 @@ def attio__upsert_record(
     }
 
 
+def attio__create_task(
+    content: str,
+    assignee_id: str | None = None,
+    deadline_at: str | None = None,
+    linked_records: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Create a task in Attio.
+
+    Creates a task using the Attio v2 tasks endpoint (POST /v2/tasks). Tasks
+    are a first-class resource — distinct from object records — so this tool
+    replaces the broken attio__batch_records workaround for task creation.
+
+    Args:
+        content: Task description (required).
+        assignee_id: Workspace member UUID to assign the task to.
+        deadline_at: ISO 8601 deadline (e.g. "2026-06-08T23:59:59.000Z").
+        linked_records: List of record references, each a dict with
+            "target_object" (e.g. "companies") and "target_record_id" (UUID).
+
+    Returns:
+        Dict with 'task_id', 'content', and 'data' (full Attio task object).
+        On failure, returns {'error': 'Attio API error {status}: {body}'}.
+    """
+    import httpx
+
+    payload: dict[str, Any] = {"content": content, "is_completed": False}
+    if assignee_id is not None:
+        payload["assignees"] = [{"workspace_member_id": assignee_id}]
+    if deadline_at is not None:
+        payload["deadline_at"] = deadline_at
+    if linked_records is not None:
+        payload["linked_records"] = linked_records
+
+    url = f"{_ATTIO_BASE}/tasks"
+    with httpx.Client() as client:
+        resp = client.post(url, headers=_headers(), json={"data": payload})
+
+    if not resp.is_success:
+        return {"error": f"Attio API error {resp.status_code}: {resp.text}"}
+
+    task = resp.json().get("data", {})
+    return {
+        "task_id": task.get("id", {}).get("task_id", ""),
+        "content": task.get("content", content),
+        "data": task,
+    }
+
+
+def attio__list_tasks(
+    assignee_id: str | None = None,
+    is_completed: bool | None = None,
+    limit: int = 20,
+) -> dict[str, Any]:
+    """List tasks from Attio, with optional filtering.
+
+    Fetches tasks using the Attio v2 tasks endpoint (GET /v2/tasks). Filter
+    by assignee or completion status to narrow results.
+
+    Args:
+        assignee_id: Workspace member UUID — return only tasks assigned to
+            this member. Omit to return tasks for all assignees.
+        is_completed: True to return only completed tasks, False for only
+            incomplete tasks. Omit to return both.
+        limit: Maximum number of tasks to return. Defaults to 20.
+
+    Returns:
+        Dict with 'tasks' (list of Attio task objects) and 'count'.
+    """
+    import httpx
+
+    params: dict[str, Any] = {"limit": limit}
+    if assignee_id is not None:
+        params["filter[assignees]"] = assignee_id
+    if is_completed is not None:
+        params["filter[is_completed]"] = is_completed
+
+    url = f"{_ATTIO_BASE}/tasks"
+    with httpx.Client() as client:
+        resp = client.get(url, headers=_headers(), params=params)
+
+    if not resp.is_success:
+        return {"error": f"Attio API error {resp.status_code}: {resp.text}"}
+
+    data = resp.json().get("data", [])
+    return {"tasks": data, "count": len(data)}
+
+
 def register(mcp: Any) -> None:
     """Register Attio override tools on the FastMCP server.
 
@@ -298,3 +385,5 @@ def register(mcp: Any) -> None:
     mcp.tool()(attio__create_record)
     mcp.tool()(attio__update_record)
     mcp.tool()(attio__upsert_record)
+    mcp.tool()(attio__create_task)
+    mcp.tool()(attio__list_tasks)
