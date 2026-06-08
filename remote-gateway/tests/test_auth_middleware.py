@@ -10,6 +10,7 @@ Run with:
 """
 from __future__ import annotations
 
+import contextlib
 import sys
 import types
 from pathlib import Path
@@ -51,10 +52,8 @@ def _load_extract_key():
     spec = importlib.util.spec_from_file_location("mcp_server_isolated", path)
     mod = types.ModuleType("mcp_server_isolated")
     mod.__file__ = str(path)
-    try:
-        spec.loader.exec_module(mod)  # type: ignore[union-attr]
-    except Exception:
-        pass  # startup side-effects may fail; we only need _AuthMiddleware
+    with contextlib.suppress(Exception):
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]  # startup side-effects may fail
 
     extract_key = mod._AuthMiddleware._extract_key
 

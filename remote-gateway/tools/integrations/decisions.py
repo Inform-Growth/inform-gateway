@@ -16,7 +16,7 @@ Required env vars:
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 # Compact field set returned to agents (keeps MCP context small).
 _LIST_FIELDS = "id,title,detail,priority,kind,status,opened_at"
@@ -29,7 +29,7 @@ def _base() -> str:
     return f"{url.rstrip('/')}/rest/v1/decisions"
 
 
-def _headers(extra: Optional[dict] = None) -> dict[str, str]:
+def _headers(extra: dict | None = None) -> dict[str, str]:
     key = os.environ.get("SUPABASE_KEY")
     if not key:
         raise ValueError("SUPABASE_KEY environment variable is not set")
@@ -132,7 +132,9 @@ def upsert_decision(
         resp.raise_for_status()
         data = resp.json()
         if not data:
-            raise RuntimeError(f"Supabase returned empty response for POST to decisions (status {resp.status_code})")
+            raise RuntimeError(
+                f"Supabase empty response: POST decisions (status {resp.status_code})"
+            )
         return {"decision": data[0]}
 
 
@@ -161,7 +163,7 @@ def resolve_decision(
     if resolution:
         payload["resolution"] = resolution
     if status in ("resolved", "dropped"):
-        payload["resolved_at"] = _dt.datetime.now(_dt.timezone.utc).isoformat()
+        payload["resolved_at"] = _dt.datetime.now(_dt.UTC).isoformat()
 
     with httpx.Client() as client:
         resp = client.patch(
@@ -174,7 +176,10 @@ def resolve_decision(
         resp.raise_for_status()
         data = resp.json()
         if not data:
-            raise RuntimeError(f"Supabase returned empty response for PATCH to decisions/{decision_id} (status {resp.status_code})")
+            raise RuntimeError(
+                f"Supabase empty response: PATCH decisions/{decision_id} "
+                f"(status {resp.status_code})"
+            )
         return {"decision": data[0]}
 
 

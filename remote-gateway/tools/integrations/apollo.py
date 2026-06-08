@@ -232,7 +232,8 @@ def apollo__search_people(
         return err
 
     data = resp.json()
-    people = [_pick(p, _PERSON_SEARCH_FIELDS) for p in (data.get("people") or data.get("contacts") or [])]
+    raw_people = data.get("people") or data.get("contacts") or []
+    people = [_pick(p, _PERSON_SEARCH_FIELDS) for p in raw_people]
 
     pagination_data = data.get("pagination", {})
     # Apollo sometimes returns total_entries=0 even when people[] is populated

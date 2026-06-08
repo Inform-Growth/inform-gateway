@@ -589,8 +589,20 @@ def test_create_task_wraps_body_in_data(monkeypatch):
     assert body["data"]["content"] == "Do something"
 
 
+def test_create_task_always_sends_format_plaintext(monkeypatch):
+    """create_task always includes format='plaintext' — required by Attio v2 tasks endpoint."""
+    monkeypatch.setenv("ATTIO_API_KEY", "test-key")
+    mock_client = _mock_client(
+        post_responses=[_mock_response({"data": {"id": {"task_id": "t-fmt"}, "content": "x"}})]
+    )
+    with patch("httpx.Client", return_value=mock_client):
+        attio__create_task("Check in")
+    body = mock_client.post.call_args.kwargs["json"]["data"]
+    assert body.get("format") == "plaintext", "format='plaintext' must always be sent"
+
+
 def test_create_task_wraps_assignee_id_into_assignees_array(monkeypatch):
-    """create_task converts assignee_id string into assignees: [{workspace_member_id: ...}]."""
+    """create_task converts assignee_id into assignees list with referenced_actor fields."""
     monkeypatch.setenv("ATTIO_API_KEY", "test-key")
     mock_client = _mock_client(
         post_responses=[_mock_response({"data": {"id": {"task_id": "t2"}, "content": "x"}})]
@@ -599,11 +611,13 @@ def test_create_task_wraps_assignee_id_into_assignees_array(monkeypatch):
         attio__create_task("Task", assignee_id="24154ea2-aaaa-bbbb-cccc-dddddddddddd")
     body = mock_client.post.call_args.kwargs["json"]
     member_id = "24154ea2-aaaa-bbbb-cccc-dddddddddddd"
-    assert body["data"]["assignees"] == [{"workspace_member_id": member_id}]
+    assert body["data"]["assignees"] == [
+        {"referenced_actor_type": "workspace-member", "referenced_actor_id": member_id}
+    ]
 
 
 def test_create_task_omits_optional_fields_when_not_provided(monkeypatch):
-    """create_task does not send null keys for omitted optional fields."""
+    """create_task sends format+assignees; omits deadline_at and linked_records when absent."""
     monkeypatch.setenv("ATTIO_API_KEY", "test-key")
     mock_client = _mock_client(
         post_responses=[_mock_response({"data": {"id": {"task_id": "t3"}, "content": "x"}})]
@@ -611,7 +625,8 @@ def test_create_task_omits_optional_fields_when_not_provided(monkeypatch):
     with patch("httpx.Client", return_value=mock_client):
         attio__create_task("Minimal task")
     body = mock_client.post.call_args.kwargs["json"]["data"]
-    assert "assignees" not in body
+    assert body["format"] == "plaintext"
+    assert body["assignees"] == []
     assert "deadline_at" not in body
     assert "linked_records" not in body
 

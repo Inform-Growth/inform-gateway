@@ -1,9 +1,8 @@
 """Tests for embedding provider selection (OpenRouter vs OpenAI)."""
 from __future__ import annotations
+
 import sys
 from pathlib import Path
-
-import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 
@@ -71,7 +70,7 @@ def test_embed_dims_reads_from_env(monkeypatch):
 def test_embed_text_returns_none_without_any_key(monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    from embeddings import embed_text, _embed_cached
+    from embeddings import _embed_cached, embed_text
     _embed_cached.cache_clear()
     result = embed_text("test text")
     assert result is None

@@ -12,7 +12,6 @@ sys.modules.pop("telemetry", None)
 from telemetry import INTENT_NEVER_REQUIRED  # noqa: E402
 
 
-
 def test_intent_overrides_table_exists(store):
     with store._cursor() as cur:
         cur.execute(

@@ -1,5 +1,6 @@
 """Tests for suggested_skills in declare_intent response."""
 from __future__ import annotations
+
 import contextvars
 import sys
 from pathlib import Path
@@ -128,7 +129,9 @@ def test_declare_intent_suggested_skills_scores_are_rounded(store, user_var):
 def test_suggested_skills_includes_description(store, user_var):
     """Each suggested skill entry includes the skill description."""
     embed_fn = lambda _: [0.1] * 1536  # noqa: E731
-    fake_match = {"name": "crm_search", "description": "Search CRM records by name or domain", "cosine": 0.9}
+    fake_match = {
+        "name": "crm_search", "description": "Search CRM records by name or domain", "cosine": 0.9
+    }
 
     tools = _make_task_tools(store, user_var, embed_fn=embed_fn)
     with patch.object(store, "search_skills_by_embedding", return_value=[fake_match]):

@@ -1,10 +1,9 @@
 """Tests for on-deploy skill embedding backfill."""
 from __future__ import annotations
+
 import sys
 from pathlib import Path
 from unittest.mock import patch
-
-import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 sys.modules.pop("telemetry", None)
@@ -56,7 +55,7 @@ def test_backfill_calls_embed_fn_for_each_skill(store):
     ]
 
     with patch.object(store, "get_skills_without_embedding", return_value=fake_skills), \
-         patch.object(store, "store_skill_embedding") as mock_store:
+         patch.object(store, "store_skill_embedding"):
         result = store.backfill_skill_embeddings(embed_fn=lambda t: calls.append(t) or [0.1] * 1536)
 
     assert len(calls) == 2

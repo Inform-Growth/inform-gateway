@@ -11,6 +11,7 @@ Mount in mcp_server.py:
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 from pathlib import Path
@@ -372,7 +373,9 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         fields = {k: v for k, v in body.items() if k in ("description", "prompt_template")}
         result = telemetry.update_skill(org_id, name, **fields)
         if result is None:
-            return JSONResponse({"error": f"skill '{name}' not found or is a system skill"}, status_code=404)
+            return JSONResponse(
+                {"error": f"skill '{name}' not found or is a system skill"}, status_code=404
+            )
         return JSONResponse(result)
 
     async def api_skills_delete(request: Request) -> Response:
@@ -382,7 +385,9 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         org_id = request.query_params.get("org_id") or _get_primary_org_id(telemetry)
         deleted = telemetry.delete_skill(org_id, name)
         if not deleted:
-            return JSONResponse({"error": f"skill '{name}' not found or is a system skill"}, status_code=404)
+            return JSONResponse(
+                {"error": f"skill '{name}' not found or is a system skill"}, status_code=404
+            )
         return JSONResponse({"deleted": name})
 
     async def api_hints_list(request: Request) -> Response:
@@ -421,15 +426,11 @@ def create_admin_app(telemetry: Any, list_tools_fn: Any = None) -> Starlette:
         from_ts: float | None = None
         to_ts: float | None = None
         if "from" in request.query_params:
-            try:
+            with contextlib.suppress(ValueError):
                 from_ts = float(request.query_params["from"])
-            except ValueError:
-                pass
         if "to" in request.query_params:
-            try:
+            with contextlib.suppress(ValueError):
                 to_ts = float(request.query_params["to"])
-            except ValueError:
-                pass
         exclude_process = request.query_params.get("exclude_process", "").lower() == "true"
         tasks = telemetry.list_tasks_for_org(
             org_id,

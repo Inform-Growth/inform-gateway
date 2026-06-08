@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import os
 import time
+from typing import Any
 
 from core.field_registry import registry
-from typing import Any
 
 _WIZA_BASE = "https://wiza.co/api"
 _POLL_INTERVAL_S = 3.0

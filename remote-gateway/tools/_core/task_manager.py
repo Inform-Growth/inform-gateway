@@ -133,7 +133,9 @@ def register(
                 skill_text = _emb.skill_embed_source(m["name"], m["description"])
                 score = _emb.hybrid_score(float(m["cosine"]), goal, skill_text)
                 if score >= _emb.SCORE_FLOOR:
-                    results.append({"name": m["name"], "description": m["description"], "score": round(score, 3)})
+                    entry = {"name": m["name"], "description": m["description"],
+                             "score": round(score, 3)}
+                    results.append(entry)
             return results
         except Exception:
             return []  # fail open — never let suggestions block task creation

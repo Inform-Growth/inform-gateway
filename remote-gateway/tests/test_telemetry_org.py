@@ -1,7 +1,8 @@
 from __future__ import annotations
+
 import sys
 from pathlib import Path
-import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 sys.modules.pop("telemetry", None)
 
@@ -37,7 +38,8 @@ def test_update_org_profile_merges_not_replaces(store):
     assert profile["tone"] == "professional"
     assert profile["icp"] == "SaaS"
 
-import secrets as _secrets
+import secrets as _secrets  # noqa: E402
+
 
 def test_create_skill_and_list(store):
     store.create_skill("acme", "daily_briefing", "Run morning summary", "Summarize {topic}")
@@ -56,7 +58,8 @@ def test_delete_skill_blocked_for_system_skills(store):
     now = __import__("time").time()
     with store._cursor() as cur:
         cur.execute(
-            "INSERT INTO skills (id, org_id, name, description, prompt_template, is_system, created_at, updated_at) "
+            "INSERT INTO skills "
+            "(id, org_id, name, description, prompt_template, is_system, created_at, updated_at) "
             "VALUES (%s, 'acme', 'protected', 'system skill', 'template', 1, %s, %s)",
             (sid, now, now),
         )

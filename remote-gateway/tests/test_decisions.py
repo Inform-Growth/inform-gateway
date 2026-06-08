@@ -2,8 +2,6 @@
 import os
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 os.environ.setdefault("SUPABASE_URL", "https://test.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-key")
 

@@ -9,8 +9,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 # Remove any stub injected by test_telemetry_async.py (which runs at collection
 # time and puts a fake `telemetry` module in sys.modules before this file loads).

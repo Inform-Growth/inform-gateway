@@ -1,5 +1,6 @@
 """Tests for report_issue and list_my_issues in tools/friction.py."""
 from __future__ import annotations
+
 import os
 import sys
 from unittest.mock import MagicMock, patch
@@ -41,8 +42,8 @@ def test_report_issue_returns_issue_url():
             title="Apollo returns empty for happy-path query",
             task_id="task-abc123",
             attempted_action="Search Apollo for VP Engineering at Series B companies",
-            observed_failure="apollo__search_people returned empty results for a query that should match 50+ contacts",
-            agent_hypothesis="The seniority filter may be case-sensitive; tried 'VP' but API may expect 'vp'",
+            observed_failure="apollo__search_people: empty results (expected ~50 contacts)",
+            agent_hypothesis="Seniority filter may be case-sensitive; 'VP' vs 'vp'",
             suggested_category="bug",
             severity="p2",
             related_tool="apollo",
@@ -160,7 +161,7 @@ def test_report_issue_no_tool_label_when_related_tool_absent():
             suggested_category="ux",
         )
 
-    assert not any(l.startswith("tool:") for l in result["labels"])
+    assert not any(lbl.startswith("tool:") for lbl in result["labels"])
 
 
 def test_list_my_issues_returns_open_issues():

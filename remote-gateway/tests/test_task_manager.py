@@ -1,9 +1,11 @@
 # remote-gateway/tests/test_task_manager.py
 from __future__ import annotations
+
 import sys
-from pathlib import Path
-import pytest
 import time as _time_mod
+from pathlib import Path
+
+import pytest
 from starlette.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
@@ -62,7 +64,7 @@ def test_tool_calls_can_store_task_id(store):
 
 
 # --- MCP tool tests ---
-import contextvars
+import contextvars  # noqa: E402
 
 
 @pytest.fixture()
@@ -284,8 +286,8 @@ def test_list_tasks_for_org_includes_decision_fields(store):
 
 
 def test_list_tasks_for_org_time_window(store):
-    import time as _time
     import secrets as _secrets
+    import time as _time
     base = _time.time()
 
     def _insert(goal: str, ts: float):

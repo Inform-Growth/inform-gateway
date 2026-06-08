@@ -1,5 +1,6 @@
 """Tests for skill embedding behavior in skill_create and skill_update."""
 from __future__ import annotations
+
 import contextvars
 import sys
 from pathlib import Path

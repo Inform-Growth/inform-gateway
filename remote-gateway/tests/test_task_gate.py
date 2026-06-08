@@ -1,8 +1,8 @@
 """Verify task gate logic: no active task → redirect, active task → pass."""
 from __future__ import annotations
+
 import sys
 from pathlib import Path
-import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
 sys.modules.pop("telemetry", None)
@@ -46,15 +46,15 @@ def test_completed_task_does_not_count_as_active(store):
 
 
 def test_task_gate_bypassed_for_declare_intent():
-    _TASK_BYPASS = {
+    task_bypass = {
         "declare_intent", "complete_task", "get_tasks",
         "setup_start", "setup_save_profile", "setup_complete",
         "health_check", "create_user", "get_operator_instructions",
         "list_prompts", "get_prompt", "profile_get", "profile_update",
         "skill_list", "skill_create", "skill_update", "run_skill",
     }
-    assert "declare_intent" in _TASK_BYPASS
-    assert "attio__search_records" not in _TASK_BYPASS
+    assert "declare_intent" in task_bypass
+    assert "attio__search_records" not in task_bypass
 
 
 def test_task_id_linked_to_tool_call(store):

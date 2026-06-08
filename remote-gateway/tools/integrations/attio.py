@@ -308,9 +308,16 @@ def attio__create_task(
     """
     import httpx
 
-    payload: dict[str, Any] = {"content": content, "is_completed": False}
-    if assignee_id is not None:
-        payload["assignees"] = [{"workspace_member_id": assignee_id}]
+    payload: dict[str, Any] = {
+        "content": content,
+        "format": "plaintext",
+        "is_completed": False,
+        "assignees": (
+            [{"referenced_actor_type": "workspace-member", "referenced_actor_id": assignee_id}]
+            if assignee_id is not None
+            else []
+        ),
+    }
     if deadline_at is not None:
         payload["deadline_at"] = deadline_at
     if linked_records is not None:

@@ -33,8 +33,9 @@ import datetime
 import os
 import secrets
 import time
+from collections.abc import Generator
 from contextlib import contextmanager, suppress
-from typing import Any, Generator
+from typing import Any
 
 import psycopg2
 import psycopg2.extras
@@ -259,7 +260,7 @@ class TelemetryStore:
     # NOTE: self._conn is a single shared connection — not safe for concurrent writes.
     # For high-concurrency deployments, replace with psycopg2.pool.ThreadedConnectionPool.
     @contextmanager
-    def _cursor(self) -> Generator[Any, None, None]:
+    def _cursor(self) -> Generator[Any]:
         """Yield a RealDictCursor; commit on success, rollback on exception."""
         conn = self._conn
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -567,9 +568,7 @@ class TelemetryStore:
                 row = cur.fetchone()
             if row is not None:
                 return bool(row["enabled"])
-            if skill_name in self._disabled_skills_cache.get("*", set()):
-                return False
-            return True
+            return skill_name not in self._disabled_skills_cache.get("*", set())
         except Exception:
             return True
 

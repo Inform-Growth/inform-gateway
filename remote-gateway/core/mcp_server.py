@@ -42,7 +42,8 @@ from mcp.server.fastmcp import FastMCP  # noqa: E402
 from mcp.server.lowlevel.server import lifespan as _noop_lifespan  # noqa: E402
 from mcp.server.lowlevel.server import request_ctx as _request_ctx  # noqa: E402
 from mcp_proxy import mount_all_proxies  # noqa: E402
-from telemetry import telemetry as _telemetry, INTENT_NEVER_REQUIRED  # noqa: E402
+from telemetry import INTENT_NEVER_REQUIRED  # noqa: E402
+from telemetry import telemetry as _telemetry  # noqa: E402
 
 # Maximum safe tool name length (server-side portion, before the MCP namespace prefix).
 # Most MCP clients silently truncate or fail to match names longer than this.
@@ -601,7 +602,12 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
                 if _tool_requires_intent(_current_user.get(), fn.__name__) and sid:
                     if task_id is not None:
                         task_row = _telemetry.get_task(task_id)
-                        if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
+                        active = (
+                            task_row is not None
+                            and task_row["user_id"] == sid
+                            and task_row["status"] == "active"
+                        )
+                        if not active:
                             task_id = None
                     if task_id is None:
                         _active = _telemetry.list_active_tasks(sid)
@@ -662,7 +668,12 @@ def _tracked_mcp_tool(*args: Any, **kwargs: Any) -> Any:
             if _tool_requires_intent(_current_user.get(), fn.__name__) and sid:
                 if task_id is not None:
                     task_row = _telemetry.get_task(task_id)
-                    if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
+                    active = (
+                        task_row is not None
+                        and task_row["user_id"] == sid
+                        and task_row["status"] == "active"
+                    )
+                    if not active:
                         task_id = None
                 if task_id is None:
                     _active = _telemetry.list_active_tasks(sid)
@@ -759,7 +770,12 @@ def _tracked_add_tool(fn: Any, *args: Any, **kwargs: Any) -> Any:
             if _tool_requires_intent(_current_user.get(), tool_name) and sid:
                 if task_id is not None:
                     task_row = _telemetry.get_task(task_id)
-                    if task_row is None or task_row["user_id"] != sid or task_row["status"] != "active":
+                    active = (
+                        task_row is not None
+                        and task_row["user_id"] == sid
+                        and task_row["status"] == "active"
+                    )
+                    if not active:
                         task_id = None
                 if task_id is None:
                     _active = _telemetry.list_active_tasks(sid)
@@ -901,6 +917,7 @@ import sys as _sys  # noqa: E402
 _sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import embeddings as _embeddings  # noqa: E402
+from catalog_registrations import register_catalog_integrations  # noqa: E402
 from tools import admin as _admin_tools  # noqa: E402
 from tools import friction as _friction_tools  # noqa: E402
 from tools import meta as _meta_tools  # noqa: E402
@@ -914,7 +931,6 @@ from tools.integrations import attio as _attio_tools  # noqa: E402
 from tools.integrations import email_tools as _email_tools  # noqa: E402
 from tools.integrations import notes as _notes_tools  # noqa: E402
 from tools.integrations import wiza as _wiza_tools  # noqa: E402
-from catalog_registrations import register_catalog_integrations  # noqa: E402
 
 
 class _RequestAwareUser:
@@ -952,7 +968,7 @@ _attio_tools.register(mcp)  # must register after telemetry patch is applied
 _email_tools.register(mcp)
 _wiza_tools.register(mcp)
 _apollo_tools.register(mcp)
-register_catalog_integrations(mcp)  # catalog-managed integrations (e.g. decisions); after telemetry patch
+register_catalog_integrations(mcp)  # must follow telemetry patch
 _onboarding_tools.register(mcp, _telemetry, _user_view)
 _skill_manager_tools.register(mcp, _telemetry, _user_view, embed_fn=_embeddings.embed_text)
 _profile_manager_tools.register(mcp, _telemetry, _user_view)

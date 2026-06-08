@@ -32,6 +32,11 @@ dev = [
 [tool.ruff]
 target-version = "py314"
 line-length = 100
+exclude = [
+    ".claude/worktrees",
+    ".worktrees",
+    "scratch",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM"]

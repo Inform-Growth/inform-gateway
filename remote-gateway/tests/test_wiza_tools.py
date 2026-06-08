@@ -14,7 +14,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Shared mock helpers
 # ---------------------------------------------------------------------------
@@ -65,7 +64,9 @@ _FINISHED_RESPONSE = {
         "credits": {
             "email_credits": 2,
             "phone_credits": 5,
-            "api_credits": {"total": 1, "email_credits": 0, "phone_credits": 0, "scrape_credits": 1},
+            "api_credits": {
+                "total": 1, "email_credits": 0, "phone_credits": 0, "scrape_credits": 1
+            },
         },
     }
 }

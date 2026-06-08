@@ -10,6 +10,7 @@ Run with:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import inspect
 import sys
 import types
@@ -210,10 +211,8 @@ def test_error_message_captured_on_failure():
 
     tracked = _server._tracked_mcp_tool()(broken_tool)
 
-    try:
+    with contextlib.suppress(ValueError):
         asyncio.run(tracked(x=-1))
-    except ValueError:
-        pass
 
     assert len(_recorded) == 1
     call = _recorded[0]
