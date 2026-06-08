@@ -50,8 +50,22 @@ fields:
   primary_location:
     display_name: "Primary Location"
     description: "Geographic headquarters location of this company."
-    type: "string"
-    notes: "Attio location type — includes city, state, country."
+    type: "object"
+    notes: |
+      Attio location type. ALL sub-fields are required — the API rejects
+      partial objects. If any field is unavailable, omit primary_location
+      entirely rather than sending an incomplete object (refs #52).
+      Required shape:
+        line_1: "123 Main St"
+        line_2: ""           # required; empty string if no value
+        line_3: ""           # required; empty string if no value
+        line_4: ""           # required; empty string if no value
+        locality: "San Francisco"
+        region: "California"
+        postcode: "94105"
+        country_code: "US"
+        latitude: 37.7749    # required; geocode or omit entire field
+        longitude: -122.4194 # required; geocode or omit entire field
     nullable: true
 
   logo_url:

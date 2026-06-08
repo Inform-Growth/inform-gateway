@@ -43,7 +43,7 @@ ENV PATH="/root/.local/bin:${PATH}"
 COPY . .
 
 # Ensure the vendor directory install also runs
-RUN npm install --prefix remote-gateway/vendor attio-mcp @modelcontextprotocol/server-github
+RUN npm install --prefix remote-gateway/vendor attio-mcp@^1.6.1 @modelcontextprotocol/server-github
 
 # Build the admin-ui (React + Vite) — Node 20 is already installed above.
 COPY remote-gateway/admin-ui/package*.json /app/remote-gateway/admin-ui/

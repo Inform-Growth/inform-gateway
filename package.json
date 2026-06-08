@@ -4,7 +4,7 @@
   "private": true,
   "description": "Vendored MCP tools for the Agent Gateway",
   "dependencies": {
-    "attio-mcp": "latest",
+    "attio-mcp": "^1.6.1",
     "@modelcontextprotocol/server-github": "latest"
   },
   "scripts": {

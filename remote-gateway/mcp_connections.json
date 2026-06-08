@@ -27,6 +27,7 @@
       }
     },
     "github": {
+      "_comment": "Read-only. GITHUB_TOKEN has read scope only — create_or_update_file is intentionally excluded.",
       "transport": "stdio",
       "command": "mcp-server-github",
       "args": [],
@@ -36,7 +37,6 @@
       "tools": {
         "allow": [
           "get_file_contents",
-          "create_or_update_file",
           "list_files_in_repo",
           "search_repositories",
           "get_issue",
