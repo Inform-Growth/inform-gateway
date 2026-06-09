@@ -23,11 +23,16 @@ EXPECTED_TOOLS = [
 
 
 def _load_ga() -> dict:
+    """Load and return the google-analytics connection entry from mcp_connections.json.
+
+    Calls pytest.fail() immediately if the config file is missing or the
+    google-analytics key is absent, producing a clear FAILED result rather than an error.
+    """
     if not CONNECTIONS_FILE.exists():
         pytest.fail(f"Config file not found: {CONNECTIONS_FILE}")
     data = json.loads(CONNECTIONS_FILE.read_text())
     if "google-analytics" not in data.get("connections", {}):
-        pytest.fail("No 'google-analytics' entry found in connections.")
+        pytest.fail("No 'google-analytics' entry found in connections — was it removed?")
     return data["connections"]["google-analytics"]
 
 
@@ -65,8 +70,9 @@ def test_google_analytics_env_has_credentials():
 def test_google_analytics_credentials_is_interpolated():
     ga = _load_ga()
     env = ga.get("env", {})
-    assert env.get("GOOGLE_APPLICATION_CREDENTIALS") == "${GOOGLE_APPLICATION_CREDENTIALS}", (
-        f"Expected '${{GOOGLE_APPLICATION_CREDENTIALS}}', got: {env.get('GOOGLE_APPLICATION_CREDENTIALS')}"
+    expected = "${GOOGLE_APPLICATION_CREDENTIALS}"
+    assert env.get("GOOGLE_APPLICATION_CREDENTIALS") == expected, (
+        f"Expected '{expected}', got: {env.get('GOOGLE_APPLICATION_CREDENTIALS')}"
     )
 
 
@@ -81,7 +87,7 @@ def test_google_analytics_has_tools_allow_list():
 def test_google_analytics_allow_list_contains_expected_tools():
     ga = _load_ga()
     allow = ga.get("tools", {}).get("allow", [])
-    for tool in EXPECTED_TOOLS:
-        assert tool in allow, (
-            f"Expected '{tool}' in allow list, got: {allow}"
-        )
+    assert set(allow) == set(EXPECTED_TOOLS), (
+        f"Allow list must be exactly {EXPECTED_TOOLS}, got: {allow}. "
+        "This prevents accidentally adding write tools."
+    )
