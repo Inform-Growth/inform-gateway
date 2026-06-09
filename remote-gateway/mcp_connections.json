@@ -67,6 +67,26 @@
         "PORT": "8765",
         "WORKSPACE_MCP_PORT": "8765"
       }
+    },
+    "google-analytics": {
+      "_comment": "Read-only GA4 data via official analytics-mcp. Property ID is passed as a parameter on each tool call — document your property ID in the org profile so agents know which to use.",
+      "transport": "stdio",
+      "command": "uvx",
+      "args": ["analytics-mcp"],
+      "env": {
+        "GOOGLE_APPLICATION_CREDENTIALS": "${GOOGLE_APPLICATION_CREDENTIALS}"
+      },
+      "tools": {
+        "allow": [
+          "run_report",
+          "run_realtime_report",
+          "run_funnel_report",
+          "get_account_summaries",
+          "get_property_details",
+          "get_custom_dimensions_and_metrics",
+          "list_google_ads_links"
+        ]
+      }
     }
   }
 }
