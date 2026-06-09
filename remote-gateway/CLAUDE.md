@@ -49,6 +49,8 @@ MCP_TRANSPORT=sse python remote-gateway/core/mcp_server.py
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Google | OAuth client secret |
 | `USER_GOOGLE_EMAIL` | Google | Account the workspace MCP authenticates as |
 | `WORKSPACE_MCP_CREDENTIALS_DIR` | Google | Persistent directory for cached OAuth tokens (e.g. `/data/google-workspace-creds`) |
+| `GOOGLE_SA_JSON` | GA | Raw service account JSON key content. Set this in Railway; the startup script writes it to `/tmp/google-sa.json` and exports `GOOGLE_APPLICATION_CREDENTIALS`. |
+| `GOOGLE_APPLICATION_CREDENTIALS` | GA (auto) | Set automatically by the startup script to `/tmp/google-sa.json` when `GOOGLE_SA_JSON` is present. Can also be set directly to a mounted file path. |
 
 ---
 
