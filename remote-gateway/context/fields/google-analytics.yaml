@@ -1,0 +1,62 @@
+integration: google-analytics
+fields:
+  date:
+    display_name: Date
+    description: The date of the report row in YYYYMMDD format.
+    type: string
+    notes: GA4 returns dates as strings like '20240601'. Parse with datetime.strptime(v, '%Y%m%d').
+    nullable: false
+  sessions:
+    display_name: Sessions
+    description: Total number of sessions in the date range.
+    type: integer
+    notes: A session is a group of user interactions within a 30-minute window.
+    nullable: false
+  users:
+    display_name: Total Users
+    description: Total number of unique users who triggered at least one event.
+    type: integer
+    notes: "Includes all users including non-engaged; prefer activeUsers for engagement-focused reporting."
+    nullable: false
+  activeUsers:
+    display_name: Active Users
+    description: Number of distinct users who had an engaged session.
+    type: integer
+    notes: This is the primary user metric in GA4 (replaces UA's 'Users').
+    nullable: false
+  newUsers:
+    display_name: New Users
+    description: Number of users who interacted with the site for the first time.
+    type: integer
+    notes: "First-time visitors within the date range. Can overlap with activeUsers."
+    nullable: false
+  pageviews:
+    display_name: Page Views
+    description: Total number of pages viewed, including repeated views of a single page.
+    type: integer
+    notes: ''
+    nullable: false
+  bounceRate:
+    display_name: Bounce Rate
+    description: Percentage of sessions that were not engaged (no events, <10s, single page).
+    type: percentage
+    notes: Returned as a decimal (e.g. 0.42 = 42%). Multiply by 100 for display.
+    nullable: false
+  averageSessionDuration:
+    display_name: Avg Session Duration
+    description: Average duration of sessions in seconds.
+    type: number
+    notes: Divide by 60 to convert to minutes for display.
+    nullable: false
+  eventCount:
+    display_name: Event Count
+    description: Total number of events logged in the date range.
+    type: integer
+    notes: ''
+    nullable: false
+  conversions:
+    display_name: Conversions
+    description: Total number of conversion events.
+    type: integer
+    notes: Requires conversion events to be configured in GA4.
+    nullable: true
