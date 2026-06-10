@@ -23,7 +23,7 @@ Prerequisites (per client, one time — see docs/google-auth-onboarding.md):
 # ///
 from __future__ import annotations
 
-GA_SCOPES = ["https://www.googleapis.com/auth/analytics.readonly"]
+GA_SCOPES: list[str] = ["https://www.googleapis.com/auth/analytics.readonly"]
 
 
 def build_adc_json(
@@ -31,7 +31,7 @@ def build_adc_json(
     client_secret: str,
     refresh_token: str,
     quota_project_id: str,
-) -> dict:
+) -> dict[str, str]:
     """Assemble an authorized_user ADC JSON.
 
     ADC autodetects the credential type from the "type" key, so this file is a
