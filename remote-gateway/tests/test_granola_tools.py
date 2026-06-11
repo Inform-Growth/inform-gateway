@@ -277,3 +277,104 @@ def test_list_meetings_clamps_page_size(monkeypatch):
         assert mock_client.get.call_args.kwargs["params"]["page_size"] == 30
         granola__list_meetings(page_size=0)
         assert mock_client.get.call_args.kwargs["params"]["page_size"] == 1
+
+
+# ---------------------------------------------------------------------------
+# granola__get_meeting
+# ---------------------------------------------------------------------------
+
+_NOTE_RESPONSE = {
+    "id": "not_1d3tmYTlCICgjy",
+    "object": "note",
+    "title": "Weekly sync",
+    "owner": {"name": "Jaron Sander", "email": "jaron@informgrowth.com"},
+    "attendees": [{"name": "Jane Smith", "email": "jane@example.com"}],
+    "calendar_event": {"title": "Weekly sync", "organizer_email": "jaron@informgrowth.com"},
+    "folder_membership": [{"id": "fol_AAAABBBBCCCCdd", "name": "Sales"}],
+    "summary_text": "Plain summary.",
+    "summary_markdown": "## Summary\n- Ship Friday",
+    "web_url": "https://app.granola.ai/notes/not_1d3tmYTlCICgjy",
+    "created_at": "2026-06-10T15:00:00Z",
+    "updated_at": "2026-06-10T16:00:00Z",
+}
+
+
+def test_get_meeting_returns_note_fields(monkeypatch):
+    """granola__get_meeting returns metadata and the markdown summary."""
+    monkeypatch.setenv("GRANOLA_API_KEY", "grn_testkey")
+    mock_client = _mock_client(get_responses=[_mock_response(_NOTE_RESPONSE)])
+
+    with patch("httpx.Client", return_value=mock_client):
+        from tools.integrations.granola import granola__get_meeting
+        result = granola__get_meeting("not_1d3tmYTlCICgjy")
+
+    assert result["id"] == "not_1d3tmYTlCICgjy"
+    assert result["title"] == "Weekly sync"
+    assert result["summary"] == "## Summary\n- Ship Friday"
+    assert result["attendees"][0]["email"] == "jane@example.com"
+    assert result["web_url"] == "https://app.granola.ai/notes/not_1d3tmYTlCICgjy"
+    assert "transcript" not in result
+
+    requested_url = mock_client.get.call_args.args[0]
+    assert requested_url.endswith("/notes/not_1d3tmYTlCICgjy")
+    assert mock_client.get.call_args.kwargs["params"] == {}
+
+
+def test_get_meeting_falls_back_to_summary_text(monkeypatch):
+    """When summary_markdown is null, summary falls back to summary_text."""
+    monkeypatch.setenv("GRANOLA_API_KEY", "grn_testkey")
+    note = dict(_NOTE_RESPONSE, summary_markdown=None)
+    mock_client = _mock_client(get_responses=[_mock_response(note)])
+
+    with patch("httpx.Client", return_value=mock_client):
+        from tools.integrations.granola import granola__get_meeting
+        result = granola__get_meeting("not_1d3tmYTlCICgjy")
+
+    assert result["summary"] == "Plain summary."
+
+
+def test_get_meeting_includes_flattened_transcript(monkeypatch):
+    """include_transcript=True sends include=transcript and flattens the result."""
+    monkeypatch.setenv("GRANOLA_API_KEY", "grn_testkey")
+    note = dict(
+        _NOTE_RESPONSE,
+        transcript=[
+            {"source": "microphone", "text": "Let's start."},
+            {"source": "speaker", "text": "Ready."},
+        ],
+    )
+    mock_client = _mock_client(get_responses=[_mock_response(note)])
+
+    with patch("httpx.Client", return_value=mock_client):
+        from tools.integrations.granola import granola__get_meeting
+        result = granola__get_meeting("not_1d3tmYTlCICgjy", include_transcript=True)
+
+    assert mock_client.get.call_args.kwargs["params"] == {"include": "transcript"}
+    assert result["transcript"] == "Me: Let's start.\nThem: Ready."
+
+
+def test_get_meeting_not_found(monkeypatch):
+    """A 404 surfaces as RuntimeError naming the note id."""
+    monkeypatch.setenv("GRANOLA_API_KEY", "grn_testkey")
+    mock_client = _mock_client(get_responses=[_mock_response({}, status_code=404)])
+
+    with patch("httpx.Client", return_value=mock_client):
+        from tools.integrations.granola import granola__get_meeting
+        with pytest.raises(RuntimeError, match="not_doesNotExist00"):
+            granola__get_meeting("not_doesNotExist00")
+
+
+def test_list_meetings_empty_page(monkeypatch):
+    """An empty terminal page maps to empty notes, has_more False, cursor None."""
+    monkeypatch.setenv("GRANOLA_API_KEY", "grn_testkey")
+    mock_client = _mock_client(
+        get_responses=[_mock_response({"notes": [], "hasMore": False, "cursor": None})]
+    )
+
+    with patch("httpx.Client", return_value=mock_client):
+        from tools.integrations.granola import granola__list_meetings
+        result = granola__list_meetings()
+
+    assert result["notes"] == []
+    assert result["has_more"] is False
+    assert result["cursor"] is None

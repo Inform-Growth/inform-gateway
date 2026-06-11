@@ -143,6 +143,49 @@ def granola__list_meetings(
     return _validated(result)
 
 
+def granola__get_meeting(note_id: str, include_transcript: bool = False) -> dict[str, Any]:
+    """Fetch a Granola meeting note: AI summary, attendees, and optional transcript.
+
+    Returns the meeting's metadata and AI-generated summary (markdown when
+    available). With include_transcript=True the full transcript is returned
+    as readable dialogue lines — "Me:" is the note owner's microphone,
+    "Them:" is other participants, "Speaker A/B/..." when diarization is
+    available. Transcripts can be long; only request them when needed.
+
+    Args:
+        note_id: Granola note id (not_..., from granola__list_meetings).
+        include_transcript: Include the flattened meeting transcript.
+
+    Returns:
+        Dict with id, title, owner, attendees, calendar_event,
+        folder_membership, summary, web_url, created_at, updated_at,
+        and transcript (only when include_transcript=True).
+
+    Raises:
+        ValueError: If GRANOLA_API_KEY is not set.
+        PermissionError: If the API key is invalid or expired.
+        RuntimeError: If the note does not exist.
+    """
+    params = {"include": "transcript"} if include_transcript else None
+    payload = _get(f"/notes/{note_id}", params)
+
+    result: dict[str, Any] = {
+        "id": payload.get("id"),
+        "title": payload.get("title"),
+        "owner": payload.get("owner"),
+        "attendees": payload.get("attendees"),
+        "calendar_event": payload.get("calendar_event"),
+        "folder_membership": payload.get("folder_membership"),
+        "summary": payload.get("summary_markdown") or payload.get("summary_text"),
+        "web_url": payload.get("web_url"),
+        "created_at": payload.get("created_at"),
+        "updated_at": payload.get("updated_at"),
+    }
+    if include_transcript:
+        result["transcript"] = _flatten_transcript(payload.get("transcript") or [])
+    return _validated(result)
+
+
 def _flatten_transcript(transcript: list[dict[str, Any]]) -> str:
     """Flatten Granola's per-utterance transcript array into dialogue lines.
 
