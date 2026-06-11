@@ -423,3 +423,37 @@ def test_list_folders_passes_cursor(monkeypatch):
         granola__list_folders(cursor="abc")
 
     assert mock_client.get.call_args.kwargs["params"] == {"page_size": 30, "cursor": "abc"}
+
+
+def test_list_folders_clamps_page_size(monkeypatch):
+    """page_size is clamped to the API's 1-30 range."""
+    monkeypatch.setenv("GRANOLA_API_KEY", "grn_testkey")
+    mock_client = _mock_client(
+        get_responses=[
+            _mock_response(_LIST_FOLDERS_RESPONSE),
+            _mock_response(_LIST_FOLDERS_RESPONSE),
+        ]
+    )
+
+    with patch("httpx.Client", return_value=mock_client):
+        from tools.integrations.granola import granola__list_folders
+        granola__list_folders(page_size=100)
+        assert mock_client.get.call_args.kwargs["params"]["page_size"] == 30
+        granola__list_folders(page_size=0)
+        assert mock_client.get.call_args.kwargs["params"]["page_size"] == 1
+
+
+def test_list_folders_empty_page(monkeypatch):
+    """An empty terminal page maps to empty folders, has_more False, cursor None."""
+    monkeypatch.setenv("GRANOLA_API_KEY", "grn_testkey")
+    mock_client = _mock_client(
+        get_responses=[_mock_response({"folders": [], "hasMore": False, "cursor": None})]
+    )
+
+    with patch("httpx.Client", return_value=mock_client):
+        from tools.integrations.granola import granola__list_folders
+        result = granola__list_folders()
+
+    assert result["folders"] == []
+    assert result["has_more"] is False
+    assert result["cursor"] is None

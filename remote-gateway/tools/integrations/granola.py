@@ -226,6 +226,17 @@ def granola__list_folders(cursor: str | None = None, page_size: int = 30) -> dic
     return _validated(result)
 
 
+def register(mcp: Any) -> None:
+    """Register Granola tools on the FastMCP server.
+
+    Args:
+        mcp: FastMCP server instance with telemetry patch already applied.
+    """
+    mcp.tool()(granola__list_meetings)
+    mcp.tool()(granola__get_meeting)
+    mcp.tool()(granola__list_folders)
+
+
 def _flatten_transcript(transcript: list[dict[str, Any]]) -> str:
     """Flatten Granola's per-utterance transcript array into dialogue lines.
 
