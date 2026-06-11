@@ -77,3 +77,32 @@ def _validated(result: dict[str, Any]) -> dict[str, Any]:
     if not validation.valid:
         result["_field_validation"] = validation.summary()
     return result
+
+
+def _flatten_transcript(transcript: list[dict[str, Any]]) -> str:
+    """Flatten Granola's per-utterance transcript array into dialogue lines.
+
+    Speaker labels: diarization_label when present (e.g. "Speaker A"),
+    otherwise "Me" for source=="microphone" and "Them" for source=="speaker".
+    Consecutive utterances from the same speaker are merged into one line;
+    timestamps are dropped.
+
+    Args:
+        transcript: Raw transcript array from GET /notes/{id}?include=transcript.
+
+    Returns:
+        Newline-joined dialogue lines ("<speaker>: <text>"), or "" when empty.
+    """
+    merged: list[tuple[str, str]] = []
+    for utterance in transcript:
+        text = (utterance.get("text") or "").strip()
+        if not text:
+            continue
+        label = utterance.get("diarization_label") or (
+            "Me" if utterance.get("source") == "microphone" else "Them"
+        )
+        if merged and merged[-1][0] == label:
+            merged[-1] = (label, f"{merged[-1][1]} {text}")
+        else:
+            merged.append((label, text))
+    return "\n".join(f"{speaker}: {text}" for speaker, text in merged)

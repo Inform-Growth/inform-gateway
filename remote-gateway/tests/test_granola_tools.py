@@ -115,3 +115,55 @@ def test_get_forwards_params(monkeypatch):
         _get("/notes", params={"page_size": 5, "cursor": "abc"})
 
     assert mock_client.get.call_args.kwargs["params"] == {"page_size": 5, "cursor": "abc"}
+
+
+# ---------------------------------------------------------------------------
+# Transcript flattening
+# ---------------------------------------------------------------------------
+
+def test_flatten_transcript_mic_and_speaker():
+    """Mic utterances become 'Me:', speaker utterances become 'Them:'."""
+    from tools.integrations.granola import _flatten_transcript
+    out = _flatten_transcript([
+        {"source": "microphone", "text": "Hi there.", "start_timestamp": "0"},
+        {"source": "speaker", "text": "Hello!", "start_timestamp": "1"},
+    ])
+    assert out == "Me: Hi there.\nThem: Hello!"
+
+
+def test_flatten_transcript_prefers_diarization_label():
+    """diarization_label wins over the mic/speaker fallback."""
+    from tools.integrations.granola import _flatten_transcript
+    out = _flatten_transcript([
+        {"source": "speaker", "text": "First point.", "diarization_label": "Speaker A"},
+        {"source": "speaker", "text": "Reply.", "diarization_label": "Speaker B"},
+    ])
+    assert out == "Speaker A: First point.\nSpeaker B: Reply."
+
+
+def test_flatten_transcript_merges_consecutive_same_speaker():
+    """Consecutive utterances from the same speaker merge into one line."""
+    from tools.integrations.granola import _flatten_transcript
+    out = _flatten_transcript([
+        {"source": "microphone", "text": "So the plan"},
+        {"source": "microphone", "text": "is to ship Friday."},
+        {"source": "speaker", "text": "Sounds good."},
+    ])
+    assert out == "Me: So the plan is to ship Friday.\nThem: Sounds good."
+
+
+def test_flatten_transcript_skips_empty_text():
+    """Utterances with empty or whitespace-only text are dropped."""
+    from tools.integrations.granola import _flatten_transcript
+    out = _flatten_transcript([
+        {"source": "microphone", "text": "  "},
+        {"source": "speaker", "text": "Real content."},
+        {"source": "speaker", "text": ""},
+    ])
+    assert out == "Them: Real content."
+
+
+def test_flatten_transcript_empty_list():
+    """An empty transcript flattens to an empty string."""
+    from tools.integrations.granola import _flatten_transcript
+    assert _flatten_transcript([]) == ""
