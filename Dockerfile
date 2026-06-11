@@ -55,4 +55,4 @@ WORKDIR /app
 
 # Start the gateway, mapping Railway's PORT to MCP_SERVER_PORT
 # We use python3 for maximum compatibility in the slim image
-CMD ["sh", "-c", "if [ -n \"$GOOGLE_SA_JSON\" ]; then printf '%s' \"$GOOGLE_SA_JSON\" > /tmp/google-sa.json && export GOOGLE_APPLICATION_CREDENTIALS=/tmp/google-sa.json; fi && MCP_SERVER_PORT=${PORT:-8000} python3 remote-gateway/core/mcp_server.py"]
+CMD ["sh", "-c", "GOOGLE_CREDS_JSON=\"${GOOGLE_ADC_JSON:-$GOOGLE_SA_JSON}\"; if [ -n \"$GOOGLE_CREDS_JSON\" ]; then printf '%s' \"$GOOGLE_CREDS_JSON\" > /tmp/google-adc.json && export GOOGLE_APPLICATION_CREDENTIALS=/tmp/google-adc.json; fi && MCP_SERVER_PORT=${PORT:-8000} python3 remote-gateway/core/mcp_server.py"]
