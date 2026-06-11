@@ -1,0 +1,96 @@
+integration: granola
+source_url: https://docs.granola.ai/introduction
+discovered_at: "2026-06-11"
+last_drift_check: "2026-06-11"
+
+fields:
+  notes:
+    display_name: Notes
+    description: Array of meeting-note summaries (id, title, owner, timestamps) from granola__list_meetings.
+    type: array
+    notes: The API only returns notes with a finished AI summary and transcript — notes still processing or never summarized are invisible.
+    nullable: true
+  folders:
+    display_name: Folders
+    description: Array of folder objects (id, name, parent_folder_id) from granola__list_folders.
+    type: array
+    notes: ""
+    nullable: true
+  has_more:
+    display_name: Has More
+    description: True when additional pages exist; pass the returned cursor to fetch the next page.
+    type: boolean
+    notes: ""
+    nullable: true
+  cursor:
+    display_name: Cursor
+    description: Pagination cursor for the next page; null when no more results.
+    type: string
+    notes: ""
+    nullable: true
+  id:
+    display_name: Note ID
+    description: Granola note identifier (not_XXXXXXXXXXXXXX).
+    type: string
+    notes: ""
+    nullable: true
+  title:
+    display_name: Title
+    description: Meeting note title.
+    type: string
+    notes: May be null for untitled meetings.
+    nullable: true
+  owner:
+    display_name: Owner
+    description: Note owner as a user object with name and email.
+    type: object
+    notes: ""
+    nullable: true
+  attendees:
+    display_name: Attendees
+    description: Array of user objects (name, email) who attended the meeting.
+    type: array
+    notes: ""
+    nullable: true
+  calendar_event:
+    display_name: Calendar Event
+    description: Linked calendar event with title, organizer email, invitees, and scheduled times.
+    type: object
+    notes: ""
+    nullable: true
+  folder_membership:
+    display_name: Folder Membership
+    description: Array of folders this note belongs to.
+    type: array
+    notes: ""
+    nullable: true
+  summary:
+    display_name: Summary
+    description: AI-generated meeting summary — markdown when available, plain text otherwise.
+    type: string
+    notes: Sourced from summary_markdown with fallback to summary_text.
+    nullable: true
+  transcript:
+    display_name: Transcript
+    description: Full meeting transcript flattened to readable dialogue lines ("Me:" = note owner's mic, "Them:" = other participants, "Speaker A:" when diarization is available).
+    type: string
+    notes: Only present when include_transcript=true. Timestamps are dropped; consecutive lines from the same speaker are merged.
+    nullable: true
+  web_url:
+    display_name: Web URL
+    description: Direct link to the note in the Granola app.
+    type: string
+    notes: ""
+    nullable: true
+  created_at:
+    display_name: Created At
+    description: ISO 8601 creation timestamp.
+    type: string
+    notes: ""
+    nullable: true
+  updated_at:
+    display_name: Updated At
+    description: ISO 8601 last-update timestamp.
+    type: string
+    notes: ""
+    nullable: true
