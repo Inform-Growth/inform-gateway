@@ -171,6 +171,7 @@ The `_AuthMiddleware` ASGI layer resolves the key to a `user_id` on every reques
 | `report_issue` | File a friction signal as a GitHub Issue after user consent. `source:report_issue` label. Issues land on `ISSUE_DEPLOYMENT_REPO`. |
 | `list_my_issues` | List GitHub Issues on `ISSUE_DEPLOYMENT_REPO` (filtered by state/label). |
 | `check_field_drift` / `discover_fields` / `get_field_definitions` / `lookup_field` / `list_field_integrations` | Field registry |
+| `granola__list_meetings` / `granola__get_meeting` / `granola__list_folders` | Granola meeting notes — list meetings with date/folder filters, fetch a meeting's AI summary and flattened transcript, list folders. Requires `GRANOLA_API_KEY`. Only meetings with a finished AI summary are visible. |
 | `setup_start` / `setup_save_profile` / `setup_complete` | Onboarding flow — **bypasses the init gate** |
 | `profile_get` / `profile_update` | Org profile (free-form JSON; bypasses init gate) |
 | `declare_intent` / `complete_task` / `get_tasks` / `update_task` | Task lifecycle — `declare_intent` opens the **init gate** and captures `decision_context`, `decision_type`, `stakes_hint` for the loom; `update_task` enriches an active task before proceeding |

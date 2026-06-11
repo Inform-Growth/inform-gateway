@@ -52,6 +52,7 @@ MCP_TRANSPORT=sse python remote-gateway/core/mcp_server.py
 | `GOOGLE_ADC_JSON` | GA | authorized_user ADC JSON minted by `scripts/google_auth_setup.py` from the client's internal OAuth app. The startup script writes it to `/tmp/google-adc.json` and exports `GOOGLE_APPLICATION_CREDENTIALS`. See `docs/google-auth-onboarding.md`. |
 | `GOOGLE_SA_JSON` | GA (legacy) | Legacy service-account key content. Still honored as a fallback when `GOOGLE_ADC_JSON` is unset; migrate to `GOOGLE_ADC_JSON`. |
 | `GOOGLE_APPLICATION_CREDENTIALS` | GA (auto) | Set automatically by the startup script to `/tmp/google-adc.json` when either env var above is present. Can also be set directly to a mounted file path. |
+| `GRANOLA_API_KEY` | Granola | Personal API key (`grn_...`) for the `granola__*` meeting-notes tools. Generate in the Granola desktop app: Settings > API (Business/Enterprise plans). |
 
 ---
 
