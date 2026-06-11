@@ -124,6 +124,7 @@ When acting as an agent in this environment, you MUST initialize your session by
   - `tools/` — Built-in tool modules registered by `mcp_server.py`:
     - `meta.py` — health, stats, auth, operator instructions.
     - `friction.py` **[custom]** — `report_issue` / `list_my_issues`. Gateway-internal friction reporting; reads `ISSUE_DEPLOYMENT_REPO`.
+    - `integrations/granola.py` **[custom]** — Granola meeting-notes tools (`granola__list_meetings` / `granola__get_meeting` / `granola__list_folders`). Reads `GRANOLA_API_KEY`; dogfood-only, not synced by `distribute.yml`.
     - `integrations/notes/` **[custom]** — pluggable notes storage (`write_note` / `read_note` / `list_notes` / `delete_note`). `NotesAdapter` Protocol + `GitHubFilesAdapter` backend (markdown files under `notes/*.md` in `NOTES_REPO`). Stays `[custom]` until a second adapter (e.g. SQLite-backed for downstream clients) is added.
     - `registry.py` — field registry tools.
     - `_core/` — onboarding (`setup_*`), profile manager (`profile_get/update`), task manager (`declare_intent`/`complete_task`/`get_tasks`/`update_task` — the **init gate**), skill manager (`skill_*`, `run_skill`).
