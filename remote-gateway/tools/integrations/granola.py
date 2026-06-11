@@ -32,6 +32,7 @@ def _headers() -> dict[str, str]:
         )
     return {
         "Authorization": f"Bearer {api_key}",
+        # Accept (not Content-Type) — this integration only sends GETs with no body.
         "Accept": "application/json",
     }
 

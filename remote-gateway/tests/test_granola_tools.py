@@ -103,3 +103,15 @@ def test_get_400_raises_bad_request(monkeypatch):
         from tools.integrations.granola import _get
         with pytest.raises(RuntimeError, match="bad folder_id"):
             _get("/notes")
+
+
+def test_get_forwards_params(monkeypatch):
+    """_get forwards query params to the underlying client.get call."""
+    monkeypatch.setenv("GRANOLA_API_KEY", "grn_testkey")
+    mock_client = _mock_client(get_responses=[_mock_response({"notes": []})])
+
+    with patch("httpx.Client", return_value=mock_client):
+        from tools.integrations.granola import _get
+        _get("/notes", params={"page_size": 5, "cursor": "abc"})
+
+    assert mock_client.get.call_args.kwargs["params"] == {"page_size": 5, "cursor": "abc"}
