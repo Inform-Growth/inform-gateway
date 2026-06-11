@@ -183,3 +183,97 @@ def test_flatten_transcript_missing_source_defaults_to_them():
     from tools.integrations.granola import _flatten_transcript
     out = _flatten_transcript([{"text": "System note."}])
     assert out == "Them: System note."
+
+
+# ---------------------------------------------------------------------------
+# granola__list_meetings
+# ---------------------------------------------------------------------------
+
+_LIST_NOTES_RESPONSE = {
+    "notes": [
+        {
+            "id": "not_1d3tmYTlCICgjy",
+            "object": "note",
+            "title": "Weekly sync",
+            "owner": {"name": "Jaron Sander", "email": "jaron@informgrowth.com"},
+            "created_at": "2026-06-10T15:00:00Z",
+            "updated_at": "2026-06-10T16:00:00Z",
+        }
+    ],
+    "hasMore": True,
+    "cursor": "eyJjcmVkZW50aWFsfQ==",
+}
+
+
+def test_list_meetings_returns_notes_and_pagination(monkeypatch):
+    """granola__list_meetings returns note summaries with has_more and cursor."""
+    monkeypatch.setenv("GRANOLA_API_KEY", "grn_testkey")
+    mock_client = _mock_client(get_responses=[_mock_response(_LIST_NOTES_RESPONSE)])
+
+    with patch("httpx.Client", return_value=mock_client):
+        from tools.integrations.granola import granola__list_meetings
+        result = granola__list_meetings()
+
+    assert result["notes"][0]["id"] == "not_1d3tmYTlCICgjy"
+    assert result["notes"][0]["title"] == "Weekly sync"
+    assert result["notes"][0]["owner"]["email"] == "jaron@informgrowth.com"
+    assert result["has_more"] is True
+    assert result["cursor"] == "eyJjcmVkZW50aWFsfQ=="
+
+
+def test_list_meetings_omits_none_params(monkeypatch):
+    """Only non-None filters are sent; defaults send just page_size."""
+    monkeypatch.setenv("GRANOLA_API_KEY", "grn_testkey")
+    mock_client = _mock_client(get_responses=[_mock_response(_LIST_NOTES_RESPONSE)])
+
+    with patch("httpx.Client", return_value=mock_client):
+        from tools.integrations.granola import granola__list_meetings
+        granola__list_meetings()
+
+    params = mock_client.get.call_args.kwargs["params"]
+    assert params == {"page_size": 10}
+
+
+def test_list_meetings_passes_filters(monkeypatch):
+    """All provided filters are passed through as query params."""
+    monkeypatch.setenv("GRANOLA_API_KEY", "grn_testkey")
+    mock_client = _mock_client(get_responses=[_mock_response(_LIST_NOTES_RESPONSE)])
+
+    with patch("httpx.Client", return_value=mock_client):
+        from tools.integrations.granola import granola__list_meetings
+        granola__list_meetings(
+            created_after="2026-06-01",
+            created_before="2026-06-10",
+            updated_after="2026-06-05",
+            folder_id="fol_AAAABBBBCCCCdd",
+            cursor="abc",
+            page_size=25,
+        )
+
+    params = mock_client.get.call_args.kwargs["params"]
+    assert params == {
+        "page_size": 25,
+        "created_after": "2026-06-01",
+        "created_before": "2026-06-10",
+        "updated_after": "2026-06-05",
+        "folder_id": "fol_AAAABBBBCCCCdd",
+        "cursor": "abc",
+    }
+
+
+def test_list_meetings_clamps_page_size(monkeypatch):
+    """page_size is clamped to the API's 1-30 range."""
+    monkeypatch.setenv("GRANOLA_API_KEY", "grn_testkey")
+    mock_client = _mock_client(
+        get_responses=[
+            _mock_response(_LIST_NOTES_RESPONSE),
+            _mock_response(_LIST_NOTES_RESPONSE),
+        ]
+    )
+
+    with patch("httpx.Client", return_value=mock_client):
+        from tools.integrations.granola import granola__list_meetings
+        granola__list_meetings(page_size=100)
+        assert mock_client.get.call_args.kwargs["params"]["page_size"] == 30
+        granola__list_meetings(page_size=0)
+        assert mock_client.get.call_args.kwargs["params"]["page_size"] == 1

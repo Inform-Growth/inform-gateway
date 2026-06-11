@@ -79,6 +79,70 @@ def _validated(result: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def granola__list_meetings(
+    created_after: str | None = None,
+    created_before: str | None = None,
+    updated_after: str | None = None,
+    folder_id: str | None = None,
+    cursor: str | None = None,
+    page_size: int = 10,
+) -> dict[str, Any]:
+    """List Granola meeting notes, newest first, with optional filters.
+
+    Returns lightweight summaries (id, title, owner, timestamps) — call
+    granola__get_meeting with a note id for the AI summary and transcript.
+    Only meetings with a finished AI summary appear; notes still processing
+    or never summarized are not returned by the Granola API.
+
+    Args:
+        created_after: Only notes created after this date/datetime
+            (e.g. "2026-06-01" or "2026-06-01T15:30:00Z").
+        created_before: Only notes created before this date/datetime.
+        updated_after: Only notes modified after this date/datetime.
+        folder_id: Scope to a Granola folder and its children
+            (fol_... id from granola__list_folders).
+        cursor: Pagination cursor from a previous response.
+        page_size: Results per page, 1-30 (default 10).
+
+    Returns:
+        Dict with notes (list of {id, title, owner, created_at, updated_at}),
+        has_more (bool), and cursor (str or None) for the next page.
+
+    Raises:
+        ValueError: If GRANOLA_API_KEY is not set.
+        PermissionError: If the API key is invalid or expired.
+        RuntimeError: On bad request (e.g. malformed folder_id).
+    """
+    params: dict[str, Any] = {"page_size": max(1, min(int(page_size), _MAX_PAGE_SIZE))}
+    for key, val in (
+        ("created_after", created_after),
+        ("created_before", created_before),
+        ("updated_after", updated_after),
+        ("folder_id", folder_id),
+        ("cursor", cursor),
+    ):
+        if val is not None:
+            params[key] = val
+
+    payload = _get("/notes", params)
+
+    result: dict[str, Any] = {
+        "notes": [
+            {
+                "id": n.get("id"),
+                "title": n.get("title"),
+                "owner": n.get("owner"),
+                "created_at": n.get("created_at"),
+                "updated_at": n.get("updated_at"),
+            }
+            for n in payload.get("notes", [])
+        ],
+        "has_more": payload.get("hasMore", False),
+        "cursor": payload.get("cursor"),
+    }
+    return _validated(result)
+
+
 def _flatten_transcript(transcript: list[dict[str, Any]]) -> str:
     """Flatten Granola's per-utterance transcript array into dialogue lines.
 
