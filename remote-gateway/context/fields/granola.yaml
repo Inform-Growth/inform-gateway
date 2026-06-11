@@ -1,5 +1,5 @@
 integration: granola
-source_url: https://docs.granola.ai/introduction
+source_url: https://docs.granola.ai/api-reference/list-notes
 discovered_at: "2026-06-11"
 last_drift_check: "2026-06-11"
 
@@ -14,7 +14,7 @@ fields:
     display_name: Folders
     description: Array of folder objects (id, name, parent_folder_id) from granola__list_folders.
     type: array
-    notes: ""
+    notes: Only present in granola__list_folders responses.
     nullable: true
   has_more:
     display_name: Has More
@@ -32,7 +32,7 @@ fields:
     display_name: Note ID
     description: Granola note identifier (not_XXXXXXXXXXXXXX).
     type: string
-    notes: ""
+    notes: Top-level only in granola__get_meeting responses; list responses nest ids inside notes/folders arrays. Nullable because this schema is a union across all three tools.
     nullable: true
   title:
     display_name: Title
@@ -62,7 +62,7 @@ fields:
     display_name: Folder Membership
     description: Array of folders this note belongs to.
     type: array
-    notes: ""
+    notes: Folders this specific note belongs to — contrast with the top-level folders field returned by granola__list_folders.
     nullable: true
   summary:
     display_name: Summary
@@ -85,12 +85,12 @@ fields:
   created_at:
     display_name: Created At
     description: ISO 8601 creation timestamp.
-    type: string
+    type: timestamp
     notes: ""
     nullable: true
   updated_at:
     display_name: Updated At
     description: ISO 8601 last-update timestamp.
-    type: string
+    type: timestamp
     notes: ""
     nullable: true
