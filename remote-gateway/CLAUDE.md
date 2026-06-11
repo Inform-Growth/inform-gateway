@@ -49,8 +49,9 @@ MCP_TRANSPORT=sse python remote-gateway/core/mcp_server.py
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Google | OAuth client secret |
 | `USER_GOOGLE_EMAIL` | Google | Account the workspace MCP authenticates as |
 | `WORKSPACE_MCP_CREDENTIALS_DIR` | Google | Persistent directory for cached OAuth tokens (e.g. `/data/google-workspace-creds`) |
-| `GOOGLE_SA_JSON` | GA | Raw service account JSON key content. Set this in Railway; the startup script writes it to `/tmp/google-sa.json` and exports `GOOGLE_APPLICATION_CREDENTIALS`. |
-| `GOOGLE_APPLICATION_CREDENTIALS` | GA (auto) | Set automatically by the startup script to `/tmp/google-sa.json` when `GOOGLE_SA_JSON` is present. Can also be set directly to a mounted file path. |
+| `GOOGLE_ADC_JSON` | GA | authorized_user ADC JSON minted by `scripts/google_auth_setup.py` from the client's internal OAuth app. The startup script writes it to `/tmp/google-adc.json` and exports `GOOGLE_APPLICATION_CREDENTIALS`. See `docs/google-auth-onboarding.md`. |
+| `GOOGLE_SA_JSON` | GA (legacy) | Legacy service-account key content. Still honored as a fallback when `GOOGLE_ADC_JSON` is unset; migrate to `GOOGLE_ADC_JSON`. |
+| `GOOGLE_APPLICATION_CREDENTIALS` | GA (auto) | Set automatically by the startup script to `/tmp/google-adc.json` when either env var above is present. Can also be set directly to a mounted file path. |
 
 ---
 
