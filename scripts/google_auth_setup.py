@@ -71,7 +71,7 @@ def validate_token(access_token: str, quota_project_id: str) -> tuple[bool, str]
         with urllib.request.urlopen(req, timeout=30) as resp:
             return True, f"HTTP {resp.status}"
     except urllib.error.HTTPError as exc:
-        body = exc.fp.read().decode("utf-8", errors="replace")[:500] if exc.fp else ""
+        body = exc.fp.read().decode("utf-8", errors="replace")[:500]
         return False, f"HTTP {exc.code}: {body}"
     except urllib.error.URLError as exc:
         return False, f"network error: {exc.reason}"

@@ -50,6 +50,7 @@ def test_validate_token_success(monkeypatch):
         captured["url"] = req.full_url
         captured["auth"] = req.get_header("Authorization")
         captured["quota"] = req.get_header("X-goog-user-project")
+        captured["timeout"] = timeout
         return _FakeHTTPResponse()
 
     monkeypatch.setattr(gas.urllib.request, "urlopen", fake_urlopen)
@@ -58,6 +59,7 @@ def test_validate_token_success(monkeypatch):
     assert "accountSummaries" in captured["url"]
     assert captured["auth"] == "Bearer tok-123"
     assert captured["quota"] == "client-proj-123"
+    assert captured["timeout"] == 30
 
 
 def test_validate_token_failure_includes_body(monkeypatch):
@@ -75,3 +77,16 @@ def test_validate_token_failure_includes_body(monkeypatch):
     assert ok is False
     assert "403" in detail
     assert "PERMISSION_DENIED" in detail
+
+
+def test_validate_token_network_error(monkeypatch):
+    import urllib.error
+
+    def fake_urlopen(req, timeout=0):
+        raise urllib.error.URLError("Name or service not known")
+
+    monkeypatch.setattr(gas.urllib.request, "urlopen", fake_urlopen)
+    ok, detail = gas.validate_token("tok-123", "client-proj-123")
+    assert ok is False
+    assert "network error" in detail
+    assert "Name or service not known" in detail
