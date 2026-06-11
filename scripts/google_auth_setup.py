@@ -101,6 +101,15 @@ def main(argv: list[str] | None = None) -> int:
     flow = InstalledAppFlow.from_client_secrets_file(args.client_secrets, scopes=scopes)
     creds = flow.run_local_server(port=0)
 
+    if not creds.refresh_token:
+        print(
+            "Consent returned no refresh token — cannot mint a durable credential. "
+            "Remove the app's prior grant at https://myaccount.google.com/permissions "
+            "and re-run to force a fresh consent.",
+            file=sys.stderr,
+        )
+        return 1
+
     ok, detail = validate_token(creds.token, args.quota_project)
     if not ok:
         print(f"Credential validation FAILED — not printing env vars.\n{detail}", file=sys.stderr)

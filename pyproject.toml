@@ -9,6 +9,7 @@ description = "Agentic GitOps monorepo: local R&D sandbox + centralized MCP gate
 requires-python = ">=3.11"
 dependencies = [
     "mcp[cli]",
+    "anyio",
     "fastapi",
     "uvicorn[standard]",
     "openai",

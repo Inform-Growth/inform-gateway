@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -57,7 +57,7 @@ def check_google_auth() -> str:
     return f"failing: {reason}"
 
 
-def make_health_check(server_name_fn: Any) -> Callable[[], dict]:
+def make_health_check(server_name_fn: Any) -> Callable[[], Awaitable[dict]]:
     """Return a health_check tool function that reads server name at call time.
 
     Args:

@@ -53,7 +53,7 @@ python scripts/google_auth_setup.py --client-secrets client_secret.json \
     --quota-project <client-project-id>
 ```
 
-- Requests the union of scopes needed by the deployment's Google connections (GA: `analytics.readonly`; Workspace scopes per the workspace-mcp core tier).
+- Requests only the scopes consumed via the ADC file — GA `analytics.readonly` today, with an `--extra-scopes` flag for future ADC-based integrations. Workspace scopes are deliberately excluded: workspace-mcp runs its own consent flow and never reads the ADC file, so including them would only widen the credential's blast radius.
 - Prints two artifacts:
   - **`GOOGLE_ADC_JSON`** — an `authorized_user` ADC JSON (`client_id`, `client_secret`, `refresh_token`, `quota_project_id`) for Railway. Consumed by analytics-mcp (and any future ADC-based integration).
   - The `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` values for workspace-mcp (unchanged mechanism).
