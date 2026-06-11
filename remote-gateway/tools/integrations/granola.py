@@ -98,9 +98,8 @@ def _flatten_transcript(transcript: list[dict[str, Any]]) -> str:
         text = (utterance.get("text") or "").strip()
         if not text:
             continue
-        label = utterance.get("diarization_label") or (
-            "Me" if utterance.get("source") == "microphone" else "Them"
-        )
+        raw_label = (utterance.get("diarization_label") or "").strip()
+        label = raw_label or ("Me" if utterance.get("source") == "microphone" else "Them")
         if merged and merged[-1][0] == label:
             merged[-1] = (label, f"{merged[-1][1]} {text}")
         else:

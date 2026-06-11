@@ -167,3 +167,19 @@ def test_flatten_transcript_empty_list():
     """An empty transcript flattens to an empty string."""
     from tools.integrations.granola import _flatten_transcript
     assert _flatten_transcript([]) == ""
+
+
+def test_flatten_transcript_blank_diarization_label_falls_back():
+    """A whitespace-only diarization_label is treated as absent."""
+    from tools.integrations.granola import _flatten_transcript
+    out = _flatten_transcript([
+        {"source": "microphone", "text": "Hello.", "diarization_label": "   "},
+    ])
+    assert out == "Me: Hello."
+
+
+def test_flatten_transcript_missing_source_defaults_to_them():
+    """An utterance with no source key is attributed to 'Them'."""
+    from tools.integrations.granola import _flatten_transcript
+    out = _flatten_transcript([{"text": "System note."}])
+    assert out == "Them: System note."
