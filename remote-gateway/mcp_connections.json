@@ -69,7 +69,7 @@
       }
     },
     "google-analytics": {
-      "_comment": "Read-only GA4 data via official analytics-mcp. Property ID is passed as a parameter on each tool call — document your property ID in the org profile so agents know which to use.",
+      "_comment": "Read-only GA4 data via official analytics-mcp. Auth: authorized_user ADC JSON minted from the client's internal OAuth app (scripts/google_auth_setup.py) — tokens carry the consenting user's own GA access, no service-account grants. Property ID is passed as a parameter on each tool call — document your property ID in the org profile so agents know which to use.",
       "transport": "stdio",
       "command": "uvx",
       "args": ["analytics-mcp"],
