@@ -102,6 +102,9 @@ jobs:
             "remote-gateway/admin-ui/src/routes/tasks/TasksTable.tsx"
             "remote-gateway/admin-ui/src/routes/tasks/TaskDetailSheet.tsx"
             "remote-gateway/admin-ui/src/hooks/useTasks.ts"
+            "remote-gateway/tools/meta.py"
+            "scripts/google_auth_setup.py"
+            "docs/google-auth-onboarding.md"
             "Dockerfile"
             "pyproject.toml"
           )
