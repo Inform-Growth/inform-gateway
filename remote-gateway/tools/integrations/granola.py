@@ -176,6 +176,7 @@ def granola__get_meeting(note_id: str, include_transcript: bool = False) -> dict
         "attendees": payload.get("attendees"),
         "calendar_event": payload.get("calendar_event"),
         "folder_membership": payload.get("folder_membership"),
+        # Empty-string markdown is treated as absent — falls back to plain text.
         "summary": payload.get("summary_markdown") or payload.get("summary_text"),
         "web_url": payload.get("web_url"),
         "created_at": payload.get("created_at"),
@@ -183,6 +184,45 @@ def granola__get_meeting(note_id: str, include_transcript: bool = False) -> dict
     }
     if include_transcript:
         result["transcript"] = _flatten_transcript(payload.get("transcript") or [])
+    return _validated(result)
+
+
+def granola__list_folders(cursor: str | None = None, page_size: int = 30) -> dict[str, Any]:
+    """List Granola folders so meetings can be filtered by folder.
+
+    Use the returned folder ids as the folder_id argument to
+    granola__list_meetings (a folder filter includes its child folders).
+
+    Args:
+        cursor: Pagination cursor from a previous response.
+        page_size: Results per page, 1-30 (default 30).
+
+    Returns:
+        Dict with folders (list of {id, name, parent_folder_id}),
+        has_more (bool), and cursor (str or None) for the next page.
+
+    Raises:
+        ValueError: If GRANOLA_API_KEY is not set.
+        PermissionError: If the API key is invalid or expired.
+    """
+    params: dict[str, Any] = {"page_size": max(1, min(int(page_size), _MAX_PAGE_SIZE))}
+    if cursor is not None:
+        params["cursor"] = cursor
+
+    payload = _get("/folders", params)
+
+    result: dict[str, Any] = {
+        "folders": [
+            {
+                "id": f.get("id"),
+                "name": f.get("name"),
+                "parent_folder_id": f.get("parent_folder_id"),
+            }
+            for f in payload.get("folders", [])
+        ],
+        "has_more": payload.get("hasMore", False),
+        "cursor": payload.get("cursor"),
+    }
     return _validated(result)
 
 

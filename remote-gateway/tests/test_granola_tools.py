@@ -378,3 +378,48 @@ def test_list_meetings_empty_page(monkeypatch):
     assert result["notes"] == []
     assert result["has_more"] is False
     assert result["cursor"] is None
+
+
+# ---------------------------------------------------------------------------
+# granola__list_folders
+# ---------------------------------------------------------------------------
+
+_LIST_FOLDERS_RESPONSE = {
+    "folders": [
+        {"id": "fol_AAAABBBBCCCCdd", "object": "folder", "name": "Sales", "parent_folder_id": None}
+    ],
+    "hasMore": False,
+    "cursor": None,
+}
+
+
+def test_list_folders_returns_folders(monkeypatch):
+    """granola__list_folders returns folder id/name/parent and pagination."""
+    monkeypatch.setenv("GRANOLA_API_KEY", "grn_testkey")
+    mock_client = _mock_client(get_responses=[_mock_response(_LIST_FOLDERS_RESPONSE)])
+
+    with patch("httpx.Client", return_value=mock_client):
+        from tools.integrations.granola import granola__list_folders
+        result = granola__list_folders()
+
+    assert result["folders"] == [
+        {"id": "fol_AAAABBBBCCCCdd", "name": "Sales", "parent_folder_id": None}
+    ]
+    assert result["has_more"] is False
+    assert result["cursor"] is None
+
+    requested_url = mock_client.get.call_args.args[0]
+    assert requested_url.endswith("/folders")
+    assert mock_client.get.call_args.kwargs["params"] == {"page_size": 30}
+
+
+def test_list_folders_passes_cursor(monkeypatch):
+    """A cursor is passed through as a query param."""
+    monkeypatch.setenv("GRANOLA_API_KEY", "grn_testkey")
+    mock_client = _mock_client(get_responses=[_mock_response(_LIST_FOLDERS_RESPONSE)])
+
+    with patch("httpx.Client", return_value=mock_client):
+        from tools.integrations.granola import granola__list_folders
+        granola__list_folders(cursor="abc")
+
+    assert mock_client.get.call_args.kwargs["params"] == {"page_size": 30, "cursor": "abc"}
