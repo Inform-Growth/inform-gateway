@@ -5,6 +5,7 @@ scripts/google_auth_setup.py, update one Railway var), not a mystery outage.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 from pathlib import Path
@@ -73,7 +74,37 @@ def test_failing_when_file_unreadable(monkeypatch, tmp_path):
 def test_health_check_includes_google_auth(monkeypatch):
     monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
     health = meta.make_health_check(lambda: "test-gateway")
-    result = health()
+    result = asyncio.run(health())
     assert result["status"] == "ok"
     assert result["server"] == "test-gateway"
     assert result["google_auth"] == "not_configured"
+
+
+def test_failing_when_file_is_not_a_json_object(monkeypatch, tmp_path):
+    p = tmp_path / "adc.json"
+    p.write_text(json.dumps(["not", "a", "dict"]))
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", str(p))
+    assert meta.check_google_auth() == "failing: credentials file malformed (not a JSON object)"
+
+
+def test_failing_when_token_endpoint_unreachable(monkeypatch, tmp_path):
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", str(_write_adc(tmp_path)))
+
+    def raise_connect_error(url, data, timeout):
+        raise meta.httpx.ConnectError("dns failure")
+
+    monkeypatch.setattr(meta.httpx, "post", raise_connect_error)
+    assert meta.check_google_auth().startswith("failing: token endpoint unreachable")
+
+
+def test_failing_with_non_json_error_body(monkeypatch, tmp_path):
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", str(_write_adc(tmp_path)))
+
+    class _NonJSONResponse:
+        status_code = 503
+
+        def json(self) -> dict:
+            raise ValueError("not json")
+
+    monkeypatch.setattr(meta.httpx, "post", lambda url, data, timeout: _NonJSONResponse())
+    assert meta.check_google_auth() == "failing: 503"

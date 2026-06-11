@@ -9,6 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import anyio.to_thread
 import httpx
 
 _GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -28,8 +29,10 @@ def check_google_auth() -> str:
         return "not_configured"
     try:
         info = json.loads(Path(path).read_text())
-    except (OSError, ValueError) as exc:
-        return f"failing: credentials file unreadable ({exc})"
+    except (OSError, ValueError):
+        return "failing: credentials file unreadable"
+    if not isinstance(info, dict):
+        return "failing: credentials file malformed (not a JSON object)"
     if info.get("type") != "authorized_user":
         return "configured (service_account key; not validated)"
     try:
@@ -61,13 +64,18 @@ def make_health_check(server_name_fn: Any) -> Callable[[], dict]:
         server_name_fn: Zero-arg callable returning the server's display name.
     """
 
-    def health_check() -> dict:
+    async def health_check() -> dict:
         """Check that the Gateway MCP server is running and responsive.
 
-        Also reports Google credential health when configured: 'google_auth' is
-        "ok", "not_configured", or "failing: <reason>" — a failing value means
-        the OAuth refresh token was revoked and needs a re-consent (run
-        scripts/google_auth_setup.py and update GOOGLE_ADC_JSON).
+        Also reports Google credential health when configured. Possible values
+        for 'google_auth':
+          - "ok" — authorized_user refresh token successfully exchanged
+          - "not_configured" — no GOOGLE_APPLICATION_CREDENTIALS env var set
+          - "configured (service_account key; not validated)" — SA key present
+          - "failing: <reason>" — unreadable file, rejected token, or network
+            error; for authorized_user credentials this typically means the
+            refresh token was revoked — re-run scripts/google_auth_setup.py
+            and update GOOGLE_ADC_JSON.
 
         Returns:
             A dict with status, server name, and google_auth.
@@ -75,7 +83,7 @@ def make_health_check(server_name_fn: Any) -> Callable[[], dict]:
         return {
             "status": "ok",
             "server": server_name_fn(),
-            "google_auth": check_google_auth(),
+            "google_auth": await anyio.to_thread.run_sync(check_google_auth),
         }
 
     return health_check
