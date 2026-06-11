@@ -3,8 +3,55 @@ Gateway meta tools — health check and telemetry stats.
 """
 from __future__ import annotations
 
+import json
+import os
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
+
+import httpx
+
+_GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+
+
+def check_google_auth() -> str:
+    """Report Google credential health by exercising the refresh token.
+
+    Returns one of:
+      - "not_configured" — no GOOGLE_APPLICATION_CREDENTIALS env var
+      - "ok" — authorized_user refresh token successfully exchanged
+      - "configured (service_account key; not validated)" — legacy SA key present
+      - "failing: <reason>" — unreadable file, rejected token, or network error
+    """
+    path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if not path:
+        return "not_configured"
+    try:
+        info = json.loads(Path(path).read_text())
+    except (OSError, ValueError) as exc:
+        return f"failing: credentials file unreadable ({exc})"
+    if info.get("type") != "authorized_user":
+        return "configured (service_account key; not validated)"
+    try:
+        resp = httpx.post(
+            _GOOGLE_TOKEN_URL,
+            data={
+                "grant_type": "refresh_token",
+                "client_id": info.get("client_id", ""),
+                "client_secret": info.get("client_secret", ""),
+                "refresh_token": info.get("refresh_token", ""),
+            },
+            timeout=10,
+        )
+    except httpx.HTTPError as exc:
+        return f"failing: token endpoint unreachable ({exc})"
+    if resp.status_code == 200:
+        return "ok"
+    try:
+        reason = resp.json().get("error", str(resp.status_code))
+    except ValueError:
+        reason = str(resp.status_code)
+    return f"failing: {reason}"
 
 
 def make_health_check(server_name_fn: Any) -> Callable[[], dict]:
@@ -17,10 +64,19 @@ def make_health_check(server_name_fn: Any) -> Callable[[], dict]:
     def health_check() -> dict:
         """Check that the Gateway MCP server is running and responsive.
 
+        Also reports Google credential health when configured: 'google_auth' is
+        "ok", "not_configured", or "failing: <reason>" — a failing value means
+        the OAuth refresh token was revoked and needs a re-consent (run
+        scripts/google_auth_setup.py and update GOOGLE_ADC_JSON).
+
         Returns:
-            A dict with status and server name.
+            A dict with status, server name, and google_auth.
         """
-        return {"status": "ok", "server": server_name_fn()}
+        return {
+            "status": "ok",
+            "server": server_name_fn(),
+            "google_auth": check_google_auth(),
+        }
 
     return health_check
 
