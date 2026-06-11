@@ -49,8 +49,9 @@ Then: document the client's GA4 property ID in the org profile
 
 ## Verifying / monitoring
 
-- `health_check` returns `google_auth: ok | not_configured | failing: <reason>`.
-  It exercises the refresh token on every call.
+- `health_check` returns `google_auth: ok | not_configured | failing: <reason>`,
+  or `configured (service_account key; not validated)` on a legacy
+  service-account deployment. It exercises the refresh token on every call.
 - `failing: invalid_grant` means the token was revoked (password change on
   Gmail-scoped credentials, admin revocation, or ~6 months unused). Fix:
   re-run the mint step and update the one Railway var. No redeploy needed
