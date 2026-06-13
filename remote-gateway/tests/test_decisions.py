@@ -74,3 +74,55 @@ def test_register_exposes_three_tools():
     mcp.tool.return_value = tool_decorator
     decisions.register(mcp)
     assert mcp.tool.call_count == 3
+
+
+def test_list_open_decisions_selects_voi_fields():
+    client = MagicMock()
+    client.get.return_value = _resp([{"id": "1", "title": "X", "status": "open"}])
+    with patch("httpx.Client", return_value=_client_cm(client)):
+        decisions.list_open_decisions()
+    _, kwargs = client.get.call_args
+    select = kwargs["params"]["select"]
+    assert "recommended_action" in select
+    assert "confidence" in select
+    assert "voi_rationale" in select
+
+
+def test_upsert_passes_voi_fields_on_insert():
+    client = MagicMock()
+    client.get.return_value = _resp([])  # nothing existing
+    client.post.return_value = _resp([{"id": "2", "title": "Y", "status": "open"}])
+    with patch("httpx.Client", return_value=_client_cm(client)):
+        decisions.upsert_decision(
+            "Y",
+            recommended_action="Call Leo first.",
+            confidence="med",
+            voi_rationale="Reaching him before the hire is what makes the play land.",
+        )
+    _, kwargs = client.post.call_args
+    assert kwargs["json"]["recommended_action"] == "Call Leo first."
+    assert kwargs["json"]["confidence"] == "med"
+    assert kwargs["json"]["voi_rationale"].startswith("Reaching him")
+
+
+def test_upsert_updates_voi_fields_on_existing_row():
+    client = MagicMock()
+    client.get.return_value = _resp([{"id": "1", "title": "X", "status": "open"}])
+    client.patch.return_value = _resp([{"id": "1", "title": "X", "recommended_action": "Do the thing."}])
+    with patch("httpx.Client", return_value=_client_cm(client)):
+        out = decisions.upsert_decision("X", recommended_action="Do the thing.")
+    client.patch.assert_called_once()
+    _, kwargs = client.patch.call_args
+    assert kwargs["params"]["id"] == "eq.1"
+    assert kwargs["json"]["recommended_action"] == "Do the thing."
+    assert out["decision"]["recommended_action"] == "Do the thing."
+
+
+def test_upsert_existing_row_no_enrichment_still_noops():
+    client = MagicMock()
+    client.get.return_value = _resp([{"id": "1", "title": "X", "status": "open"}])
+    with patch("httpx.Client", return_value=_client_cm(client)):
+        out = decisions.upsert_decision("X")  # no enrichment args
+    client.post.assert_not_called()
+    client.patch.assert_not_called()  # nothing to update -> pure no-op
+    assert out["decision"]["id"] == "1"

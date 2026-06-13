@@ -19,7 +19,10 @@ import os
 from typing import Any
 
 # Compact field set returned to agents (keeps MCP context small).
-_LIST_FIELDS = "id,title,detail,priority,kind,status,opened_at"
+_LIST_FIELDS = (
+    "id,title,detail,priority,kind,status,opened_at,"
+    "recommended_action,confidence,voi_rationale,source"
+)
 
 
 def _base() -> str:
@@ -73,30 +76,47 @@ def upsert_decision(
     detail: str = "",
     priority: str = "M",
     source: str = "",
+    recommended_action: str = "",
+    confidence: str = "",
+    voi_rationale: str = "",
 ) -> dict[str, Any]:
     """Mint a decision/task, deduped on case-insensitive title.
 
     If an active (non-dropped) decision with the same title already exists, this
-    is a no-op that returns the existing row — re-running never duplicates. Use
+    updates its VoI enrichment fields (recommended_action/confidence/
+    voi_rationale) when any are provided and returns the updated row; otherwise
+    it is a no-op returning the existing row. Re-running never duplicates. Use
     kind='task' for a concrete to-do, 'decision' for a strategic call.
 
     Args:
         title: Short decision title (the dedup key, case-insensitive).
         kind: 'decision' | 'task'. Default 'decision'.
         detail: Free-text context.
-        priority: 'H' | 'M' | 'L'. Default 'M'.
+        priority: 'H' | 'M' | 'L'. Default 'M'. (Doubles as the impact tag.)
         source: Who/what minted it (agent or note slug).
+        recommended_action: The brief's recommended next action.
+        confidence: 'high' | 'med' | 'low' confidence in the recommendation.
+        voi_rationale: The single piece of information that would change the call.
 
     Returns:
-        Dict with 'decision': the created or existing row.
+        Dict with 'decision': the created, updated, or existing row.
     """
     import httpx
+
+    enrichment = {
+        k: v
+        for k, v in (
+            ("recommended_action", recommended_action),
+            ("confidence", confidence),
+            ("voi_rationale", voi_rationale),
+        )
+        if v
+    }
 
     with httpx.Client() as client:
         # Dedup against active rows. ilike with no wildcards is a case-insensitive
         # exact match; httpx URL-encodes the value, so titles with special chars
         # (parens, '#', '/' — e.g. "Apollo/Wiza enrichment (#27)") match fine.
-        # Mirrors agent-inform's supabase-py `.ilike("title", title)`.
         existing = client.get(
             _base(),
             headers=_headers(),
@@ -112,7 +132,19 @@ def upsert_decision(
         existing.raise_for_status()
         rows = existing.json()
         if rows:
-            return {"decision": rows[0]}
+            row = rows[0]
+            if enrichment:
+                patched = client.patch(
+                    _base(),
+                    headers=_headers({"Prefer": "return=representation"}),
+                    params={"id": f"eq.{row['id']}"},
+                    json=enrichment,
+                    timeout=30,
+                )
+                patched.raise_for_status()
+                data = patched.json()
+                return {"decision": data[0] if data else row}
+            return {"decision": row}
 
         payload = {
             "kind": kind,
@@ -122,6 +154,7 @@ def upsert_decision(
             "priority": priority,
             "signal_type": "manual",
             "source": source or None,
+            **enrichment,
         }
         resp = client.post(
             _base(),
